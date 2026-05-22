@@ -31,10 +31,10 @@
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>DriveAssistant AR uses the camera to render the road view overlay safely while driving.</string>
+	<string>DriveAssistant AR uses the camera to display augmented driving assistance overlays.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>DriveAssistant AR uses your location to align route guidance and safety cues.</string>
+	<string>DriveAssistant AR uses your location to estimate nearby road and safety information.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>DriveAssistant AR uses motion data to stabilize HUD orientation.</string>
+	<string>DriveAssistant AR uses motion and heading data to align assistance information with your direction of travel.</string>
 </dict>
 </plist>
