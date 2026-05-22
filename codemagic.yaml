@@ -10,7 +10,6 @@ workflows:
       cocoapods: default
       vars:
         BUNDLE_ID: de.driveassistant.ar
-        SHOREBIRD_DISABLED: "true"
         APPLE_TEAM_ID: $APPLE_TEAM_ID
         APP_STORE_CONNECT_ISSUER_ID: $APP_STORE_CONNECT_ISSUER_ID
         APP_STORE_CONNECT_KEY_IDENTIFIER: $APP_STORE_CONNECT_KEY_IDENTIFIER
@@ -70,3 +69,4 @@ workflows:
         key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
         issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         submit_to_testflight: true
+
