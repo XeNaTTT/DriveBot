@@ -6,14 +6,13 @@
 - Dart version: unavailable in this execution environment (`flutter`/`dart` commands not found).
 
 ## Platform Configuration
-- iOS Bundle ID: `com.example.driveassistantAr`
+- iOS Bundle ID: `de.driveassistant.ar`
 - Android applicationId: `com.example.driveassistant_ar`
 - iOS scheme name: `Runner`
 - iOS workspace path: `ios/Runner.xcworkspace`
 
 ## Codemagic Workflows
 - `ios-testflight`
-- `android-release`
 
 ## Commands Run
 The following commands were attempted in this environment and failed because Flutter SDK is not installed in the runtime container:
@@ -23,7 +22,6 @@ The following commands were attempted in this environment and failed because Flu
 - `flutter analyze`
 - `flutter test`
 - `flutter build ios --release --no-codesign`
-- `flutter build apk --release`
 
 ## Known Blockers
 - Local validation is blocked until Flutter SDK is available on PATH.
