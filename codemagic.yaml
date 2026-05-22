@@ -39,16 +39,18 @@ workflows:
           test -n "$APPLE_TEAM_ID"
       - name: Set up App Store Connect API key file
         script: |
-          cat > /tmp/app_store_connect_key.p8 <<'EOF'
+          cat > /tmp/app_store_connect_key.p8 <<'KEY'
           $APP_STORE_CONNECT_PRIVATE_KEY
-          EOF
+          KEY
+      - name: Flutter clean
+        script: flutter clean
       - name: Resolve Flutter dependencies
         script: flutter pub get
       - name: Static analysis
         script: flutter analyze
       - name: Unit and widget tests
         script: flutter test
-      - name: Build signed iOS IPA
+      - name: Build iOS IPA (Flutter)
         script: |
           flutter build ipa \
             --release \
@@ -68,3 +70,34 @@ workflows:
         key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
         issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         submit_to_testflight: true
+
+  android-release:
+    name: Android Release (Flutter)
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+
+    environment:
+      flutter: stable
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+
+    scripts:
+      - name: Flutter clean
+        script: flutter clean
+      - name: Resolve Flutter dependencies
+        script: flutter pub get
+      - name: Static analysis
+        script: flutter analyze
+      - name: Unit and widget tests
+        script: flutter test
+      - name: Build Android APK (Flutter)
+        script: flutter build apk --release
+
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
