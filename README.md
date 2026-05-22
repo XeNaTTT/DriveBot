@@ -54,3 +54,8 @@ If `flutter` is not available in your PATH, install Flutter and run `flutter doc
 2. Add camera plugin integration for real background feed.
 3. Add permissions and safe-driving UX constraints.
 4. Add map matching, route context, and confidence scoring.
+
+## Deploy to TestFlight without a Mac
+
+Use Codemagic cloud builds for iOS/TestFlight deployment. See the step-by-step guide in [`docs/codemagic-testflight.md`](docs/codemagic-testflight.md).
+
