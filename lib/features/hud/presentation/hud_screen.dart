@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../data_sources/domain/data_source_registry.dart';
 import '../../location/domain/location_repository.dart';
 import '../../location/domain/location_status.dart';
+import '../../location/domain/permission_repository.dart';
+import '../../location/domain/sensor_permission_status.dart';
 import '../domain/hud_repository.dart';
 import '../domain/hud_warning_item.dart';
 
@@ -11,17 +13,20 @@ class HudScreen extends StatelessWidget {
     required this.hudRepository,
     required this.locationRepository,
     required this.dataSourceRegistry,
+    required this.permissionRepository,
     super.key,
   });
 
   final HudRepository hudRepository;
   final LocationRepository locationRepository;
   final DataSourceRegistry dataSourceRegistry;
+  final PermissionRepository permissionRepository;
 
   @override
   Widget build(BuildContext context) {
     final location = locationRepository.getCurrentStatus();
     final warnings = hudRepository.getNearbyWarnings();
+    final permissions = permissionRepository.getCurrentPermissionStatus();
 
     return Scaffold(
       body: Stack(
@@ -31,8 +36,10 @@ class HudScreen extends StatelessWidget {
             child: Column(
               children: [
                 _TopStatusBar(status: location),
-                const SizedBox(height: 16),
-                _HudCenterOverlay(warnings: warnings),
+                const SizedBox(height: 12),
+                _PermissionBanner(status: permissions),
+                const SizedBox(height: 10),
+                _HudCenterOverlay(warnings: warnings, status: location),
                 const SizedBox(height: 12),
                 Expanded(
                   child: ListView.builder(
@@ -98,10 +105,39 @@ class _TopStatusBar extends StatelessWidget {
   }
 }
 
+
+
+class _PermissionBanner extends StatelessWidget {
+  const _PermissionBanner({required this.status});
+
+  final SensorPermissionStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    if (status.allGranted) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF3A1700),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0x99FFA94D)),
+      ),
+      child: const Text(
+        'Limited mode: camera/location/motion permissions are not fully granted. Using mock-safe fallback.',
+        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
 class _HudCenterOverlay extends StatelessWidget {
-  const _HudCenterOverlay({required this.warnings});
+  const _HudCenterOverlay({required this.warnings, required this.status});
 
   final List<HudWarningItem> warnings;
+  final LocationStatus status;
 
   @override
   Widget build(BuildContext context) {
@@ -124,6 +160,9 @@ class _HudCenterOverlay extends StatelessWidget {
               Text('DriveAssistant AR', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 6),
               Text('Active alerts: ${warnings.length}', style: Theme.of(context).textTheme.bodyLarge),
+              const SizedBox(height: 4),
+              Text(status.isSpeedEstimatedFromGps ? 'Speed source: GPS estimate' : 'Speed source: Mock fallback',
+                  style: Theme.of(context).textTheme.bodyMedium),
             ],
           ),
           Text('Risk ${highestSeverity}/5', style: Theme.of(context).textTheme.headlineSmall),

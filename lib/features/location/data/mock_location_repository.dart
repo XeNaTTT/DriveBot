@@ -8,6 +8,8 @@ class MockLocationRepository implements LocationRepository {
       speedKph: 84,
       headingDegrees: 58,
       gpsFixStatus: GpsFixStatus.strong,
+      isMock: true,
+      isSpeedEstimatedFromGps: false,
     );
   }
 }
