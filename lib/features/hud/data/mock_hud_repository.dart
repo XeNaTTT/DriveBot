@@ -10,6 +10,7 @@ class MockHudRepository implements HudRepository {
         title: 'Speed Camera Ahead',
         detail: 'Fixed camera in 450 m',
         distanceMeters: 450,
+        bearingDegrees: 75,
         severity: 4,
       ),
       HudWarningItem(
@@ -17,6 +18,7 @@ class MockHudRepository implements HudRepository {
         title: 'Speed Limit 80 km/h',
         detail: 'Zone starts in 300 m',
         distanceMeters: 300,
+        bearingDegrees: 55,
         severity: 5,
       ),
       HudWarningItem(
@@ -24,6 +26,7 @@ class MockHudRepository implements HudRepository {
         title: 'Roadwork Zone',
         detail: 'Lane narrowing in 1.2 km',
         distanceMeters: 1200,
+        bearingDegrees: 105,
         severity: 3,
       ),
       HudWarningItem(
@@ -31,6 +34,7 @@ class MockHudRepository implements HudRepository {
         title: 'Weather Warning',
         detail: 'Heavy rain segment in 2.4 km',
         distanceMeters: 2400,
+        bearingDegrees: 12,
         severity: 3,
       ),
       HudWarningItem(
@@ -38,6 +42,7 @@ class MockHudRepository implements HudRepository {
         title: 'Charging Station Nearby',
         detail: '150 kW charger in 3.1 km',
         distanceMeters: 3100,
+        bearingDegrees: 330,
         severity: 1,
       ),
     ];
