@@ -95,6 +95,14 @@ The workflow uses:
 2. Open invitation link or accept inside TestFlight.
 3. Install the build and test.
 
-## Current repository caveat
+## Bundle identifier configuration
 
-This repository currently has limited iOS scaffolding checked in (only `ios/Runner/Info.plist` plus CI files added here). Before the first successful TestFlight upload, ensure the full Flutter iOS project files (`ios/Runner.xcodeproj`, `ios/Runner.xcworkspace`, `ios/Flutter/*`) are present by running `flutter create --platforms=ios .` in an environment with Flutter installed, then commit those generated iOS files.
+The iOS project is configured to use `PRODUCT_BUNDLE_IDENTIFIER` from Xcode build settings and `CFBundleIdentifier` in `ios/Runner/Info.plist` resolves from that value.
+
+Default checked-in value:
+- `com.example.driveassistantAr`
+
+How to change:
+1. Update `PRODUCT_BUNDLE_IDENTIFIER` in `ios/Runner.xcodeproj/project.pbxproj` for Debug/Profile/Release.
+2. Set Codemagic environment variable `BUNDLE_ID` to the same explicit identifier and align signing assets/profiles with that ID.
+3. Keep the Apple Developer Identifier and App Store Connect App record in sync with the same bundle identifier.

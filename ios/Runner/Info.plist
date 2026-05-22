@@ -2,31 +2,39 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>$(DEVELOPMENT_LANGUAGE)</string>
-    <key>CFBundleDisplayName</key>
-    <string>DriveAssistant AR</string>
-    <key>CFBundleExecutable</key>
-    <string>$(EXECUTABLE_NAME)</string>
-    <key>CFBundleIdentifier</key>
-    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>driveassistant_ar</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>$(FLUTTER_BUILD_NAME)</string>
-    <key>CFBundleVersion</key>
-    <string>$(FLUTTER_BUILD_NUMBER)</string>
-    <key>NSCameraUsageDescription</key>
-    <string>DriveAssistant AR uses the camera to render an on-road HUD background when enabled.</string>
-    <key>NSLocationWhenInUseUsageDescription</key>
-    <string>DriveAssistant AR uses your location to estimate speed and provide route-aware safety context.</string>
-    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>DriveAssistant AR may use location during navigation sessions to keep driving status updates available.</string>
-    <key>NSMotionUsageDescription</key>
-    <string>DriveAssistant AR uses motion sensors to improve heading and compass stability.</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>DriveAssistant AR</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>driveassistant_ar</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>DriveAssistant AR uses the camera to render the road view overlay safely while driving.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>DriveAssistant AR uses your location to align route guidance and safety cues.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>DriveAssistant AR uses motion data to stabilize HUD orientation.</string>
 </dict>
 </plist>
