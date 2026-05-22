@@ -10,9 +10,9 @@ workflows:
       cocoapods: default
       vars:
         BUNDLE_ID: de.driveassistant.ar
-        APPLE_TEAM_ID: $APPLE_TEAM_ID
-        APP_STORE_CONNECT_ISSUER_ID: $APP_STORE_CONNECT_ISSUER_ID
-        APP_STORE_CONNECT_KEY_IDENTIFIER: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        APPLE_TEAM_ID: QLQ959FUNR
+        APP_STORE_CONNECT_ISSUER_ID: f35866c-ef2b-4073-8eaf-ec47bd88f931
+        APP_STORE_CONNECT_KEY_IDENTIFIER: 6287LX5AL8
       ios_signing:
         distribution_type: app_store
         bundle_identifier: de.driveassistant.ar
@@ -31,11 +31,8 @@ workflows:
     scripts:
       - name: Validate required secret variables
         script: |
-          test -n "$APP_STORE_CONNECT_ISSUER_ID"
-          test -n "$APP_STORE_CONNECT_KEY_IDENTIFIER"
           test -n "$APP_STORE_CONNECT_PRIVATE_KEY"
           test -n "$CERTIFICATE_PRIVATE_KEY"
-          test -n "$APPLE_TEAM_ID"
       - name: Set up App Store Connect API key file
         script: |
           cat > /tmp/app_store_connect_key.p8 <<'KEY'
