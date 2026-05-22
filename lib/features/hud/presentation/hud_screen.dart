@@ -5,6 +5,7 @@ import '../../location/domain/location_repository.dart';
 import '../../location/domain/location_status.dart';
 import '../../location/domain/permission_repository.dart';
 import '../../location/domain/sensor_permission_status.dart';
+import '../domain/bearing_to_ar_position_mapper.dart';
 import '../domain/hud_repository.dart';
 import '../domain/hud_warning_item.dart';
 
@@ -14,6 +15,7 @@ class HudScreen extends StatelessWidget {
     required this.locationRepository,
     required this.dataSourceRegistry,
     required this.permissionRepository,
+    this.arPositionMapper = const BearingToArPositionMapper(),
     super.key,
   });
 
@@ -21,17 +23,20 @@ class HudScreen extends StatelessWidget {
   final LocationRepository locationRepository;
   final DataSourceRegistry dataSourceRegistry;
   final PermissionRepository permissionRepository;
+  final BearingToArPositionMapper arPositionMapper;
 
   @override
   Widget build(BuildContext context) {
     final location = locationRepository.getCurrentStatus();
     final warnings = hudRepository.getNearbyWarnings();
     final permissions = permissionRepository.getCurrentPermissionStatus();
+    final prioritizedWarnings = _prioritizeWarnings(warnings);
 
     return Scaffold(
       body: Stack(
         children: [
           _CameraPlaceholderBackground(),
+          ..._buildArMarkers(location, prioritizedWarnings),
           SafeArea(
             child: Column(
               children: [
@@ -39,7 +44,7 @@ class HudScreen extends StatelessWidget {
                 const SizedBox(height: 12),
                 _PermissionBanner(status: permissions),
                 const SizedBox(height: 10),
-                _HudCenterOverlay(warnings: warnings, status: location),
+                _HudCenterOverlay(warnings: warnings, status: location, priorityWarning: prioritizedWarnings.first),
                 const SizedBox(height: 12),
                 Expanded(
                   child: ListView.builder(
@@ -55,6 +60,46 @@ class HudScreen extends StatelessWidget {
       ),
     );
   }
+
+  List<Widget> _buildArMarkers(LocationStatus location, List<HudWarningItem> warnings) {
+    return warnings.take(3).map((warning) {
+      final arPosition = arPositionMapper.map(
+        userHeadingDegrees: location.headingDegrees,
+        warningBearingDegrees: warning.bearingDegrees,
+        warningDistanceMeters: warning.distanceMeters,
+      );
+      final leftFactor = ((arPosition.horizontalAlignment + 1) / 2).clamp(0.05, 0.95);
+      final top = 160 + ((1 - arPosition.verticalBias) * 180);
+
+      return Positioned(
+        left: (leftFactor * 340) - 72,
+        top: top,
+        child: _ArWarningMarker(
+          warning: warning,
+          emphasized: warning == warnings.first,
+        ),
+      );
+    }).toList();
+  }
+
+  List<HudWarningItem> _prioritizeWarnings(List<HudWarningItem> warnings) {
+    final sorted = [...warnings]..sort((a, b) {
+      final priorityCompare = _warningPriority(a.type).compareTo(_warningPriority(b.type));
+      if (priorityCompare != 0) {
+        return priorityCompare;
+      }
+      return a.distanceMeters.compareTo(b.distanceMeters);
+    });
+    return sorted;
+  }
+
+  int _warningPriority(WarningType type) => switch (type) {
+        WarningType.speedCamera => 0,
+        WarningType.roadwork => 1,
+        WarningType.speedLimit => 2,
+        WarningType.weather => 3,
+        WarningType.chargingStation => 4,
+      };
 }
 
 class _CameraPlaceholderBackground extends StatelessWidget {
@@ -105,8 +150,6 @@ class _TopStatusBar extends StatelessWidget {
   }
 }
 
-
-
 class _PermissionBanner extends StatelessWidget {
   const _PermissionBanner({required this.status});
 
@@ -133,11 +176,13 @@ class _PermissionBanner extends StatelessWidget {
     );
   }
 }
+
 class _HudCenterOverlay extends StatelessWidget {
-  const _HudCenterOverlay({required this.warnings, required this.status});
+  const _HudCenterOverlay({required this.warnings, required this.status, required this.priorityWarning});
 
   final List<HudWarningItem> warnings;
   final LocationStatus status;
+  final HudWarningItem priorityWarning;
 
   @override
   Widget build(BuildContext context) {
@@ -161,6 +206,9 @@ class _HudCenterOverlay extends StatelessWidget {
               const SizedBox(height: 6),
               Text('Active alerts: ${warnings.length}', style: Theme.of(context).textTheme.bodyLarge),
               const SizedBox(height: 4),
+              Text('Primary: ${priorityWarning.title} (${priorityWarning.distanceMeters} m)',
+                  style: Theme.of(context).textTheme.bodyLarge),
+              const SizedBox(height: 4),
               Text(status.isSpeedEstimatedFromGps ? 'Speed source: GPS estimate' : 'Speed source: Mock fallback',
                   style: Theme.of(context).textTheme.bodyMedium),
             ],
@@ -170,6 +218,48 @@ class _HudCenterOverlay extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ArWarningMarker extends StatelessWidget {
+  const _ArWarningMarker({required this.warning, required this.emphasized});
+
+  final HudWarningItem warning;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: emphasized ? 144 : 128,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _colorForWarning(warning.type), width: emphasized ? 2 : 1.2),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            warning.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 4),
+          Text('${warning.distanceMeters} m', style: const TextStyle(fontSize: 12)),
+        ],
+      ),
+    );
+  }
+
+  Color _colorForWarning(WarningType type) => switch (type) {
+        WarningType.speedCamera => const Color(0xFFFF7B72),
+        WarningType.speedLimit => const Color(0xFFFFC857),
+        WarningType.roadwork => const Color(0xFFFFA94D),
+        WarningType.weather => const Color(0xFF74C0FC),
+        WarningType.chargingStation => const Color(0xFF63E6BE),
+      };
 }
 
 class _WarningCard extends StatelessWidget {

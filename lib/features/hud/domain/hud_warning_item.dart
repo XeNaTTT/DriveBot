@@ -6,6 +6,7 @@ class HudWarningItem {
     required this.title,
     required this.detail,
     required this.distanceMeters,
+    required this.bearingDegrees,
     required this.severity,
   });
 
@@ -13,5 +14,6 @@ class HudWarningItem {
   final String title;
   final String detail;
   final int distanceMeters;
+  final int bearingDegrees;
   final int severity;
 }
