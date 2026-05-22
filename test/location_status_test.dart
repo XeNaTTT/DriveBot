@@ -7,6 +7,8 @@ void main() {
       speedKph: 100,
       headingDegrees: 90,
       gpsFixStatus: GpsFixStatus.strong,
+      isMock: false,
+      isSpeedEstimatedFromGps: true,
     );
 
     expect(status.cardinalHeading, 'E');

@@ -4,6 +4,7 @@ import '../features/data_sources/data/mock_data_source_registry.dart';
 import '../features/hud/data/mock_hud_repository.dart';
 import '../features/hud/presentation/hud_screen.dart';
 import '../features/location/data/mock_location_repository.dart';
+import '../features/location/data/mock_permission_repository.dart';
 import '../shared/theme/app_theme.dart';
 
 class DriveAssistantApp extends StatelessWidget {
@@ -19,6 +20,7 @@ class DriveAssistantApp extends StatelessWidget {
         hudRepository: MockHudRepository(),
         locationRepository: MockLocationRepository(),
         dataSourceRegistry: MockDataSourceRegistry(),
+        permissionRepository: const MockPermissionRepository(),
       ),
     );
   }

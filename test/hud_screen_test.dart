@@ -2,6 +2,7 @@ import 'package:driveassistant_ar/features/data_sources/data/mock_data_source_re
 import 'package:driveassistant_ar/features/hud/data/mock_hud_repository.dart';
 import 'package:driveassistant_ar/features/hud/presentation/hud_screen.dart';
 import 'package:driveassistant_ar/features/location/data/mock_location_repository.dart';
+import 'package:driveassistant_ar/features/location/data/mock_permission_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -13,6 +14,7 @@ void main() {
           hudRepository: MockHudRepository(),
           locationRepository: MockLocationRepository(),
           dataSourceRegistry: MockDataSourceRegistry(),
+          permissionRepository: const MockPermissionRepository(),
         ),
       ),
     );
