@@ -31,7 +31,10 @@ class BearingToArPositionMapper {
     final halfFov = horizontalFieldOfViewDegrees / 2;
     final horizontal = (relativeDegrees / halfFov).clamp(-1.0, 1.0);
 
-    final clampedDistance = warningDistanceMeters.clamp(0, maxRenderableDistanceMeters);
+    final clampedDistance = warningDistanceMeters.clamp(
+      0,
+      maxRenderableDistanceMeters,
+    );
     final normalizedDistance = clampedDistance / maxRenderableDistanceMeters;
     final verticalBias = (1 - normalizedDistance).clamp(0.2, 1.0);
 
