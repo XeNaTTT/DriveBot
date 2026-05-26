@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
+
 import 'location_status.dart';
 
 abstract class LocationRepository {
-  LocationStatus getCurrentStatus();
+  ValueListenable<LocationStatus> get locationStatusListenable;
 }

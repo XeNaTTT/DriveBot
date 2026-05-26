@@ -1,7 +1,20 @@
-# AR Architecture (MVP Mock Mode)
+# AR Architecture (MVP Mock-First + iOS Sensor Runtime)
 
 ## Overview
-The AR layer remains mock-first and sensor-driven. Warning data comes from `MockHudRepository`, while heading comes from the current `LocationRepository` abstraction. No real APIs or routing engines are integrated in this stage.
+The AR layer remains mock-first and sensor-driven. Warning data still comes from `MockHudRepository`. On iPhone builds, runtime location values are requested via `geolocator` (When In Use) and fed into the HUD, with robust fallback to mock values when permissions/services/sensors are unavailable.
+
+## Runtime Signal Flow
+- `IosLocationRuntime` implements both `LocationRepository` and `PermissionRepository`.
+- `HudScreen` listens via `ValueListenableBuilder` for live status updates.
+- Permission outcomes covered:
+  - granted
+  - denied
+  - permanently denied
+  - service disabled / unavailable
+- Fallback behavior:
+  - GPS speed unavailable (null/invalid) -> mock speed
+  - heading unavailable -> mock heading
+  - permission or service unavailable -> limited fallback mode with clear UI label
 
 ## Distance + Bearing Placement
 - `BearingToArPositionMapper` converts warning bearing/distance into a stable relative AR position.
@@ -14,12 +27,6 @@ The AR layer remains mock-first and sensor-driven. Warning data comes from `Mock
   - vertical bias for perceived depth
   - normalized (clamped) distance
 
-### Mapping behavior
-1. Compute relative angle (`warningBearing - userHeading`) and normalize to `[-180, 180]`.
-2. Project horizontal alignment within a configurable field-of-view (default 80°).
-3. Clamp projected distance at `maxRenderableDistanceMeters` (default 1500 m) to keep distant markers readable.
-4. Derive vertical bias from normalized distance so farther warnings render lower/less prominent.
-
 ## Warning Prioritization
 Warnings are sorted for AR display and primary HUD selection with this fixed order:
 1. speed camera
@@ -29,15 +36,3 @@ Warnings are sorted for AR display and primary HUD selection with this fixed ord
 5. charging/fuel POI
 
 Distance is used as the tie-breaker inside the same warning type.
-
-## Clutter Control
-- AR marker layer shows a maximum of **3** markers.
-- HUD center overlay highlights the highest-priority nearest item as the **primary** warning.
-- Existing fallback messaging and mock-safe behavior remain unchanged.
-
-## Testing
-`bearing_to_ar_position_mapper_test.dart` verifies:
-- direct heading alignment
-- angle normalization near 0/360 boundaries
-- horizontal edge clamping
-- distance clamping for far markers

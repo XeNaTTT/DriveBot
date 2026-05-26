@@ -110,22 +110,29 @@ class _FakeHudRepository implements HudRepository {
 }
 
 class _FakePermissionRepository implements PermissionRepository {
-  const _FakePermissionRepository(this.permissions);
+  _FakePermissionRepository(this.permissions);
   final SensorPermissionStatus permissions;
+
   @override
-  SensorPermissionStatus getCurrentPermissionStatus() => permissions;
+  ValueListenable<SensorPermissionStatus> get permissionStatusListenable =>
+      ValueNotifier(permissions);
 }
 
 class _FakeLocationRepository implements LocationRepository {
   const _FakeLocationRepository();
+
   @override
-  LocationStatus getCurrentStatus() => const LocationStatus(
-        speedKph: 84,
-        headingDegrees: 58,
-        gpsFixStatus: GpsFixStatus.strong,
-        isMock: true,
-        isSpeedEstimatedFromGps: false,
-      );
+  ValueListenable<LocationStatus> get locationStatusListenable => _status;
+
+  static final ValueNotifier<LocationStatus> _status = ValueNotifier(
+    const LocationStatus(
+      speedKph: 84,
+      headingDegrees: 58,
+      gpsFixStatus: GpsFixStatus.strong,
+      isMock: true,
+      isSpeedEstimatedFromGps: false,
+    ),
+  );
 }
 
 class _FakeDataSourceRegistry implements DataSourceRegistry {

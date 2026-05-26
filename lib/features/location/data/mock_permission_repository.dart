@@ -1,17 +1,20 @@
+import 'package:flutter/foundation.dart';
+
 import '../domain/permission_repository.dart';
 import '../domain/sensor_permission_status.dart';
 
 class MockPermissionRepository implements PermissionRepository {
-  const MockPermissionRepository({
+  MockPermissionRepository({
     this.permissionStatus = const SensorPermissionStatus(
       camera: SensorPermissionState.denied,
       location: SensorPermissionState.denied,
       motion: SensorPermissionState.denied,
     ),
-  });
+  }) : _status = ValueNotifier(permissionStatus);
 
   final SensorPermissionStatus permissionStatus;
+  final ValueNotifier<SensorPermissionStatus> _status;
 
   @override
-  SensorPermissionStatus getCurrentPermissionStatus() => permissionStatus;
+  ValueListenable<SensorPermissionStatus> get permissionStatusListenable => _status;
 }
