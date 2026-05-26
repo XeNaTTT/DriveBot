@@ -31,7 +31,6 @@ workflows:
         - $FLUTTER_ROOT/.pub-cache
         - ~/.pub-cache
         - ~/Library/Caches/CocoaPods
-        - ios/Pods
 
     scripts:
       - name: Toolchain diagnostics
@@ -55,6 +54,15 @@ workflows:
 
       - name: Unit and widget tests
         script: flutter test
+
+
+      - name: Clean and install CocoaPods
+        script: |
+          rm -rf ios/Pods
+          rm -f ios/Pods/Manifest.lock
+          cd ios
+          pod install --repo-update
+          cd ..
 
       - name: Prepare iOS project without code signing
         script: |
