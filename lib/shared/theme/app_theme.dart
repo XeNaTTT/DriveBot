@@ -12,7 +12,10 @@ ThemeData buildAppTheme() {
 
   return ThemeData(
     useMaterial3: true,
-    colorScheme: scheme.copyWith(primary: accent, secondary: const Color(0xFFFFC857)),
+    colorScheme: scheme.copyWith(
+      primary: accent,
+      secondary: const Color(0xFFFFC857),
+    ),
     scaffoldBackgroundColor: base,
     textTheme: Typography.whiteMountainView.copyWith(
       titleLarge: const TextStyle(fontWeight: FontWeight.w700),

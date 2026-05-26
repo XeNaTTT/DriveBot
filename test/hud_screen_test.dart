@@ -23,7 +23,10 @@ void main() {
     double textScaleFactor = 1,
   }) {
     return MediaQuery(
-      data: MediaQueryData(size: size, textScaler: TextScaler.linear(textScaleFactor)),
+      data: MediaQueryData(
+        size: size,
+        textScaler: TextScaler.linear(textScaleFactor),
+      ),
       child: MaterialApp(
         theme: buildAppTheme(),
         home: HudScreen(
@@ -37,16 +40,23 @@ void main() {
   }
 
   testWidgets('compact device renders without overflow', (tester) async {
-    await tester.pumpWidget(buildHud(warnings: _sampleWarnings, size: const Size(320, 568)));
+    await tester.pumpWidget(
+      buildHud(warnings: _sampleWarnings, size: const Size(320, 568)),
+    );
     expect(tester.takeException(), isNull);
     expect(find.byKey(const Key('hud-root')), findsOneWidget);
   });
 
-  testWidgets('normal device and large text scale render without overflow', (tester) async {
-    await tester.pumpWidget(buildHud(warnings: _sampleWarnings, textScaleFactor: 1.5));
-    expect(tester.takeException(), isNull);
-    expect(find.byKey(const Key('primary-warning-title')), findsOneWidget);
-  });
+  testWidgets(
+    'normal device and large text scale render without overflow',
+    (tester) async {
+      await tester.pumpWidget(
+        buildHud(warnings: _sampleWarnings, textScaleFactor: 1.5),
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('primary-warning-title')), findsOneWidget);
+    },
+  );
 
   testWidgets('primary and warning card are found by keys', (tester) async {
     await tester.pumpWidget(buildHud(warnings: _sampleWarnings));
