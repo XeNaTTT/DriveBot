@@ -219,6 +219,14 @@ class _HudStatusBar extends StatelessWidget {
                   compact: compact,
                   theme: theme,
                 ),
+                _StatusChip(
+                  label: 'Mode',
+                  value: status.isMock
+                      ? 'Limited fallback mode'
+                      : 'Real sensor mode',
+                  compact: compact,
+                  theme: theme,
+                ),
               ],
             );
           },

@@ -66,13 +66,7 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
       permission = await Geolocator.requestPermission();
     }
 
-    final locationPermission = switch (permission) {
-      LocationPermission.always || LocationPermission.whileInUse =>
-        SensorPermissionState.granted,
-      LocationPermission.denied => SensorPermissionState.denied,
-      LocationPermission.deniedForever => SensorPermissionState.permanentlyDenied,
-      LocationPermission.unableToDetermine => SensorPermissionState.unavailable,
-    };
+    final locationPermission = _mapLocationPermission(permission);
 
     _permissionStatus.value = SensorPermissionStatus(
       camera: SensorPermissionState.granted,
@@ -83,32 +77,61 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
     if (locationPermission != SensorPermissionState.granted) {
       _locationStatus.value = _mockLocationRepository.locationStatusListenable.value.copyWith(
         gpsFixStatus: GpsFixStatus.unavailable,
+        isMock: true,
       );
       return;
     }
 
     final current = await Geolocator.getCurrentPosition();
-    _locationStatus.value = _fromPosition(current);
+    _locationStatus.value = mapPositionToLocationStatus(
+      position: current,
+      fallback: _mockLocationRepository.locationStatusListenable.value,
+    );
 
     _positionSubscription = Geolocator.getPositionStream().listen((position) {
-      _locationStatus.value = _fromPosition(position);
+      _locationStatus.value = mapPositionToLocationStatus(
+        position: position,
+        fallback: _mockLocationRepository.locationStatusListenable.value,
+      );
     });
   }
 
-  LocationStatus _fromPosition(Position position) {
-    final fallback = _mockLocationRepository.locationStatusListenable.value;
-    final speedKph = position.speed >= 0 ? (position.speed * 3.6).round() : fallback.speedKph;
-    final heading = position.heading >= 0 ? position.heading.round() : fallback.headingDegrees;
+  static SensorPermissionState _mapLocationPermission(LocationPermission permission) {
+    return switch (permission) {
+      LocationPermission.always || LocationPermission.whileInUse =>
+        SensorPermissionState.granted,
+      LocationPermission.denied => SensorPermissionState.denied,
+      LocationPermission.deniedForever => SensorPermissionState.permanentlyDenied,
+      LocationPermission.unableToDetermine => SensorPermissionState.unavailable,
+    };
+  }
+
+  @visibleForTesting
+  static LocationStatus mapPositionToLocationStatus({
+    required Position position,
+    required LocationStatus fallback,
+  }) {
+    final hasValidSpeed = position.speed.isFinite && position.speed >= 0;
+    final hasValidHeading = position.heading.isFinite && position.heading >= 0;
+    final speedKph = hasValidSpeed
+        ? (position.speed * 3.6).round()
+        : fallback.speedKph;
+    final heading = hasValidHeading ? position.heading.round() : fallback.headingDegrees;
+
     return LocationStatus(
       speedKph: speedKph,
       headingDegrees: heading,
       gpsFixStatus: _fixFromAccuracy(position.accuracy),
-      isMock: false,
-      isSpeedEstimatedFromGps: position.speed >= 0,
+      isMock: !(hasValidSpeed && hasValidHeading),
+      isSpeedEstimatedFromGps: hasValidSpeed,
     );
   }
 
-  GpsFixStatus _fixFromAccuracy(double accuracyMeters) {
+  @visibleForTesting
+  static GpsFixStatus fixFromAccuracy(double accuracyMeters) =>
+      _fixFromAccuracy(accuracyMeters);
+
+  static GpsFixStatus _fixFromAccuracy(double accuracyMeters) {
     if (accuracyMeters <= 12) return GpsFixStatus.strong;
     if (accuracyMeters <= 35) return GpsFixStatus.moderate;
     if (accuracyMeters <= 80) return GpsFixStatus.weak;
