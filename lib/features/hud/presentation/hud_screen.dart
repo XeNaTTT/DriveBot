@@ -34,16 +34,19 @@ class _HudScreenState extends State<HudScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final location = widget.locationRepository.getCurrentStatus();
     final warnings = widget.hudRepository.getNearbyWarnings();
-    final permissions =
-        widget.permissionRepository.getCurrentPermissionStatus();
-    final prioritizedWarnings = _prioritizeWarnings(warnings);
-    final primaryWarning =
-        prioritizedWarnings.isNotEmpty ? prioritizedWarnings.first : null;
 
-    return Scaffold(
-      body: LayoutBuilder(
+    return ValueListenableBuilder(
+      valueListenable: widget.locationRepository.locationStatusListenable,
+      builder: (context, location, _) => ValueListenableBuilder(
+        valueListenable: widget.permissionRepository.permissionStatusListenable,
+        builder: (context, permissions, __) {
+          final prioritizedWarnings = _prioritizeWarnings(warnings);
+          final primaryWarning =
+              prioritizedWarnings.isNotEmpty ? prioritizedWarnings.first : null;
+
+          return Scaffold(
+            body: LayoutBuilder(
         builder: (context, constraints) {
           final horizontalPadding = constraints.maxWidth < 390 ? 12.0 : 16.0;
           return Stack(
@@ -89,6 +92,9 @@ class _HudScreenState extends State<HudScreen> {
                 ),
               ),
             ],
+          );
+        },
+      ),
           );
         },
       ),
@@ -288,7 +294,7 @@ class _HudPermissionFallback extends StatelessWidget {
               border: Border.all(color: const Color(0x99FFA94D)),
             ),
             child: Text(
-              'Limited mode: permissions are not fully granted. Using mock-safe fallback.',
+              'Limited fallback mode: permissions are not fully granted. Using mock-safe fallback.',
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodyMedium,
@@ -385,8 +391,8 @@ class _OverlaySummary extends StatelessWidget {
         ),
         Text(
           status.isSpeedEstimatedFromGps
-              ? 'Speed source: GPS estimate'
-              : 'Speed source: Mock fallback',
+              ? 'Speed source: Real sensor mode'
+              : 'Speed source: Limited fallback mode',
           style: Theme.of(context).textTheme.bodySmall,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
