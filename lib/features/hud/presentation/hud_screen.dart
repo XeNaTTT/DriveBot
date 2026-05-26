@@ -213,7 +213,7 @@ class _HudCenterOverlay extends StatelessWidget {
                   style: Theme.of(context).textTheme.bodyMedium),
             ],
           ),
-          Text('Risk ${highestSeverity}/5', style: Theme.of(context).textTheme.headlineSmall),
+          Text('Risk $highestSeverity/5', style: Theme.of(context).textTheme.headlineSmall),
         ],
       ),
     );
