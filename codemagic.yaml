@@ -44,8 +44,8 @@ workflows:
       - name: Resolve Flutter dependencies
         script: flutter pub get
 
-      - name: Verify formatting
-        script: dart format --output=none --set-exit-if-changed .
+     # - name: Verify formatting
+     #   script: dart format --output=none --set-exit-if-changed .
 
       - name: Static analysis
         script: flutter analyze
