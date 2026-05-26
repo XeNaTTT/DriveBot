@@ -74,7 +74,8 @@ void main() {
     expect(find.byKey(const Key('permission-fallback')), findsOneWidget);
   });
 
-  testWidgets('tap warning card keeps it present and interactive', (tester) async {
+  testWidgets('tap warning card keeps it present and interactive',
+      (tester) async {
     await tester.pumpWidget(buildHud(warnings: _sampleWarnings));
     await tester.tap(find.byKey(const Key('warning-card-speedCamera')));
     await tester.pumpAndSettle();

@@ -36,11 +36,11 @@ class _HudScreenState extends State<HudScreen> {
   Widget build(BuildContext context) {
     final location = widget.locationRepository.getCurrentStatus();
     final warnings = widget.hudRepository.getNearbyWarnings();
-    final permissions = widget.permissionRepository.getCurrentPermissionStatus();
+    final permissions =
+        widget.permissionRepository.getCurrentPermissionStatus();
     final prioritizedWarnings = _prioritizeWarnings(warnings);
-    final primaryWarning = prioritizedWarnings.isNotEmpty
-        ? prioritizedWarnings.first
-        : null;
+    final primaryWarning =
+        prioritizedWarnings.isNotEmpty ? prioritizedWarnings.first : null;
 
     return Scaffold(
       body: LayoutBuilder(
@@ -59,7 +59,8 @@ class _HudScreenState extends State<HudScreen> {
                   label: 'Heads-up driving dashboard',
                   child: Padding(
                     key: const Key('hud-root'),
-                    padding: EdgeInsets.symmetric(horizontal: horizontalPadding),
+                    padding:
+                        EdgeInsets.symmetric(horizontal: horizontalPadding),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -129,14 +130,14 @@ class _HudScreenState extends State<HudScreen> {
 
   List<HudWarningItem> _prioritizeWarnings(List<HudWarningItem> warnings) {
     final sorted = [...warnings]..sort((a, b) {
-      final priorityCompare = _warningPriority(
-        a.type,
-      ).compareTo(_warningPriority(b.type));
-      if (priorityCompare != 0) {
-        return priorityCompare;
-      }
-      return a.distanceMeters.compareTo(b.distanceMeters);
-    });
+        final priorityCompare = _warningPriority(
+          a.type,
+        ).compareTo(_warningPriority(b.type));
+        if (priorityCompare != 0) {
+          return priorityCompare;
+        }
+        return a.distanceMeters.compareTo(b.distanceMeters);
+      });
     return sorted;
   }
 
