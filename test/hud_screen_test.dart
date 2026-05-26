@@ -119,6 +119,5 @@ class _FakeLocationRepository implements LocationRepository {
 
 class _FakeDataSourceRegistry implements DataSourceRegistry {
   const _FakeDataSourceRegistry();
-  @override
-  List<DataSourceStatus> getStatuses() => const [];
+  List<DataSourceStatus> getRegisteredSources() => const [];
 }
