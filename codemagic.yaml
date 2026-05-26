@@ -15,12 +15,37 @@ workflows:
         distribution_type: app_store
         bundle_identifier: de.driveassistant.ar
 
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+
+    cache:
+      cache_paths:
+        - $FLUTTER_ROOT/.pub-cache
+        - ~/.pub-cache
+        - ~/Library/Caches/CocoaPods
+        - ios/Pods
+
     scripts:
+      - name: Toolchain diagnostics
+        script: |
+          set -e
+          flutter --version
+          dart --version
+          xcodebuild -version
+
       - name: Flutter clean
         script: flutter clean
 
       - name: Resolve Flutter dependencies
         script: flutter pub get
+
+      - name: Verify formatting
+        script: dart format --output=none --set-exit-if-changed .
 
       - name: Static analysis
         script: flutter analyze

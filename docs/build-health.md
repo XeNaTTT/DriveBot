@@ -6,6 +6,17 @@
 - Dart version: unavailable in this execution environment (`dart` command not found).
 - Impact: automated local quality checks could not be executed in this container.
 
+## Codemagic Static Analysis Simulation
+What was validated locally (configuration-level checks):
+- `codemagic.yaml` workflow structure parses cleanly and keeps one iOS TestFlight workflow.
+- Added deterministic diagnostics and quality gates:
+  - `flutter --version`, `dart --version`, `xcodebuild -version`
+  - `dart format --output=none --set-exit-if-changed .`
+  - `flutter analyze`
+  - `flutter test`
+- Added dependency caching for pub and CocoaPods to reduce flaky cold builds.
+- Added explicit trigger policy for pushes to `main` so release automation is predictable.
+
 ## Flutter Quality Checks
 Planned and required checks for this branch:
 - `dart format .`
@@ -17,29 +28,13 @@ Current local status (this environment):
 - `flutter analyze` → failed: CLI not installed.
 - `flutter test` → blocked: Flutter CLI not installed.
 
-## Responsive HUD Coverage (Widget Tests)
-Updated widget tests in `test/hud_screen_test.dart` now validate:
-- Compact phone constraints render without exceptions.
-- Normal iPhone constraints with large text scale render without exceptions.
-- Primary warning and speed camera warning cards are found by stable `Key` values.
-- Empty warning state is rendered when warning list is empty.
-- Permission denied fallback banner is rendered by stable `Key`.
-- Tap interaction on warning cards remains stable.
-
 ## TestFlight Readiness (iOS-first MVP)
 - Bundle ID remains `de.driveassistant.ar`.
-- App name remains `DriveBot` in architecture/UX copy.
-- iOS-first HUD UX hardened with responsive constraints, semantics, and safer composition.
-- **Readiness note:** Final readiness still depends on running `flutter analyze` and `flutter test` in CI or a machine with Flutter installed.
+- iOS workflow keeps profile application via `xcode-project use-profiles`.
+- IPA export still uses Codemagic export options plist path.
+- **Readiness note:** Final readiness still depends on CI execution of `flutter analyze` and `flutter test` on Codemagic macOS runners.
 
 ## Known Limitations
 - Live AR/camera/location integration is still mocked for MVP safety.
 - Permission fallback UX provides limited-mode behavior only; no runtime permission request flow is implemented here.
 - Local build validation is blocked by missing Flutter and Dart CLIs in this environment.
-
-## Mock Data Status
-The following remain mock-backed by design for MVP user testing:
-- HUD warnings (`MockHudRepository`)
-- Location/speed/heading (`MockLocationRepository`)
-- Sensor permission state (`MockPermissionRepository`)
-- Data source registry (`MockDataSourceRegistry`)
