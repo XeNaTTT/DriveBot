@@ -22,6 +22,8 @@ workflows:
         - pattern: main
           include: true
           source: true
+    integrations:
+      app_store_connect: app_store_connect
 
     cache:
       cache_paths:
