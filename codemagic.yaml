@@ -15,6 +15,9 @@ workflows:
         distribution_type: app_store
         bundle_identifier: de.driveassistant.ar
 
+    integrations:
+      app_store_connect: DriveBot
+
     triggering:
       events:
         - push
