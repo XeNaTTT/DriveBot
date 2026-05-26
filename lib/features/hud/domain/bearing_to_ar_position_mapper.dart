@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 class ArMarkerPosition {
   const ArMarkerPosition({
     required this.horizontalAlignment,
