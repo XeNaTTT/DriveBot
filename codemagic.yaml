@@ -11,28 +11,11 @@ workflows:
       vars:
         BUNDLE_ID: de.driveassistant.ar
         APPLE_TEAM_ID: QLQ959FUNR
-        APP_STORE_CONNECT_ISSUER_ID: f35866c-ef2b-4073-8eaf-ec47bd88f931
-        APP_STORE_CONNECT_KEY_IDENTIFIER: 6287LX5AL8
       ios_signing:
         distribution_type: app_store
         bundle_identifier: de.driveassistant.ar
-      groups:
-        - app_store_connect
-        - ios_signing
-
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
-          source: true
 
     scripts:
-      - name: Validate required secret variables
-        script: |
-          test -n "$APP_STORE_CONNECT_PRIVATE_KEY"
-
       - name: Flutter clean
         script: flutter clean
 
@@ -51,20 +34,9 @@ workflows:
             --release \
             --no-codesign
 
-      - name: Initialize keychain
-        script: keychain initialize
-
-      - name: Fetch signing files
-        script: |
-          app-store-connect fetch-signing-files "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create
-
-      - name: Add certificates to keychain
-        script: keychain add-certificates
-
       - name: Apply provisioning profiles
-        script: xcode-project use-profiles
+        script: |
+          xcode-project use-profiles
 
       - name: Build iOS IPA
         script: |
@@ -78,11 +50,3 @@ workflows:
       - build/ios/ipa/*.ipa
       - build/ios/archive/*.xcarchive
       - /tmp/xcodebuild_logs/*.log
-      - flutter_drive.log
-
-    publishing:
-      app_store_connect:
-        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
-        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-        submit_to_testflight: false
