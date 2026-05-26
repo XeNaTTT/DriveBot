@@ -8,20 +8,16 @@ import '../domain/location_status.dart';
 import '../domain/permission_repository.dart';
 import '../domain/sensor_permission_status.dart';
 import 'mock_location_repository.dart';
-import 'mock_permission_repository.dart';
 
 class IosLocationRuntime implements LocationRepository, PermissionRepository {
   IosLocationRuntime({
     LocationRepository? mockLocationRepository,
-    PermissionRepository? mockPermissionRepository,
-  }) : _mockLocationRepository = mockLocationRepository ?? MockLocationRepository(),
-       _mockPermissionRepository =
-           mockPermissionRepository ?? MockPermissionRepository() {
+  }) : _mockLocationRepository =
+           mockLocationRepository ?? MockLocationRepository() {
     _initialize();
   }
 
   final LocationRepository _mockLocationRepository;
-  final PermissionRepository _mockPermissionRepository;
 
   final ValueNotifier<LocationStatus> _locationStatus = ValueNotifier(
     const LocationStatus(

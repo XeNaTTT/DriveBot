@@ -8,6 +8,7 @@ import 'package:driveassistant_ar/features/location/domain/location_status.dart'
 import 'package:driveassistant_ar/features/location/domain/permission_repository.dart';
 import 'package:driveassistant_ar/features/location/domain/sensor_permission_status.dart';
 import 'package:driveassistant_ar/shared/theme/app_theme.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
