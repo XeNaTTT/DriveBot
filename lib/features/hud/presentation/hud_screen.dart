@@ -6,6 +6,8 @@ import '../../location/domain/location_repository.dart';
 import '../../location/domain/location_status.dart';
 import '../../location/domain/permission_repository.dart';
 import '../../location/domain/sensor_permission_status.dart';
+import '../../warnings/domain/warning_repository.dart';
+import '../../warnings/domain/warning_request.dart';
 import '../domain/bearing_to_ar_position_mapper.dart';
 import '../domain/hud_repository.dart';
 import '../domain/hud_warning_item.dart';
@@ -38,6 +40,30 @@ class _HudScreenState extends State<HudScreen> {
   HudWarningItem? _selectedWarning;
 
   @override
+  void initState() {
+    super.initState();
+    _refreshLiveWarnings();
+  }
+
+  @override
+  void didUpdateWidget(covariant HudScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.hudRepository != widget.hudRepository) {
+      _refreshLiveWarnings();
+    }
+  }
+
+  Future<void> _refreshLiveWarnings() async {
+    final repository = widget.hudRepository;
+    if (repository is! WarningRepository) return;
+
+    await (repository as WarningRepository).getWarnings(
+      const WarningRequest.fallback(),
+    );
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
     final warnings = widget.hudRepository.getNearbyWarnings();
 
@@ -49,6 +75,7 @@ class _HudScreenState extends State<HudScreen> {
           final prioritizedWarnings = _prioritizeWarnings(warnings);
           final primaryWarning =
               prioritizedWarnings.isNotEmpty ? prioritizedWarnings.first : null;
+          final warningDataLabel = _warningDataLabel(widget.hudRepository);
 
           return Scaffold(
             body: LayoutBuilder(
@@ -82,6 +109,7 @@ class _HudScreenState extends State<HudScreen> {
                                 warnings: warnings,
                                 status: location,
                                 priorityWarning: primaryWarning,
+                                dataSourceLabel: warningDataLabel,
                               ),
                               const SizedBox(height: 10),
                               Expanded(
@@ -161,6 +189,13 @@ class _HudScreenState extends State<HudScreen> {
         WarningType.weather => 3,
         WarningType.chargingStation => 4,
       };
+
+  String _warningDataLabel(HudRepository repository) {
+    if (repository is WarningDataSourceStatus) {
+      return (repository as WarningDataSourceStatus).dataSourceLabel;
+    }
+    return 'Fallback data';
+  }
 }
 
 class _HudStatusBar extends StatelessWidget {
@@ -308,11 +343,13 @@ class _HudCenterOverlay extends StatelessWidget {
     required this.warnings,
     required this.status,
     required this.priorityWarning,
+    required this.dataSourceLabel,
   });
 
   final List<HudWarningItem> warnings;
   final LocationStatus status;
   final HudWarningItem? priorityWarning;
+  final String dataSourceLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -338,6 +375,7 @@ class _HudCenterOverlay extends StatelessWidget {
             warnings: warnings,
             status: status,
             priorityWarning: priorityWarning,
+            dataSourceLabel: dataSourceLabel,
           );
           if (useVerticalLayout) {
             return Column(
@@ -363,10 +401,12 @@ class _OverlaySummary extends StatelessWidget {
     required this.warnings,
     required this.status,
     required this.priorityWarning,
+    required this.dataSourceLabel,
   });
   final List<HudWarningItem> warnings;
   final LocationStatus status;
   final HudWarningItem? priorityWarning;
+  final String dataSourceLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -390,6 +430,13 @@ class _OverlaySummary extends StatelessWidget {
           status.isSpeedEstimatedFromGps
               ? 'Speed source: Real sensor mode'
               : 'Speed source: Limited fallback mode',
+          style: Theme.of(context).textTheme.bodySmall,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        Text(
+          dataSourceLabel,
+          key: const Key('warning-data-source-label'),
           style: Theme.of(context).textTheme.bodySmall,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,

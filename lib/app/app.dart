@@ -7,8 +7,9 @@ import '../features/location/data/ios_location_runtime.dart';
 import '../features/location/data/mock_location_repository.dart';
 import '../features/location/data/mock_permission_repository.dart';
 import '../features/location/domain/permission_repository.dart';
-import '../features/warnings/data/api_warning_repository.dart';
 import '../features/warnings/data/composite_warning_repository.dart';
+import '../features/warnings/data/warning_cache.dart';
+import '../features/weather/data/open_meteo_warning_repository.dart';
 import '../shared/theme/app_theme.dart';
 
 class DriveAssistantApp extends StatelessWidget {
@@ -23,7 +24,9 @@ class DriveAssistantApp extends StatelessWidget {
         ? locationRepository as PermissionRepository
         : MockPermissionRepository();
     final warningRepository = CompositeWarningRepository(
-      primary: ApiWarningRepository(client: (_) async => const []),
+      primary: OpenMeteoWarningRepository.live(
+        cache: InMemoryWarningCache(),
+      ),
     );
 
     return MaterialApp(
