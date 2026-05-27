@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:flutter/services.dart';
 
 import '../domain/location_repository.dart';
 import '../domain/location_status.dart';
@@ -10,10 +11,13 @@ import '../domain/sensor_permission_status.dart';
 import 'mock_location_repository.dart';
 
 class IosLocationRuntime implements LocationRepository, PermissionRepository {
+  static const MethodChannel _cameraPermissionChannel = MethodChannel(
+    'drivebot/camera_permission',
+  );
   IosLocationRuntime({
     LocationRepository? mockLocationRepository,
   }) : _mockLocationRepository =
-           mockLocationRepository ?? MockLocationRepository() {
+            mockLocationRepository ?? MockLocationRepository() {
     _initialize();
   }
 
@@ -39,10 +43,12 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
   StreamSubscription<Position>? _positionSubscription;
 
   @override
-  ValueListenable<LocationStatus> get locationStatusListenable => _locationStatus;
+  ValueListenable<LocationStatus> get locationStatusListenable =>
+      _locationStatus;
 
   @override
-  ValueListenable<SensorPermissionStatus> get permissionStatusListenable => _permissionStatus;
+  ValueListenable<SensorPermissionStatus> get permissionStatusListenable =>
+      _permissionStatus;
 
   Future<void> _initialize() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -50,7 +56,8 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
       _permissionStatus.value = _permissionStatus.value.copyWith(
         location: SensorPermissionState.unavailable,
       );
-      _locationStatus.value = _mockLocationRepository.locationStatusListenable.value.copyWith(
+      _locationStatus.value =
+          _mockLocationRepository.locationStatusListenable.value.copyWith(
         gpsFixStatus: GpsFixStatus.unavailable,
         isMock: true,
       );
@@ -64,14 +71,17 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
 
     final locationPermission = _mapLocationPermission(permission);
 
+    final cameraPermission = await _requestCameraPermission();
+
     _permissionStatus.value = SensorPermissionStatus(
-      camera: SensorPermissionState.granted,
+      camera: cameraPermission,
       location: locationPermission,
       motion: SensorPermissionState.unavailable,
     );
 
     if (locationPermission != SensorPermissionState.granted) {
-      _locationStatus.value = _mockLocationRepository.locationStatusListenable.value.copyWith(
+      _locationStatus.value =
+          _mockLocationRepository.locationStatusListenable.value.copyWith(
         gpsFixStatus: GpsFixStatus.unavailable,
         isMock: true,
       );
@@ -92,14 +102,32 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
     });
   }
 
-  static SensorPermissionState _mapLocationPermission(LocationPermission permission) {
+  static SensorPermissionState _mapLocationPermission(
+      LocationPermission permission) {
     return switch (permission) {
-      LocationPermission.always || LocationPermission.whileInUse =>
+      LocationPermission.always ||
+      LocationPermission.whileInUse =>
         SensorPermissionState.granted,
       LocationPermission.denied => SensorPermissionState.denied,
-      LocationPermission.deniedForever => SensorPermissionState.permanentlyDenied,
+      LocationPermission.deniedForever =>
+        SensorPermissionState.permanentlyDenied,
       LocationPermission.unableToDetermine => SensorPermissionState.unavailable,
     };
+  }
+
+  Future<SensorPermissionState> _requestCameraPermission() async {
+    try {
+      final result =
+          await _cameraPermissionChannel.invokeMethod<String>('request');
+      return switch (result) {
+        'granted' => SensorPermissionState.granted,
+        'permanentlyDenied' => SensorPermissionState.permanentlyDenied,
+        'denied' => SensorPermissionState.denied,
+        _ => SensorPermissionState.unavailable,
+      };
+    } catch (_) {
+      return SensorPermissionState.unavailable;
+    }
   }
 
   @visibleForTesting
@@ -109,10 +137,10 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
   }) {
     final hasValidSpeed = position.speed.isFinite && position.speed >= 0;
     final hasValidHeading = position.heading.isFinite && position.heading >= 0;
-    final speedKph = hasValidSpeed
-        ? (position.speed * 3.6).round()
-        : fallback.speedKph;
-    final heading = hasValidHeading ? position.heading.round() : fallback.headingDegrees;
+    final speedKph =
+        hasValidSpeed ? (position.speed * 3.6).round() : fallback.speedKph;
+    final heading =
+        hasValidHeading ? position.heading.round() : fallback.headingDegrees;
 
     return LocationStatus(
       speedKph: speedKph,

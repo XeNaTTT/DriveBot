@@ -75,6 +75,49 @@ void main() {
     expect(find.byKey(const Key('permission-fallback')), findsOneWidget);
   });
 
+  testWidgets('camera unavailable falls back to mock background',
+      (tester) async {
+    await tester.pumpWidget(
+      buildHud(
+        warnings: _sampleWarnings,
+        permissions: const SensorPermissionStatus(
+          camera: SensorPermissionState.granted,
+          location: SensorPermissionState.granted,
+          motion: SensorPermissionState.unavailable,
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const Key('mock-background-layer')), findsOneWidget);
+  });
+
+  testWidgets('permission denied keeps fallback background', (tester) async {
+    await tester.pumpWidget(buildHud(warnings: _sampleWarnings));
+    await tester.pump();
+    expect(find.byKey(const Key('mock-background-layer')), findsOneWidget);
+  });
+
+  testWidgets('HUD renders above camera layer on iOS', (tester) async {
+    try {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      await tester.pumpWidget(
+        buildHud(
+          warnings: _sampleWarnings,
+          permissions: const SensorPermissionStatus(
+            camera: SensorPermissionState.granted,
+            location: SensorPermissionState.granted,
+            motion: SensorPermissionState.unavailable,
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.byKey(const Key('camera-preview-layer')), findsOneWidget);
+      expect(find.byType(UiKitView), findsOneWidget);
+      expect(find.byKey(const Key('hud-root')), findsOneWidget);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
   testWidgets('tap warning card keeps it present and interactive',
       (tester) async {
     await tester.pumpWidget(buildHud(warnings: _sampleWarnings));
