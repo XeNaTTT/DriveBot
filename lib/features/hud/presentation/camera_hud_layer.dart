@@ -1,29 +1,139 @@
-import 'package:flutter/foundation.dart';
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../../location/domain/sensor_permission_status.dart';
 
-class CameraHudLayer extends StatelessWidget {
-  const CameraHudLayer({required this.permissionStatus, super.key});
+typedef CameraDescriptionsLoader = Future<List<CameraDescription>> Function();
+typedef CameraControllerFactory = CameraController Function(
+  CameraDescription camera,
+);
+
+class CameraHudLayer extends StatefulWidget {
+  const CameraHudLayer({
+    required this.permissionStatus,
+    this.loadCameraDescriptions = availableCameras,
+    this.createCameraController = _createDefaultCameraController,
+    super.key,
+  });
 
   final SensorPermissionStatus permissionStatus;
+  final CameraDescriptionsLoader loadCameraDescriptions;
+  final CameraControllerFactory createCameraController;
+
+  @override
+  State<CameraHudLayer> createState() => _CameraHudLayerState();
+}
+
+class _CameraHudLayerState extends State<CameraHudLayer> {
+  CameraController? _controller;
+  bool _useFallback = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeCamera();
+  }
+
+  @override
+  void didUpdateWidget(covariant CameraHudLayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.permissionStatus.camera != widget.permissionStatus.camera) {
+      _disposeController();
+      _useFallback = false;
+      _initializeCamera();
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposeController();
+    super.dispose();
+  }
+
+  Future<void> _initializeCamera() async {
+    if (widget.permissionStatus.camera != SensorPermissionState.granted) {
+      if (mounted) setState(() => _useFallback = true);
+      return;
+    }
+
+    try {
+      final cameras = await widget.loadCameraDescriptions();
+      if (!mounted) return;
+      if (cameras.isEmpty) {
+        setState(() => _useFallback = true);
+        return;
+      }
+
+      final camera = cameras.firstWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
+      );
+      final controller = widget.createCameraController(camera);
+      await controller.initialize();
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+
+      setState(() {
+        _controller = controller;
+        _useFallback = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _useFallback = true);
+    }
+  }
+
+  void _disposeController() {
+    final controller = _controller;
+    _controller = null;
+    controller?.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (defaultTargetPlatform == TargetPlatform.iOS &&
-        permissionStatus.camera == SensorPermissionState.granted) {
-      return const KeyedSubtree(
+    final controller = _controller;
+    if (!_useFallback && controller != null && controller.value.isInitialized) {
+      return KeyedSubtree(
         key: Key('camera-preview-layer'),
-        child: UiKitView(
-          viewType: 'drivebot/camera_preview',
-          layoutDirection: TextDirection.ltr,
-        ),
+        child: _CameraPreviewBackground(controller: controller),
       );
     }
 
     return const KeyedSubtree(
       key: Key('mock-background-layer'),
       child: _CameraPlaceholderBackground(),
+    );
+  }
+}
+
+CameraController _createDefaultCameraController(CameraDescription camera) {
+  return CameraController(
+    camera,
+    ResolutionPreset.high,
+    enableAudio: false,
+  );
+}
+
+class _CameraPreviewBackground extends StatelessWidget {
+  const _CameraPreviewBackground({required this.controller});
+
+  final CameraController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Colors.black,
+      child: SizedBox.expand(
+        child: FittedBox(
+          fit: BoxFit.cover,
+          child: SizedBox(
+            width: controller.value.previewSize?.height ?? 1,
+            height: controller.value.previewSize?.width ?? 1,
+            child: CameraPreview(controller),
+          ),
+        ),
+      ),
     );
   }
 }

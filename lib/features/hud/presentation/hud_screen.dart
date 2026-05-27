@@ -10,6 +10,8 @@ import '../domain/bearing_to_ar_position_mapper.dart';
 import '../domain/hud_repository.dart';
 import '../domain/hud_warning_item.dart';
 
+typedef CameraLayerBuilder = Widget Function(SensorPermissionStatus status);
+
 class HudScreen extends StatefulWidget {
   const HudScreen({
     required this.hudRepository,
@@ -17,6 +19,7 @@ class HudScreen extends StatefulWidget {
     required this.dataSourceRegistry,
     required this.permissionRepository,
     this.arPositionMapper = const BearingToArPositionMapper(),
+    this.cameraLayerBuilder,
     super.key,
   });
 
@@ -25,6 +28,7 @@ class HudScreen extends StatefulWidget {
   final DataSourceRegistry dataSourceRegistry;
   final PermissionRepository permissionRepository;
   final BearingToArPositionMapper arPositionMapper;
+  final CameraLayerBuilder? cameraLayerBuilder;
 
   @override
   State<HudScreen> createState() => _HudScreenState();
@@ -53,7 +57,8 @@ class _HudScreenState extends State<HudScreen> {
                     constraints.maxWidth < 390 ? 12.0 : 16.0;
                 return Stack(
                   children: [
-                    CameraHudLayer(permissionStatus: permissions),
+                    widget.cameraLayerBuilder?.call(permissions) ??
+                        CameraHudLayer(permissionStatus: permissions),
                     ..._buildArMarkers(
                       constraints: constraints,
                       location: location,

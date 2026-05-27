@@ -2,6 +2,7 @@ import 'package:driveassistant_ar/features/data_sources/domain/data_source_regis
 import 'package:driveassistant_ar/features/data_sources/domain/data_source_status.dart';
 import 'package:driveassistant_ar/features/hud/domain/hud_repository.dart';
 import 'package:driveassistant_ar/features/hud/domain/hud_warning_item.dart';
+import 'package:driveassistant_ar/features/hud/presentation/camera_hud_layer.dart';
 import 'package:driveassistant_ar/features/hud/presentation/hud_screen.dart';
 import 'package:driveassistant_ar/features/location/domain/location_repository.dart';
 import 'package:driveassistant_ar/features/location/domain/location_status.dart';
@@ -20,6 +21,7 @@ void main() {
       location: SensorPermissionState.denied,
       motion: SensorPermissionState.denied,
     ),
+    CameraLayerBuilder? cameraLayerBuilder,
     Size size = const Size(390, 844),
     double textScaleFactor = 1,
   }) {
@@ -35,6 +37,7 @@ void main() {
           locationRepository: const _FakeLocationRepository(),
           dataSourceRegistry: const _FakeDataSourceRegistry(),
           permissionRepository: _FakePermissionRepository(permissions),
+          cameraLayerBuilder: cameraLayerBuilder,
         ),
       ),
     );
@@ -75,15 +78,18 @@ void main() {
     expect(find.byKey(const Key('permission-fallback')), findsOneWidget);
   });
 
-  testWidgets('camera unavailable falls back to mock background',
-      (tester) async {
+  testWidgets('camera unavailable falls back to mock background', (
+    tester,
+  ) async {
     await tester.pumpWidget(
-      buildHud(
-        warnings: _sampleWarnings,
-        permissions: const SensorPermissionStatus(
-          camera: SensorPermissionState.granted,
-          location: SensorPermissionState.granted,
-          motion: SensorPermissionState.unavailable,
+      const MaterialApp(
+        home: CameraHudLayer(
+          permissionStatus: SensorPermissionStatus(
+            camera: SensorPermissionState.granted,
+            location: SensorPermissionState.granted,
+            motion: SensorPermissionState.unavailable,
+          ),
+          loadCameraDescriptions: _loadNoCameras,
         ),
       ),
     );
@@ -98,25 +104,23 @@ void main() {
   });
 
   testWidgets('HUD renders above camera layer on iOS', (tester) async {
-    try {
-      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
-      await tester.pumpWidget(
-        buildHud(
-          warnings: _sampleWarnings,
-          permissions: const SensorPermissionStatus(
-            camera: SensorPermissionState.granted,
-            location: SensorPermissionState.granted,
-            motion: SensorPermissionState.unavailable,
-          ),
+    await tester.pumpWidget(
+      buildHud(
+        warnings: _sampleWarnings,
+        permissions: const SensorPermissionStatus(
+          camera: SensorPermissionState.granted,
+          location: SensorPermissionState.granted,
+          motion: SensorPermissionState.unavailable,
         ),
-      );
-      await tester.pump();
-      expect(find.byKey(const Key('camera-preview-layer')), findsOneWidget);
-      expect(find.byType(UiKitView), findsOneWidget);
-      expect(find.byKey(const Key('hud-root')), findsOneWidget);
-    } finally {
-      debugDefaultTargetPlatformOverride = null;
-    }
+        cameraLayerBuilder: (_) => const ColoredBox(
+          key: Key('camera-preview-layer'),
+          color: Colors.black,
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const Key('camera-preview-layer')), findsOneWidget);
+    expect(find.byKey(const Key('hud-root')), findsOneWidget);
   });
   testWidgets('tap warning card keeps it present and interactive',
       (tester) async {
@@ -126,6 +130,8 @@ void main() {
     expect(find.byKey(const Key('warning-card-speedCamera')), findsOneWidget);
   });
 }
+
+Future<List<Never>> _loadNoCameras() async => const [];
 
 const _sampleWarnings = [
   HudWarningItem(

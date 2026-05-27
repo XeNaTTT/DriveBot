@@ -16,5 +16,6 @@ class MockPermissionRepository implements PermissionRepository {
   final ValueNotifier<SensorPermissionStatus> _status;
 
   @override
-  ValueListenable<SensorPermissionStatus> get permissionStatusListenable => _status;
+  ValueListenable<SensorPermissionStatus> get permissionStatusListenable =>
+      _status;
 }

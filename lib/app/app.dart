@@ -16,9 +16,8 @@ class DriveAssistantApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final useRealSensors = defaultTargetPlatform == TargetPlatform.iOS;
-    final locationRepository = useRealSensors
-        ? IosLocationRuntime()
-        : MockLocationRepository();
+    final locationRepository =
+        useRealSensors ? IosLocationRuntime() : MockLocationRepository();
     final permissionRepository = useRealSensors
         ? locationRepository as PermissionRepository
         : MockPermissionRepository();

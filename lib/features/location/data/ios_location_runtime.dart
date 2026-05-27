@@ -1,8 +1,8 @@
 import 'dart:async';
 
+import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:flutter/services.dart';
 
 import '../domain/location_repository.dart';
 import '../domain/location_status.dart';
@@ -11,9 +11,6 @@ import '../domain/sensor_permission_status.dart';
 import 'mock_location_repository.dart';
 
 class IosLocationRuntime implements LocationRepository, PermissionRepository {
-  static const MethodChannel _cameraPermissionChannel = MethodChannel(
-    'drivebot/camera_permission',
-  );
   IosLocationRuntime({
     LocationRepository? mockLocationRepository,
   }) : _mockLocationRepository =
@@ -117,12 +114,27 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
 
   Future<SensorPermissionState> _requestCameraPermission() async {
     try {
-      final result =
-          await _cameraPermissionChannel.invokeMethod<String>('request');
-      return switch (result) {
-        'granted' => SensorPermissionState.granted,
-        'permanentlyDenied' => SensorPermissionState.permanentlyDenied,
-        'denied' => SensorPermissionState.denied,
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) return SensorPermissionState.unavailable;
+
+      final camera = cameras.firstWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.back,
+        orElse: () => cameras.first,
+      );
+      final controller = CameraController(
+        camera,
+        ResolutionPreset.low,
+        enableAudio: false,
+      );
+      await controller.initialize();
+      await controller.dispose();
+      return SensorPermissionState.granted;
+    } on CameraException catch (error) {
+      return switch (error.code) {
+        'CameraAccessDenied' => SensorPermissionState.denied,
+        'CameraAccessDeniedWithoutPrompt' ||
+        'CameraAccessRestricted' =>
+          SensorPermissionState.permanentlyDenied,
         _ => SensorPermissionState.unavailable,
       };
     } catch (_) {
