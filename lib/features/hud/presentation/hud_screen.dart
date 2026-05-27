@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'camera_hud_layer.dart';
+import '../../camera/presentation/camera_hud_background.dart';
 import '../../data_sources/domain/data_source_registry.dart';
 import '../../location/domain/location_repository.dart';
 import '../../location/domain/location_status.dart';
@@ -58,7 +58,7 @@ class _HudScreenState extends State<HudScreen> {
                 return Stack(
                   children: [
                     widget.cameraLayerBuilder?.call(permissions) ??
-                        CameraHudLayer(permissionStatus: permissions),
+                        CameraHudBackground(permissionStatus: permissions),
                     ..._buildArMarkers(
                       constraints: constraints,
                       location: location,

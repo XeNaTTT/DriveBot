@@ -1,8 +1,9 @@
 import 'package:driveassistant_ar/features/data_sources/domain/data_source_registry.dart';
 import 'package:driveassistant_ar/features/data_sources/domain/data_source_status.dart';
+import 'package:driveassistant_ar/features/camera/data/camera_runtime_service.dart';
+import 'package:driveassistant_ar/features/camera/presentation/camera_hud_background.dart';
 import 'package:driveassistant_ar/features/hud/domain/hud_repository.dart';
 import 'package:driveassistant_ar/features/hud/domain/hud_warning_item.dart';
-import 'package:driveassistant_ar/features/hud/presentation/camera_hud_layer.dart';
 import 'package:driveassistant_ar/features/hud/presentation/hud_screen.dart';
 import 'package:driveassistant_ar/features/location/domain/location_repository.dart';
 import 'package:driveassistant_ar/features/location/domain/location_status.dart';
@@ -83,13 +84,15 @@ void main() {
   ) async {
     await tester.pumpWidget(
       const MaterialApp(
-        home: CameraHudLayer(
+        home: CameraHudBackground(
           permissionStatus: SensorPermissionStatus(
             camera: SensorPermissionState.granted,
             location: SensorPermissionState.granted,
             motion: SensorPermissionState.unavailable,
           ),
-          loadCameraDescriptions: _loadNoCameras,
+          cameraRuntimeService: CameraRuntimeService(
+            loadCameraDescriptions: _loadNoCameras,
+          ),
         ),
       ),
     );
