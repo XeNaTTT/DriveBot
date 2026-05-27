@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'camera_hud_layer.dart';
 import '../../data_sources/domain/data_source_registry.dart';
 import '../../location/domain/location_repository.dart';
 import '../../location/domain/location_status.dart';
@@ -47,54 +48,55 @@ class _HudScreenState extends State<HudScreen> {
 
           return Scaffold(
             body: LayoutBuilder(
-        builder: (context, constraints) {
-          final horizontalPadding = constraints.maxWidth < 390 ? 12.0 : 16.0;
-          return Stack(
-            children: [
-              const _CameraPlaceholderBackground(),
-              ..._buildArMarkers(
-                constraints: constraints,
-                location: location,
-                warnings: prioritizedWarnings,
-              ),
-              SafeArea(
-                child: Semantics(
-                  label: 'Heads-up driving dashboard',
-                  child: Padding(
-                    key: const Key('hud-root'),
-                    padding:
-                        EdgeInsets.symmetric(horizontal: horizontalPadding),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _HudStatusBar(status: location),
-                        const SizedBox(height: 10),
-                        _HudPermissionFallback(status: permissions),
-                        const SizedBox(height: 10),
-                        _HudCenterOverlay(
-                          warnings: warnings,
-                          status: location,
-                          priorityWarning: primaryWarning,
-                        ),
-                        const SizedBox(height: 10),
-                        Expanded(
-                          child: _HudWarningList(
-                            warnings: warnings,
-                            selectedWarning: _selectedWarning,
-                            onWarningTap: (warning) {
-                              setState(() => _selectedWarning = warning);
-                            },
+              builder: (context, constraints) {
+                final horizontalPadding =
+                    constraints.maxWidth < 390 ? 12.0 : 16.0;
+                return Stack(
+                  children: [
+                    CameraHudLayer(permissionStatus: permissions),
+                    ..._buildArMarkers(
+                      constraints: constraints,
+                      location: location,
+                      warnings: prioritizedWarnings,
+                    ),
+                    SafeArea(
+                      child: Semantics(
+                        label: 'Heads-up driving dashboard',
+                        child: Padding(
+                          key: const Key('hud-root'),
+                          padding: EdgeInsets.symmetric(
+                              horizontal: horizontalPadding),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _HudStatusBar(status: location),
+                              const SizedBox(height: 10),
+                              _HudPermissionFallback(status: permissions),
+                              const SizedBox(height: 10),
+                              _HudCenterOverlay(
+                                warnings: warnings,
+                                status: location,
+                                priorityWarning: primaryWarning,
+                              ),
+                              const SizedBox(height: 10),
+                              Expanded(
+                                child: _HudWarningList(
+                                  warnings: warnings,
+                                  selectedWarning: _selectedWarning,
+                                  onWarningTap: (warning) {
+                                    setState(() => _selectedWarning = warning);
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+                  ],
+                );
+              },
+            ),
           );
         },
       ),
@@ -154,24 +156,6 @@ class _HudScreenState extends State<HudScreen> {
         WarningType.weather => 3,
         WarningType.chargingStation => 4,
       };
-}
-
-class _CameraPlaceholderBackground extends StatelessWidget {
-  const _CameraPlaceholderBackground();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF1C2A39), Color(0xFF0A0F14)],
-        ),
-      ),
-      child: CustomPaint(painter: _HudGridPainter(), size: Size.infinite),
-    );
-  }
 }
 
 class _HudStatusBar extends StatelessWidget {
@@ -589,24 +573,4 @@ class _HudWarningCard extends StatelessWidget {
       ),
     );
   }
-}
-
-class _HudGridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0x2257E3FF)
-      ..strokeWidth = 1;
-
-    const step = 40.0;
-    for (double x = 0; x < size.width; x += step) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += step) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
