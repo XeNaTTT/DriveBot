@@ -50,3 +50,10 @@ Current local status (this environment):
 - Confirmed `ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme` references `Runner.app` and the `Runner` target within `Runner.xcodeproj` (iOS target).
 - Generic iOS destination should now be discoverable again because the Runner target now declares iOS SDK/platform and device family.
 - Migration files are committed on this branch, including project/scheme/plist/config workspace updates produced by the safe iOS platform regeneration.
+
+## Camera Dependency Validation Gate (2026-05-27)
+- `flutter pub get` was attempted before camera/HUD implementation and initially succeeded with the existing dependency graph.
+- After adding the iOS camera dependency candidate, repeated `flutter pub get` failed with proxy/network restriction:
+  - `Proxy failed to establish tunnel (403 Forbidden), uri=//pub.dev:443`
+- Because dependency resolution could not be validated, real camera/HUD feature integration was intentionally not finalized in this commit.
+- Current branch status for this task is therefore limited to iOS Info.plist compliance hardening and a documented dependency gate block.
