@@ -9,6 +9,7 @@ import 'package:driveassistant_ar/features/location/domain/location_repository.d
 import 'package:driveassistant_ar/features/location/domain/location_status.dart';
 import 'package:driveassistant_ar/features/location/domain/permission_repository.dart';
 import 'package:driveassistant_ar/features/location/domain/sensor_permission_status.dart';
+import 'package:driveassistant_ar/features/warnings/domain/warning_repository.dart';
 import 'package:driveassistant_ar/shared/theme/app_theme.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -77,6 +78,32 @@ void main() {
   testWidgets('permission denied fallback is shown', (tester) async {
     await tester.pumpWidget(buildHud(warnings: _sampleWarnings));
     expect(find.byKey(const Key('permission-fallback')), findsOneWidget);
+  });
+
+  testWidgets('live data source label is visible in HUD summary',
+      (tester) async {
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(size: Size(390, 844)),
+        child: MaterialApp(
+          theme: buildAppTheme(),
+          home: HudScreen(
+            hudRepository: const _FakeLiveHudRepository(_sampleWarnings),
+            locationRepository: const _FakeLocationRepository(),
+            dataSourceRegistry: const _FakeDataSourceRegistry(),
+            permissionRepository: _FakePermissionRepository(
+              const SensorPermissionStatus(
+                camera: SensorPermissionState.denied,
+                location: SensorPermissionState.denied,
+                motion: SensorPermissionState.denied,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Data: Live data'), findsOneWidget);
   });
 
   testWidgets('camera unavailable falls back to mock background', (
@@ -160,6 +187,14 @@ class _FakeHudRepository implements HudRepository {
   final List<HudWarningItem> warnings;
   @override
   List<HudWarningItem> getNearbyWarnings() => warnings;
+}
+
+class _FakeLiveHudRepository extends _FakeHudRepository
+    implements WarningDataSourceStatus {
+  const _FakeLiveHudRepository(super.warnings);
+
+  @override
+  String get dataSourceLabel => 'Live data';
 }
 
 class _FakePermissionRepository implements PermissionRepository {

@@ -233,7 +233,8 @@ class _HudStatusBar extends StatelessWidget {
                 ),
                 _StatusChip(
                   label: 'Heading',
-                  value: '${status.headingDegrees}° ${status.cardinalHeading}',
+                  value:
+                      '${status.headingDegrees} deg ${status.cardinalHeading}',
                   compact: compact,
                   theme: theme,
                 ),
@@ -245,9 +246,7 @@ class _HudStatusBar extends StatelessWidget {
                 ),
                 _StatusChip(
                   label: 'Mode',
-                  value: status.isMock
-                      ? 'Limited fallback mode'
-                      : 'Real sensor mode',
+                  value: status.isMock ? 'Fallback' : 'Live sensors',
                   compact: compact,
                   theme: theme,
                 ),
@@ -326,7 +325,7 @@ class _HudPermissionFallback extends StatelessWidget {
               border: Border.all(color: const Color(0x99FFA94D)),
             ),
             child: Text(
-              'Limited fallback mode: permissions are not fully granted. Using mock-safe fallback.',
+              'Fallback active: grant camera, location, and motion for live AR guidance.',
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodyMedium,
@@ -428,14 +427,14 @@ class _OverlaySummary extends StatelessWidget {
         ),
         Text(
           status.isSpeedEstimatedFromGps
-              ? 'Speed source: Real sensor mode'
-              : 'Speed source: Limited fallback mode',
+              ? 'Speed: live sensors'
+              : 'Speed: fallback estimate',
           style: Theme.of(context).textTheme.bodySmall,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
         Text(
-          dataSourceLabel,
+          'Data: $dataSourceLabel',
           key: const Key('warning-data-source-label'),
           style: Theme.of(context).textTheme.bodySmall,
           maxLines: 1,
