@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../ar/domain/ar_projection_mapper.dart';
 import '../../ar/presentation/ar_marker_layer.dart';
+import '../../camera/domain/camera_runtime_state.dart';
 import '../../camera/presentation/camera_hud_background.dart';
 import '../../data_sources/domain/data_source_registry.dart';
 import '../../location/domain/location_repository.dart';
@@ -39,14 +41,36 @@ class HudScreen extends StatefulWidget {
 }
 
 class _HudScreenState extends State<HudScreen> {
+  CameraRuntimeState _cameraState = const CameraRuntimeState.initializing();
+
   @override
   void initState() {
     super.initState();
+    _loadWarnings();
+  }
+
+  Future<void> _loadWarnings() async {
     final repository = widget.hudRepository;
-    if (repository is WarningRepository) {
-      (repository as WarningRepository)
-          .getWarnings(const WarningRequest.fallback());
-    }
+    if (repository is! WarningRepository) return;
+
+    await (repository as WarningRepository)
+        .getWarnings(const WarningRequest.fallback());
+    if (mounted) setState(() {});
+  }
+
+  void _handleCameraStateChanged(CameraRuntimeState state) {
+    if (!mounted || _cameraState.availability == state.availability) return;
+    setState(() => _cameraState = state);
+  }
+
+  Widget _buildCameraLayer(SensorPermissionStatus permissions) {
+    final customBuilder = widget.cameraLayerBuilder;
+    if (customBuilder != null) return customBuilder(permissions);
+
+    return CameraHudBackground(
+      permissionStatus: permissions,
+      onStateChanged: _handleCameraStateChanged,
+    );
   }
 
   @override
@@ -68,23 +92,19 @@ class _HudScreenState extends State<HudScreen> {
               : (warnings.isEmpty ? null : warnings.first);
           final moreCount = markers.length > 1 ? markers.length - 1 : 0;
           final runtime = SensorRuntimeState(
-            cameraAvailable:
-                permissions.camera == SensorPermissionState.granted,
+            cameraAvailable: _cameraState.cameraAvailable,
             locationStatus: location,
             permissionStatus: permissions,
             motionStatus: const MotionRuntimeState.unavailable(),
           );
-          final source = widget.hudRepository is WarningDataSourceStatus &&
-                  (widget.hudRepository as WarningDataSourceStatus)
-                      .dataSourceLabel
-                      .contains('Live')
-              ? 'Live-Daten'
-              : 'Fallback-Daten';
+          final warningSource = widget.hudRepository is WarningDataSourceStatus
+              ? widget.hudRepository as WarningDataSourceStatus
+              : null;
+          final source = warningSource?.dataSourceLabel ?? 'Fallback-Daten';
 
           return Scaffold(
             body: Stack(children: [
-              widget.cameraLayerBuilder?.call(permissions) ??
-                  CameraHudBackground(permissionStatus: permissions),
+              _buildCameraLayer(permissions),
               ArMarkerLayer(markers: markers),
               SafeArea(
                 child: Padding(
@@ -92,6 +112,14 @@ class _HudScreenState extends State<HudScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Column(children: [
                     _StatusBar(status: location, runtime: runtime),
+                    if (kDebugMode) ...[
+                      const SizedBox(height: 8),
+                      _DebugSourceIndicator(
+                        cameraState: _cameraState,
+                        location: location,
+                        warningSource: warningSource,
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     _RuntimePills(runtime: runtime),
                     if (runtime.isFallbackMode) ...[
@@ -149,6 +177,60 @@ class _StatusBar extends StatelessWidget {
               child:
                   Text('Modus ${runtime.modeLabel}', textAlign: TextAlign.end)),
         ]),
+      );
+}
+
+class _DebugSourceIndicator extends StatelessWidget {
+  const _DebugSourceIndicator({
+    required this.cameraState,
+    required this.location,
+    required this.warningSource,
+  });
+
+  final CameraRuntimeState cameraState;
+  final LocationStatus location;
+  final WarningDataSourceStatus? warningSource;
+
+  @override
+  Widget build(BuildContext context) {
+    final cameraLabel = cameraState.cameraAvailable ? 'Live' : 'Fallback';
+    final locationLabel =
+        location.hasLiveLocation && !location.isMock ? 'Live' : 'Fallback';
+    final warningLabel = warningSource?.debugDataSourceLabel ?? 'Mock';
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Wrap(
+        key: const Key('debug-source-indicator'),
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          _DebugSourcePill('Kamera: $cameraLabel'),
+          _DebugSourcePill('Standort: $locationLabel'),
+          _DebugSourcePill('Warnungen: $warningLabel'),
+        ],
+      ),
+    );
+  }
+}
+
+class _DebugSourcePill extends StatelessWidget {
+  const _DebugSourcePill(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: const Color(0x8857E3FF)),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+        ),
       );
 }
 

@@ -2,6 +2,22 @@ import '../../hud/domain/hud_warning_item.dart';
 
 enum WarningDataSource { liveApi, fallback, cache, empty, failure }
 
+extension WarningDataSourceLabels on WarningDataSource {
+  bool get isApiBacked =>
+      this == WarningDataSource.liveApi || this == WarningDataSource.cache;
+
+  String get userFacingGermanLabel =>
+      isApiBacked ? 'Live-Daten' : 'Fallback-Daten';
+
+  String get debugGermanLabel => switch (this) {
+        WarningDataSource.liveApi => 'API',
+        WarningDataSource.cache => 'API-Cache',
+        WarningDataSource.fallback => 'Mock',
+        WarningDataSource.empty => 'Mock',
+        WarningDataSource.failure => 'Mock',
+      };
+}
+
 class WarningRepositoryResult {
   const WarningRepositoryResult({
     required this.warnings,

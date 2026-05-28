@@ -75,6 +75,17 @@ void main() {
     expect(find.textContaining('Modus'), findsOneWidget);
   });
 
+  testWidgets('debug source indicator marks mock HUD data as fallback',
+      (tester) async {
+    await tester.pumpWidget(buildHud(warnings: _sampleWarnings));
+
+    expect(find.byKey(const Key('debug-source-indicator')), findsOneWidget);
+    expect(find.text('Kamera: Fallback'), findsOneWidget);
+    expect(find.text('Standort: Fallback'), findsOneWidget);
+    expect(find.text('Warnungen: Mock'), findsOneWidget);
+    expect(find.text('Quelle: Fallback-Daten'), findsOneWidget);
+  });
+
   testWidgets('camera unavailable falls back to mock background',
       (tester) async {
     await tester.pumpWidget(const MaterialApp(
