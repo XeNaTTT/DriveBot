@@ -30,9 +30,9 @@ void main() {
 
     expect(result.source, WarningDataSource.liveApi);
     expect(result.warnings.map((warning) => warning.title), [
-      'Heavy Rain',
-      'Low Visibility',
-      'Strong Wind',
+      'Starkregen',
+      'Schlechte Sicht',
+      'Starker Wind',
     ]);
     expect(
       result.warnings.every((warning) => warning.type == WarningType.weather),
@@ -53,7 +53,7 @@ void main() {
 
     expect(result.source, WarningDataSource.fallback);
     expect(result.warnings, _fallbackWarnings);
-    expect(repository.dataSourceLabel, 'Fallback data');
+    expect(repository.dataSourceLabel, 'Fallback-Daten');
   });
 
   test('empty Open-Meteo response falls back through composite repository',
@@ -128,8 +128,8 @@ void main() {
 const _fallbackWarnings = [
   HudWarningItem(
     type: WarningType.weather,
-    title: 'Weather Warning',
-    detail: 'Heavy rain segment in 2.4 km',
+    title: 'Wetterwarnung',
+    detail: 'Starkregenabschnitt in 2.4 km',
     distanceMeters: 2400,
     bearingDegrees: 12,
     severity: 3,

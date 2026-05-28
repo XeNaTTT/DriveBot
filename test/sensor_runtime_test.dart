@@ -90,7 +90,7 @@ void main() {
       );
 
       expect(state.mode, SensorRuntimeMode.liveAr);
-      expect(state.modeLabel, 'Live AR');
+      expect(state.modeLabel, 'Live-AR');
     });
 
     test('Partial live is used for degraded sensors', () {
@@ -102,8 +102,8 @@ void main() {
       );
 
       expect(state.mode, SensorRuntimeMode.partialLive);
-      expect(state.compactMessages, contains('Location needed'));
-      expect(state.compactMessages, contains('Compass unavailable'));
+      expect(state.compactMessages, contains('Standort erforderlich'));
+      expect(state.compactMessages, contains('Kompass nicht verfügbar'));
     });
 
     test('Fallback is used when mostly mock data is active', () {
@@ -115,7 +115,7 @@ void main() {
       );
 
       expect(state.mode, SensorRuntimeMode.fallback);
-      expect(state.compactMessages, contains('Fallback mode'));
+      expect(state.compactMessages, contains('Ersatzmodus'));
     });
 
     test('motion unavailable fallback is stable', () {

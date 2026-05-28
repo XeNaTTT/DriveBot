@@ -92,9 +92,9 @@ class AutobahnTrafficParser {
 
     return AutobahnTrafficItem(
       title: title.isEmpty
-          ? (isRoadwork ? 'Autobahn Roadwork' : 'Autobahn Warning')
+          ? (isRoadwork ? 'Autobahn-Baustelle' : 'Autobahn-Warnung')
           : title,
-      detail: detail.isEmpty ? 'Live Autobahn traffic context.' : detail,
+      detail: detail.isEmpty ? 'Live-Verkehrslage der Autobahn.' : detail,
       isRoadwork: isRoadwork,
     );
   }

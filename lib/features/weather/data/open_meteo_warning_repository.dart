@@ -75,8 +75,8 @@ class OpenMeteoWarningRepository implements WarningRepository {
       warnings.add(
         _warning(
           request,
-          title: 'Heavy Rain',
-          detail: 'Open-Meteo reports intense rain near your route.',
+          title: 'Starkregen',
+          detail: 'Open-Meteo meldet starken Regen nahe deiner Route.',
           distanceMeters: 900,
           severity: 4,
         ),
@@ -85,8 +85,8 @@ class OpenMeteoWarningRepository implements WarningRepository {
       warnings.add(
         _warning(
           request,
-          title: 'Rain Nearby',
-          detail: 'Wet road surface likely from live weather data.',
+          title: 'Regen in der Nähe',
+          detail: 'Nasse Fahrbahn laut Live-Wetterdaten wahrscheinlich.',
           distanceMeters: 1200,
           severity: 2,
         ),
@@ -99,10 +99,10 @@ class OpenMeteoWarningRepository implements WarningRepository {
       warnings.add(
         _warning(
           request,
-          title: 'Low Visibility',
+          title: 'Schlechte Sicht',
           detail: visibility == null
-              ? 'Fog conditions reported by Open-Meteo.'
-              : 'Visibility around ${visibility.round()} m.',
+              ? 'Open-Meteo meldet Nebelbedingungen.'
+              : 'Sichtweite etwa ${visibility.round()} m.',
           distanceMeters: 700,
           severity: visibility != null && visibility < 1000 ? 4 : 3,
         ),
@@ -113,9 +113,9 @@ class OpenMeteoWarningRepository implements WarningRepository {
       warnings.add(
         _warning(
           request,
-          title: 'Strong Wind',
+          title: 'Starker Wind',
           detail:
-              'Wind ${weather.windSpeedKmh.round()} km/h, gusts ${weather.windGustsKmh.round()} km/h.',
+              'Wind ${weather.windSpeedKmh.round()} km/h, Böen ${weather.windGustsKmh.round()} km/h.',
           distanceMeters: 1600,
           severity: 3,
         ),
