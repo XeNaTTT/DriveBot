@@ -8,6 +8,7 @@ import '../../location/domain/location_repository.dart';
 import '../../location/domain/location_status.dart';
 import '../../location/domain/permission_repository.dart';
 import '../../location/domain/sensor_permission_status.dart';
+import '../../sensors/domain/sensor_runtime_state.dart';
 import '../../warnings/domain/warning_repository.dart';
 import '../../warnings/domain/warning_request.dart';
 import '../domain/hud_repository.dart';
@@ -66,6 +67,13 @@ class _HudScreenState extends State<HudScreen> {
               ? markers.first.warning
               : (warnings.isEmpty ? null : warnings.first);
           final moreCount = markers.length > 1 ? markers.length - 1 : 0;
+          final runtime = SensorRuntimeState(
+            cameraAvailable:
+                permissions.camera == SensorPermissionState.granted,
+            locationStatus: location,
+            permissionStatus: permissions,
+            motionStatus: const MotionRuntimeState.unavailable(),
+          );
           final source = widget.hudRepository is WarningDataSourceStatus &&
                   (widget.hudRepository as WarningDataSourceStatus)
                       .dataSourceLabel
@@ -83,9 +91,9 @@ class _HudScreenState extends State<HudScreen> {
                   key: const Key('hud-root'),
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Column(children: [
-                    _StatusBar(status: location),
+                    _StatusBar(status: location, runtime: runtime),
                     const SizedBox(height: 8),
-                    if (!permissions.allGranted) const _FallbackPill(),
+                    _RuntimePills(runtime: runtime),
                     const Spacer(),
                     if (moreCount > 0)
                       Align(
@@ -116,8 +124,9 @@ class _HudScreenState extends State<HudScreen> {
 }
 
 class _StatusBar extends StatelessWidget {
-  const _StatusBar({required this.status});
+  const _StatusBar({required this.status, required this.runtime});
   final LocationStatus status;
+  final SensorRuntimeState runtime;
   @override
   Widget build(BuildContext context) => Container(
         key: const Key('hud-status-bar'),
@@ -128,26 +137,56 @@ class _StatusBar extends StatelessWidget {
         ),
         child:
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text('${status.speedKph} km/h'),
-          Text('${status.headingDegrees}° ${status.cardinalHeading}'),
-          Text(status.isMock ? 'Fallback' : 'Live'),
+          Flexible(child: Text('${status.speedKph} km/h')),
+          Flexible(
+              child:
+                  Text('${status.headingDegrees}° ${status.cardinalHeading}')),
+          Flexible(child: Text(runtime.modeLabel, textAlign: TextAlign.end)),
         ]),
       );
 }
 
-class _FallbackPill extends StatelessWidget {
-  const _FallbackPill();
+class _RuntimePills extends StatelessWidget {
+  const _RuntimePills({required this.runtime});
+
+  final SensorRuntimeState runtime;
+
+  @override
+  Widget build(BuildContext context) {
+    final messages = runtime.compactMessages.take(3).toList();
+    if (messages.isEmpty || runtime.isFullyLiveMode) {
+      return const SizedBox.shrink();
+    }
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Wrap(
+        key: const Key('permission-fallback'),
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          for (final message in messages) _StatusPill(message),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill(this.message);
+
+  final String message;
+
   @override
   Widget build(BuildContext context) => Container(
-        key: const Key('permission-fallback'),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.45),
           borderRadius: BorderRadius.circular(999),
           border: Border.all(color: const Color(0x99FFA94D)),
         ),
-        child: const Text(
-          'Fallback mode · grant camera/location/motion for live AR',
+        child: Text(
+          message,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
