@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
 import 'app/app.dart';
+import 'core/config/supabase_config.dart';
 
-void main() {
-  runApp(const DriveAssistantApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final isSupabaseReady = await SupabaseConfig.initializeSafely();
+  runApp(DriveAssistantApp(isSupabaseConfigured: isSupabaseReady));
 }

@@ -1,6 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../features/auth/application/auth_controller.dart';
+import '../features/auth/data/guest_auth_repository.dart';
+import '../features/auth/data/supabase_auth_repository.dart';
+import '../features/auth/domain/app_user.dart';
+import '../features/auth/domain/auth_repository.dart';
+import '../features/auth/presentation/auth_gate.dart';
 import '../features/data_sources/data/mock_data_source_registry.dart';
 import '../features/hud/presentation/hud_screen.dart';
 import '../features/location/data/ios_location_runtime.dart';
@@ -14,8 +21,44 @@ import '../features/warnings/data/warning_cache.dart';
 import '../features/weather/data/open_meteo_warning_repository.dart';
 import '../shared/theme/app_theme.dart';
 
-class DriveAssistantApp extends StatelessWidget {
-  const DriveAssistantApp({super.key});
+class DriveAssistantApp extends StatefulWidget {
+  const DriveAssistantApp({
+    this.isSupabaseConfigured = false,
+    this.authRepository,
+    super.key,
+  });
+
+  final bool isSupabaseConfigured;
+  final AuthRepository? authRepository;
+
+  @override
+  State<DriveAssistantApp> createState() => _DriveAssistantAppState();
+}
+
+class _DriveAssistantAppState extends State<DriveAssistantApp> {
+  late final AuthController _authController;
+
+  @override
+  void initState() {
+    super.initState();
+    _authController = AuthController(
+      repository: widget.authRepository ?? _buildAuthRepository(),
+      isSupabaseConfigured: widget.isSupabaseConfigured,
+    );
+  }
+
+  AuthRepository _buildAuthRepository() {
+    if (widget.isSupabaseConfigured) {
+      return SupabaseAuthRepository(Supabase.instance.client);
+    }
+    return GuestAuthRepository(initialUser: const AppUser.guest());
+  }
+
+  @override
+  void dispose() {
+    _authController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,11 +81,14 @@ class DriveAssistantApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'DriveAssistant AR',
       theme: buildAppTheme(),
-      home: HudScreen(
-        hudRepository: warningRepository,
-        locationRepository: locationRepository,
-        dataSourceRegistry: MockDataSourceRegistry(),
-        permissionRepository: permissionRepository,
+      home: AuthGate(
+        controller: _authController,
+        hudBuilder: (context) => HudScreen(
+          hudRepository: warningRepository,
+          locationRepository: locationRepository,
+          dataSourceRegistry: MockDataSourceRegistry(),
+          permissionRepository: permissionRepository,
+        ),
       ),
     );
   }
