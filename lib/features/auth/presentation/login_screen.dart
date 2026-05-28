@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../application/auth_controller.dart';
 
-class LoginScreen extends StatefulWidget {
+final class LoginScreen extends StatefulWidget {
   const LoginScreen({required this.controller, super.key});
 
   final AuthController controller;
@@ -11,10 +11,9 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+final class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  bool _busy = false;
 
   @override
   void dispose() {
@@ -23,21 +22,18 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _submit(Future<void> Function() action) async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    await action();
-    if (mounted) setState(() => _busy = false);
-  }
-
   @override
-  Widget build(BuildContext context) => Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: ListenableBuilder(
+              listenable: widget.controller,
+              builder: (context, _) => SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -56,7 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       autofillHints: const [AutofillHints.email],
                       decoration: const InputDecoration(labelText: 'E-Mail'),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
                     TextField(
                       key: const Key('auth-password-field'),
                       controller: _passwordController,
@@ -65,60 +61,104 @@ class _LoginScreenState extends State<LoginScreen> {
                       decoration: const InputDecoration(labelText: 'Passwort'),
                     ),
                     const SizedBox(height: 16),
+                    if (widget.controller.errorMessage != null)
+                      _MessageBox(
+                        message: widget.controller.errorMessage!,
+                        isError: true,
+                      ),
+                    if (widget.controller.profileWarning != null)
+                      _MessageBox(
+                        message: widget.controller.profileWarning!,
+                        isError: true,
+                      ),
+                    if (widget.controller.infoMessage != null)
+                      _MessageBox(
+                        message: widget.controller.infoMessage!,
+                        isError: false,
+                      ),
+                    const SizedBox(height: 12),
                     FilledButton(
                       key: const Key('auth-sign-in-button'),
-                      onPressed: _busy
-                          ? null
-                          : () => _submit(() => widget.controller.signIn(
-                                email: _emailController.text,
-                                password: _passwordController.text,
-                              )),
+                      onPressed: widget.controller.isBusy ? null : _signIn,
                       child: const Text('Anmelden'),
                     ),
+                    const SizedBox(height: 8),
                     OutlinedButton(
                       key: const Key('auth-sign-up-button'),
-                      onPressed: _busy
-                          ? null
-                          : () => _submit(() => widget.controller.signUp(
-                                email: _emailController.text,
-                                password: _passwordController.text,
-                              )),
+                      onPressed: widget.controller.isBusy ? null : _signUp,
                       child: const Text('Konto erstellen'),
                     ),
                     TextButton(
                       key: const Key('auth-password-reset-button'),
-                      onPressed: _busy
-                          ? null
-                          : () => _submit(() => widget.controller
-                              .sendPasswordResetEmail(_emailController.text)),
+                      onPressed:
+                          widget.controller.isBusy ? null : _sendPasswordReset,
                       child: const Text('Passwort vergessen?'),
                     ),
-                    const SizedBox(height: 8),
-                    TextButton(
+                    const Divider(height: 32),
+                    FilledButton.tonal(
                       key: const Key('auth-continue-guest-button'),
-                      onPressed: _busy
+                      onPressed: widget.controller.isBusy
                           ? null
-                          : () => _submit(widget.controller.continueAsGuest),
+                          : widget.controller.continueAsGuest,
                       child: const Text('Ohne Konto fortfahren'),
                     ),
                     const SizedBox(height: 8),
                     const Text('Gastmodus', textAlign: TextAlign.center),
-                    AnimatedBuilder(
-                      animation: widget.controller,
-                      builder: (context, _) {
-                        final message = widget.controller.state.message;
-                        if (message == null) return const SizedBox.shrink();
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 12),
-                          child: Text(message, textAlign: TextAlign.center),
-                        );
-                      },
-                    ),
                   ],
                 ),
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Future<void> _signIn() => widget.controller.signIn(
+        email: _emailController.text,
+        password: _passwordController.text,
       );
+
+  Future<void> _signUp() => widget.controller.signUp(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
+
+  Future<void> _sendPasswordReset() =>
+      widget.controller.sendPasswordResetEmail(_emailController.text);
+}
+
+final class _MessageBox extends StatelessWidget {
+  const _MessageBox({required this.message, required this.isError});
+
+  final String message;
+  final bool isError;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: isError
+              ? colorScheme.errorContainer
+              : colorScheme.secondaryContainer,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Text(
+            message,
+            style: TextStyle(
+              color: isError
+                  ? colorScheme.onErrorContainer
+                  : colorScheme.onSecondaryContainer,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

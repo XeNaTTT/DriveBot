@@ -7,11 +7,19 @@ abstract interface class AuthRepository {
 
   Future<AppUser> continueAsGuest();
 
-  Future<AppUser> signUp({required String email, required String password});
+  Future<AppUser> signInWithEmailPassword({
+    required String email,
+    required String password,
+  });
 
-  Future<AppUser> signIn({required String email, required String password});
+  Future<AppUser> signUpWithEmailPassword({
+    required String email,
+    required String password,
+  });
 
   Future<void> sendPasswordResetEmail(String email);
 
   Future<void> signOut();
+
+  Future<void> ensureProfileAndSettings(AppUser user);
 }

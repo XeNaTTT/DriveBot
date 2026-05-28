@@ -5,99 +5,149 @@ import 'package:flutter/foundation.dart';
 import '../domain/app_user.dart';
 import '../domain/auth_repository.dart';
 
-enum AuthStatus { loading, guest, unauthenticated, authenticated }
+enum AuthStatus { guest, loggedOut, loggedIn }
 
-@immutable
-class AuthState {
-  const AuthState._({required this.status, this.user, this.message});
-
-  const AuthState.loading() : this._(status: AuthStatus.loading);
-
-  const AuthState.guest(AppUser user)
-      : this._(status: AuthStatus.guest, user: user);
-
-  const AuthState.unauthenticated({String? message})
-      : this._(status: AuthStatus.unauthenticated, message: message);
-
-  const AuthState.authenticated(AppUser user)
-      : this._(status: AuthStatus.authenticated, user: user);
-
-  final AuthStatus status;
-  final AppUser? user;
-  final String? message;
-
-  bool get showsHud =>
-      status == AuthStatus.guest || status == AuthStatus.authenticated;
-}
-
-class AuthController extends ChangeNotifier {
+final class AuthController extends ChangeNotifier {
   AuthController({
     required AuthRepository repository,
-    required bool supabaseConfigured,
+    required bool isSupabaseConfigured,
   })  : _repository = repository,
-        _supabaseConfigured = supabaseConfigured {
-    _subscription = _repository.authStateChanges.listen(_applyUser);
-    final currentUser = _repository.currentUser;
-    if (!_supabaseConfigured) {
-      continueAsGuest();
-    } else {
-      _applyUser(currentUser);
+        _isSupabaseConfigured = isSupabaseConfigured,
+        _status = isSupabaseConfigured
+            ? (repository.currentUser == null
+                ? AuthStatus.loggedOut
+                : AuthStatus.loggedIn)
+            : AuthStatus.guest,
+        _user = isSupabaseConfigured
+            ? repository.currentUser
+            : (repository.currentUser ?? const AppUser.guest()) {
+    _subscription = _repository.authStateChanges.listen(_handleAuthChange);
+    if (!_isSupabaseConfigured && _user?.isGuest != true) {
+      unawaited(continueAsGuest());
     }
   }
 
   final AuthRepository _repository;
-  final bool _supabaseConfigured;
+  final bool _isSupabaseConfigured;
   late final StreamSubscription<AppUser?> _subscription;
 
-  AuthState _state = const AuthState.loading();
-  AuthState get state => _state;
+  AuthStatus _status;
+  AppUser? _user;
+  bool _isBusy = false;
+  String? _errorMessage;
+  String? _infoMessage;
+  String? _profileWarning;
+
+  AuthStatus get status => _status;
+  AppUser? get user => _user;
+  bool get isBusy => _isBusy;
+  bool get isSupabaseConfigured => _isSupabaseConfigured;
+  String? get errorMessage => _errorMessage;
+  String? get infoMessage => _infoMessage;
+  String? get profileWarning => _profileWarning;
 
   Future<void> continueAsGuest() async {
-    await _run(() async => _applyUser(await _repository.continueAsGuest()));
+    await _runBusy(() async {
+      final guestUser = await _repository.continueAsGuest();
+      _user = guestUser;
+      _status = AuthStatus.guest;
+    }, failureMessage: 'Gastmodus konnte nicht gestartet werden.');
   }
 
   Future<void> signIn({required String email, required String password}) async {
-    await _run(() async =>
-        _applyUser(await _repository.signIn(email: email, password: password)));
+    await _runAuthAction(
+      failureMessage: 'Anmeldung fehlgeschlagen',
+      action: () => _repository.signInWithEmailPassword(
+        email: email,
+        password: password,
+      ),
+    );
   }
 
   Future<void> signUp({required String email, required String password}) async {
-    await _run(() async =>
-        _applyUser(await _repository.signUp(email: email, password: password)));
+    await _runAuthAction(
+      failureMessage: 'Konto konnte nicht erstellt werden',
+      action: () => _repository.signUpWithEmailPassword(
+        email: email,
+        password: password,
+      ),
+    );
   }
 
   Future<void> sendPasswordResetEmail(String email) async {
-    await _run(() => _repository.sendPasswordResetEmail(email));
+    await _runBusy(() async {
+      await _repository.sendPasswordResetEmail(email);
+      _infoMessage = 'Passwort zurücksetzen';
+    }, failureMessage: 'Netzwerkfehler. Bitte versuche es erneut.');
   }
 
   Future<void> signOut() async {
-    await _run(() async {
+    await _runBusy(() async {
       await _repository.signOut();
-      _setState(const AuthState.unauthenticated());
-    });
+      _user = null;
+      _status = _isSupabaseConfigured ? AuthStatus.loggedOut : AuthStatus.guest;
+    }, failureMessage: 'Netzwerkfehler. Bitte versuche es erneut.');
   }
 
-  Future<void> _run(Future<void> Function() action) async {
+  Future<void> _runAuthAction({
+    required String failureMessage,
+    required Future<AppUser> Function() action,
+  }) async {
+    await _runBusy(() async {
+      final authenticatedUser = await action();
+      _user = authenticatedUser;
+      _status =
+          authenticatedUser.isGuest ? AuthStatus.guest : AuthStatus.loggedIn;
+      await _ensureProfileGracefully(authenticatedUser);
+    }, failureMessage: failureMessage);
+  }
+
+  Future<void> _ensureProfileGracefully(AppUser authenticatedUser) async {
+    try {
+      await _repository.ensureProfileAndSettings(authenticatedUser);
+      _profileWarning = null;
+    } on Object {
+      _profileWarning = 'Netzwerkfehler. Bitte versuche es erneut.';
+    }
+  }
+
+  Future<void> _runBusy(
+    Future<void> Function() action, {
+    required String failureMessage,
+  }) async {
+    if (_isBusy) return;
+
+    _isBusy = true;
+    _clearMessages();
+    notifyListeners();
     try {
       await action();
-    } catch (error) {
-      _setState(AuthState.unauthenticated(message: error.toString()));
+    } on Object {
+      _errorMessage = failureMessage;
+    } finally {
+      _isBusy = false;
+      notifyListeners();
     }
   }
 
-  void _applyUser(AppUser? user) {
-    if (user == null) {
-      _setState(const AuthState.unauthenticated());
-    } else if (user.isGuest) {
-      _setState(AuthState.guest(user));
+  void _handleAuthChange(AppUser? changedUser) {
+    if (changedUser == null) {
+      if (_status != AuthStatus.guest) {
+        _user = null;
+        _status =
+            _isSupabaseConfigured ? AuthStatus.loggedOut : AuthStatus.guest;
+      }
     } else {
-      _setState(AuthState.authenticated(user));
+      _user = changedUser;
+      _status = changedUser.isGuest ? AuthStatus.guest : AuthStatus.loggedIn;
     }
+    notifyListeners();
   }
 
-  void _setState(AuthState state) {
-    _state = state;
-    notifyListeners();
+  void _clearMessages() {
+    _errorMessage = null;
+    _infoMessage = null;
+    _profileWarning = null;
   }
 
   @override

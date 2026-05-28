@@ -17,19 +17,19 @@ void main() {
 
     final controller = AuthController(
       repository: _FakeAuthRepository(currentUser: const AppUser.guest()),
-      supabaseConfigured: config.canInitialize,
+      isSupabaseConfigured: config.canInitialize,
     );
     addTearDown(controller.dispose);
 
     await pumpEventQueue();
-    expect(controller.state.status, AuthStatus.guest);
-    expect(controller.state.user?.isGuest, isTrue);
+    expect(controller.status, AuthStatus.guest);
+    expect(controller.user?.isGuest, isTrue);
   });
 
   testWidgets('login screen renders German labels', (tester) async {
     final controller = AuthController(
       repository: _FakeAuthRepository(),
-      supabaseConfigured: true,
+      isSupabaseConfigured: true,
     );
     addTearDown(controller.dispose);
 
@@ -50,14 +50,14 @@ void main() {
   testWidgets('continue as guest works', (tester) async {
     final controller = AuthController(
       repository: _FakeAuthRepository(),
-      supabaseConfigured: true,
+      isSupabaseConfigured: true,
     );
     addTearDown(controller.dispose);
 
     await tester.pumpWidget(MaterialApp(
       home: AuthGate(
         controller: controller,
-        builder: (context, controller, state) => const Text('HUD'),
+        builder: (context, controller) => const Text('HUD'),
       ),
     ));
 
@@ -65,48 +65,51 @@ void main() {
     await tester.tap(find.byKey(const Key('auth-continue-guest-button')));
     await tester.pumpAndSettle();
 
-    expect(controller.state.status, AuthStatus.guest);
+    expect(controller.status, AuthStatus.guest);
     expect(find.text('HUD'), findsOneWidget);
   });
 
   test('auth controller guest state', () async {
     final controller = AuthController(
       repository: _FakeAuthRepository(currentUser: const AppUser.guest()),
-      supabaseConfigured: false,
+      isSupabaseConfigured: false,
     );
     addTearDown(controller.dispose);
 
     await pumpEventQueue();
-    expect(controller.state.status, AuthStatus.guest);
+    expect(controller.status, AuthStatus.guest);
   });
 
   test('auth controller logged-out state', () {
     final controller = AuthController(
       repository: _FakeAuthRepository(),
-      supabaseConfigured: true,
+      isSupabaseConfigured: true,
     );
     addTearDown(controller.dispose);
 
-    expect(controller.state.status, AuthStatus.unauthenticated);
+    expect(controller.status, AuthStatus.loggedOut);
   });
 
   test('auth controller logged-in state with fake repository', () {
     final controller = AuthController(
       repository: _FakeAuthRepository(
-        currentUser: const AppUser(id: 'user-1', email: 'fahrer@example.test'),
+        currentUser: const AppUser.authenticated(
+          id: 'user-1',
+          email: 'fahrer@example.test',
+        ),
       ),
-      supabaseConfigured: true,
+      isSupabaseConfigured: true,
     );
     addTearDown(controller.dispose);
 
-    expect(controller.state.status, AuthStatus.authenticated);
-    expect(controller.state.user?.email, 'fahrer@example.test');
+    expect(controller.status, AuthStatus.loggedIn);
+    expect(controller.user?.email, 'fahrer@example.test');
   });
 
   testWidgets('profile screen renders guest state', (tester) async {
     final controller = AuthController(
       repository: _FakeAuthRepository(currentUser: const AppUser.guest()),
-      supabaseConfigured: false,
+      isSupabaseConfigured: false,
     );
     addTearDown(controller.dispose);
 
@@ -116,30 +119,32 @@ void main() {
     expect(find.text('Profil'), findsOneWidget);
     expect(find.text('Nutzerkonto'), findsOneWidget);
     expect(find.text('Gastmodus'), findsOneWidget);
-    expect(find.text('Nicht angemeldet'), findsOneWidget);
     expect(find.text('Zurück zur App'), findsOneWidget);
-    expect(find.text('Abmelden'), findsOneWidget);
-    expect(find.text('Passwort zurücksetzen'), findsOneWidget);
+    expect(find.text('Abmelden'), findsNothing);
+    expect(find.text('Passwort zurücksetzen'), findsNothing);
   });
 
   test('sign out returns safely', () async {
     final repository = _FakeAuthRepository(
-      currentUser: const AppUser(id: 'user-1', email: 'fahrer@example.test'),
+      currentUser: const AppUser.authenticated(
+        id: 'user-1',
+        email: 'fahrer@example.test',
+      ),
     );
     final controller = AuthController(
       repository: repository,
-      supabaseConfigured: true,
+      isSupabaseConfigured: true,
     );
     addTearDown(controller.dispose);
 
     await controller.signOut();
 
     expect(repository.signOutCount, 1);
-    expect(controller.state.status, AuthStatus.unauthenticated);
+    expect(controller.status, AuthStatus.loggedOut);
   });
 }
 
-class _FakeAuthRepository implements AuthRepository {
+final class _FakeAuthRepository implements AuthRepository {
   _FakeAuthRepository({AppUser? currentUser}) : _currentUser = currentUser;
 
   final StreamController<AppUser?> _controller =
@@ -161,12 +166,17 @@ class _FakeAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<void> ensureProfileAndSettings(AppUser user) async {}
+
+  @override
   Future<void> sendPasswordResetEmail(String email) async {}
 
   @override
-  Future<AppUser> signIn(
-      {required String email, required String password}) async {
-    final user = AppUser(id: 'user-1', email: email);
+  Future<AppUser> signInWithEmailPassword({
+    required String email,
+    required String password,
+  }) async {
+    final user = AppUser.authenticated(id: 'user-1', email: email);
     _setUser(user);
     return user;
   }
@@ -178,8 +188,11 @@ class _FakeAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AppUser> signUp({required String email, required String password}) =>
-      signIn(email: email, password: password);
+  Future<AppUser> signUpWithEmailPassword({
+    required String email,
+    required String password,
+  }) =>
+      signInWithEmailPassword(email: email, password: password);
 
   void _setUser(AppUser? user) {
     _currentUser = user;
