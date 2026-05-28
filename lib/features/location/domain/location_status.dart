@@ -31,11 +31,11 @@ class LocationStatus {
   String get cardinalHeading => HeadingUtils.cardinalDirection(headingDegrees);
 
   String get gpsLabel => switch (gpsFixStatus) {
-        GpsFixStatus.strong => 'GPS strong',
-        GpsFixStatus.moderate => 'GPS moderate',
-        GpsFixStatus.weak => 'GPS weak',
-        GpsFixStatus.denied => 'GPS denied',
-        GpsFixStatus.unavailable => 'GPS unavailable',
+        GpsFixStatus.strong => 'GPS stark',
+        GpsFixStatus.moderate => 'GPS mittel',
+        GpsFixStatus.weak => 'GPS schwach',
+        GpsFixStatus.denied => 'GPS verweigert',
+        GpsFixStatus.unavailable => 'GPS nicht verfügbar',
       };
 
   LocationStatus copyWith({

@@ -41,8 +41,8 @@ class CompositeWarningRepository
   @override
   String get dataSourceLabel {
     return switch (_latestResult.source) {
-      WarningDataSource.liveApi || WarningDataSource.cache => 'Live data',
-      _ => 'Fallback data',
+      WarningDataSource.liveApi || WarningDataSource.cache => 'Live-Daten',
+      _ => 'Fallback-Daten',
     };
   }
 }

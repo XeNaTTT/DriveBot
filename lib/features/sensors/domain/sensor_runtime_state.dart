@@ -54,17 +54,17 @@ class SensorRuntimeState {
   }
 
   String get modeLabel => switch (mode) {
-        SensorRuntimeMode.liveAr => 'Live AR',
-        SensorRuntimeMode.partialLive => 'Partial live',
+        SensorRuntimeMode.liveAr => 'Live-AR',
+        SensorRuntimeMode.partialLive => 'Teilweise live',
         SensorRuntimeMode.fallback => 'Fallback',
       };
 
   List<String> get compactMessages {
     final messages = <String>[];
-    messages.add(cameraAvailable ? 'Camera on' : 'Camera unavailable');
-    if (!locationAvailable) messages.add('Location needed');
-    if (!headingAvailable) messages.add('Compass unavailable');
-    if (isFallbackMode) messages.add('Fallback mode');
+    messages.add(cameraAvailable ? 'Kamera aktiv' : 'Kamera nicht verfügbar');
+    if (!locationAvailable) messages.add('Standort erforderlich');
+    if (!headingAvailable) messages.add('Kompass nicht verfügbar');
+    if (isFallbackMode) messages.add('Ersatzmodus');
     return messages;
   }
 }

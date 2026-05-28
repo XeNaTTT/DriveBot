@@ -78,8 +78,8 @@ class _HudScreenState extends State<HudScreen> {
                   (widget.hudRepository as WarningDataSourceStatus)
                       .dataSourceLabel
                       .contains('Live')
-              ? 'Live'
-              : 'Fallback';
+              ? 'Live-Daten'
+              : 'Fallback-Daten';
 
           return Scaffold(
             body: Stack(children: [
@@ -94,6 +94,10 @@ class _HudScreenState extends State<HudScreen> {
                     _StatusBar(status: location, runtime: runtime),
                     const SizedBox(height: 8),
                     _RuntimePills(runtime: runtime),
+                    if (runtime.isFallbackMode) ...[
+                      const SizedBox(height: 8),
+                      const _FallbackGuidance(),
+                    ],
                     const Spacer(),
                     if (moreCount > 0)
                       Align(
@@ -106,7 +110,7 @@ class _HudScreenState extends State<HudScreen> {
                             color: Colors.black.withValues(alpha: 0.45),
                             borderRadius: BorderRadius.circular(999),
                           ),
-                          child: Text('+$moreCount more'),
+                          child: Text('+$moreCount weitere'),
                         ),
                       ),
                     const SizedBox(height: 8),
@@ -137,11 +141,13 @@ class _StatusBar extends StatelessWidget {
         ),
         child:
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Flexible(child: Text('${status.speedKph} km/h')),
+          Flexible(child: Text('Tempo ${status.speedKph} km/h')),
+          Flexible(
+              child: Text(
+                  'Richtung ${status.headingDegrees}° ${status.cardinalHeading}')),
           Flexible(
               child:
-                  Text('${status.headingDegrees}° ${status.cardinalHeading}')),
-          Flexible(child: Text(runtime.modeLabel, textAlign: TextAlign.end)),
+                  Text('Modus ${runtime.modeLabel}', textAlign: TextAlign.end)),
         ]),
       );
 }
@@ -170,6 +176,29 @@ class _RuntimePills extends StatelessWidget {
       ),
     );
   }
+}
+
+class _FallbackGuidance extends StatelessWidget {
+  const _FallbackGuidance();
+
+  @override
+  Widget build(BuildContext context) => Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          key: const Key('fallback-guidance'),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.45),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0x99FFA94D)),
+          ),
+          child: const Text(
+            'Fallback aktiv: Erlaube Kamera, Standort und Bewegung für Live-AR.',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      );
 }
 
 class _StatusPill extends StatelessWidget {
@@ -214,12 +243,12 @@ class _PrimaryCard extends StatelessWidget {
             fit: BoxFit.scaleDown,
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(warning?.title ?? 'No active warnings',
+              Text(warning?.title ?? 'Keine aktiven Warnungen',
                   key: const Key('primary-warning-title')),
               Text(warning == null
-                  ? 'No instruction'
+                  ? 'Keine Anweisung'
                   : '${warning!.distanceMeters} m · ${warning!.detail} · S${warning!.severity}'),
-              Text('Source: $source',
+              Text('Quelle: $source',
                   key: const Key('warning-data-source-label')),
             ]),
           ),
