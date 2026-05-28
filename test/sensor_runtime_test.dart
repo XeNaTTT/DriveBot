@@ -106,6 +106,24 @@ void main() {
       expect(state.compactMessages, contains('Kompass nicht verfügbar'));
     });
 
+    test('mock GPS fix is not treated as a live location source', () {
+      final state = SensorRuntimeState(
+        cameraAvailable: false,
+        locationStatus: const LocationStatus(
+          speedKph: 84,
+          headingDegrees: 58,
+          gpsFixStatus: GpsFixStatus.strong,
+          isMock: true,
+          isSpeedEstimatedFromGps: false,
+        ),
+        permissionStatus: _permissions,
+        motionStatus: const MotionRuntimeState.unavailable(),
+      );
+
+      expect(state.locationAvailable, isFalse);
+      expect(state.mode, SensorRuntimeMode.fallback);
+    });
+
     test('Fallback is used when mostly mock data is active', () {
       final state = SensorRuntimeState(
         cameraAvailable: false,

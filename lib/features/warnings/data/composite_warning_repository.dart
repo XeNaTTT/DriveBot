@@ -13,11 +13,12 @@ class CompositeWarningRepository
   })  : _primary = primary,
         _fallback = fallback ?? MockWarningRepository() {
     _latestWarnings = _fallback.getNearbyWarnings();
+    _latestResult = WarningRepositoryResult.fallback(_latestWarnings);
   }
 
   final WarningRepository _primary;
   final MockWarningRepository _fallback;
-  WarningRepositoryResult _latestResult = const WarningRepositoryResult.empty();
+  late WarningRepositoryResult _latestResult;
   late List<HudWarningItem> _latestWarnings;
 
   @override
@@ -39,10 +40,11 @@ class CompositeWarningRepository
   List<HudWarningItem> getNearbyWarnings() => _latestWarnings;
 
   @override
-  String get dataSourceLabel {
-    return switch (_latestResult.source) {
-      WarningDataSource.liveApi || WarningDataSource.cache => 'Live-Daten',
-      _ => 'Fallback-Daten',
-    };
-  }
+  WarningDataSource get dataSource => _latestResult.source;
+
+  @override
+  String get dataSourceLabel => dataSource.userFacingGermanLabel;
+
+  @override
+  String get debugDataSourceLabel => dataSource.debugGermanLabel;
 }

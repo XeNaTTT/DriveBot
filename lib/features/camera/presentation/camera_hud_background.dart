@@ -9,11 +9,13 @@ class CameraHudBackground extends StatefulWidget {
   const CameraHudBackground({
     required this.permissionStatus,
     this.cameraRuntimeService = const CameraRuntimeService(),
+    this.onStateChanged,
     super.key,
   });
 
   final SensorPermissionStatus permissionStatus;
   final CameraRuntimeService cameraRuntimeService;
+  final ValueChanged<CameraRuntimeState>? onStateChanged;
 
   @override
   State<CameraHudBackground> createState() => _CameraHudBackgroundState();
@@ -49,7 +51,7 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
   Future<void> _initializeCamera() async {
     if (widget.permissionStatus.camera != SensorPermissionState.granted) {
       if (mounted) {
-        setState(() => _state = const CameraRuntimeState.permissionDenied());
+        _setCameraState(const CameraRuntimeState.permissionDenied());
       }
       return;
     }
@@ -62,7 +64,7 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
         return;
       }
       if (controller == null) {
-        setState(() => _state = const CameraRuntimeState.unavailable());
+        _setCameraState(const CameraRuntimeState.unavailable());
         return;
       }
 
@@ -84,17 +86,15 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
         return;
       }
 
-      setState(() {
-        _controller = controller;
-        _state = CameraRuntimeState.ready(
-          currentZoomLevel: zoomProfile.defaultZoom,
-          minZoom: zoomProfile.minZoom,
-          maxZoom: zoomProfile.maxZoom,
-        );
-      });
+      _controller = controller;
+      _setCameraState(CameraRuntimeState.ready(
+        currentZoomLevel: zoomProfile.defaultZoom,
+        minZoom: zoomProfile.minZoom,
+        maxZoom: zoomProfile.maxZoom,
+      ));
     } catch (_) {
       if (mounted) {
-        setState(() => _state = const CameraRuntimeState.failed());
+        _setCameraState(const CameraRuntimeState.failed());
       }
     }
   }
@@ -120,31 +120,38 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
       defaultZoom: currentZoom,
     ).toggleTarget(currentZoom);
 
-    setState(() => _state = _state.copyWithZoom(
-          currentZoomLevel: previousZoom,
-          isSwitchingZoom: true,
-        ));
+    _setCameraState(_state.copyWithZoom(
+      currentZoomLevel: previousZoom,
+      isSwitchingZoom: true,
+    ));
 
     try {
       await controller.setZoomLevel(targetZoom);
       if (!mounted) return;
-      setState(() => _state = _state.copyWithZoom(
-            currentZoomLevel: targetZoom,
-            isSwitchingZoom: false,
-          ));
+      _setCameraState(_state.copyWithZoom(
+        currentZoomLevel: targetZoom,
+        isSwitchingZoom: false,
+      ));
     } on CameraException {
       if (!mounted) return;
-      setState(() => _state = _state.copyWithZoom(
-            currentZoomLevel: previousZoom,
-            isSwitchingZoom: false,
-          ));
+      _setCameraState(_state.copyWithZoom(
+        currentZoomLevel: previousZoom,
+        isSwitchingZoom: false,
+      ));
     } catch (_) {
       if (!mounted) return;
-      setState(() => _state = _state.copyWithZoom(
-            currentZoomLevel: previousZoom,
-            isSwitchingZoom: false,
-          ));
+      _setCameraState(_state.copyWithZoom(
+        currentZoomLevel: previousZoom,
+        isSwitchingZoom: false,
+      ));
     }
+  }
+
+  void _setCameraState(CameraRuntimeState state) {
+    setState(() => _state = state);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onStateChanged?.call(state);
+    });
   }
 
   void _disposeController() {
