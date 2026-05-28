@@ -68,9 +68,15 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
         return;
       }
 
-      await controller.initialize();
+      _backCameras = cameras
+          .where((camera) => camera.lensDirection == CameraLensDirection.back)
+          .toList(growable: false);
+      final initialized = await _createInitializedCamera(
+        selectedCamera,
+        preferUltraWide: true,
+      );
       if (!mounted) {
-        await controller.dispose();
+        await initialized.controller.dispose();
         return;
       }
 
@@ -157,6 +163,8 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
   void _disposeController() {
     final controller = _controller;
     _controller = null;
+    _activeCamera = null;
+    _backCameras = const [];
     controller?.dispose();
   }
 

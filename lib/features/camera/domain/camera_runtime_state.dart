@@ -8,6 +8,8 @@ enum CameraRuntimeAvailability {
   failed,
 }
 
+enum CameraZoomMode { ultraWide, normal }
+
 class CameraRuntimeState {
   const CameraRuntimeState._(
     this.availability, {

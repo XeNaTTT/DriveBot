@@ -29,11 +29,61 @@ class CameraRuntimeService {
     final cameras = await loadCameraDescriptions();
     if (cameras.isEmpty) return null;
 
-    final camera = cameras.firstWhere(
-      (camera) => camera.lensDirection == CameraLensDirection.back,
-      orElse: () => cameras.first,
-    );
+    final camera = selectInitialBackCamera(cameras) ?? cameras.first;
     return createCameraController(camera);
+  }
+
+  CameraRuntimeController createControllerFor(CameraDescription camera) {
+    return createCameraController(camera);
+  }
+
+  static CameraDescription? selectInitialBackCamera(
+    List<CameraDescription> cameras,
+  ) {
+    final backCameras = cameras
+        .where((camera) => camera.lensDirection == CameraLensDirection.back)
+        .toList(growable: false);
+    if (backCameras.isEmpty) return null;
+
+    return _firstCameraOfType(backCameras, CameraLensType.ultraWide) ??
+        _firstCameraOfType(backCameras, CameraLensType.wide) ??
+        backCameras.first;
+  }
+
+  static CameraDescription? selectNormalBackCamera(
+    List<CameraDescription> cameras,
+  ) {
+    final backCameras = cameras
+        .where((camera) => camera.lensDirection == CameraLensDirection.back)
+        .toList(growable: false);
+    if (backCameras.isEmpty) return null;
+
+    return _firstCameraOfType(backCameras, CameraLensType.wide) ??
+        backCameras.firstWhere(
+          (camera) => camera.lensType != CameraLensType.ultraWide,
+          orElse: () => backCameras.first,
+        );
+  }
+
+  static CameraDescription? selectUltraWideBackCamera(
+    List<CameraDescription> cameras,
+  ) {
+    final backCameras = cameras
+        .where((camera) => camera.lensDirection == CameraLensDirection.back)
+        .toList(growable: false);
+    if (backCameras.isEmpty) return null;
+
+    return _firstCameraOfType(backCameras, CameraLensType.ultraWide);
+  }
+
+  static CameraDescription? _firstCameraOfType(
+    List<CameraDescription> cameras,
+    CameraLensType lensType,
+  ) {
+    for (final camera in cameras) {
+      if (camera.lensType == lensType) return camera;
+    }
+    return null;
   }
 }
 
