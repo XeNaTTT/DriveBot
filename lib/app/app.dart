@@ -5,6 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../features/auth/application/auth_controller.dart';
 import '../features/auth/data/guest_auth_repository.dart';
 import '../features/auth/data/supabase_auth_repository.dart';
+import '../features/auth/domain/app_user.dart';
+import '../features/auth/domain/auth_repository.dart';
 import '../features/auth/presentation/auth_gate.dart';
 import '../features/data_sources/data/mock_data_source_registry.dart';
 import '../features/hud/presentation/hud_screen.dart';
@@ -20,9 +22,14 @@ import '../features/weather/data/open_meteo_warning_repository.dart';
 import '../shared/theme/app_theme.dart';
 
 class DriveAssistantApp extends StatefulWidget {
-  const DriveAssistantApp({required this.supabaseConfigured, super.key});
+  const DriveAssistantApp({
+    required this.supabaseConfigured,
+    this.authRepository,
+    super.key,
+  });
 
   final bool supabaseConfigured;
+  final AuthRepository? authRepository;
 
   @override
   State<DriveAssistantApp> createState() => _DriveAssistantAppState();
@@ -35,11 +42,16 @@ class _DriveAssistantAppState extends State<DriveAssistantApp> {
   void initState() {
     super.initState();
     _authController = AuthController(
-      repository: widget.supabaseConfigured
-          ? SupabaseAuthRepository(Supabase.instance.client)
-          : GuestAuthRepository(),
-      supabaseConfigured: widget.supabaseConfigured,
+      repository: widget.authRepository ?? _buildAuthRepository(),
+      isSupabaseConfigured: widget.supabaseConfigured,
     );
+  }
+
+  AuthRepository _buildAuthRepository() {
+    if (widget.supabaseConfigured) {
+      return SupabaseAuthRepository(Supabase.instance.client);
+    }
+    return GuestAuthRepository(initialUser: const AppUser.guest());
   }
 
   @override
@@ -71,7 +83,7 @@ class _DriveAssistantAppState extends State<DriveAssistantApp> {
       theme: buildAppTheme(),
       home: AuthGate(
         controller: _authController,
-        builder: (context, controller, state) => HudScreen(
+        builder: (context, controller) => HudScreen(
           hudRepository: warningRepository,
           locationRepository: locationRepository,
           dataSourceRegistry: MockDataSourceRegistry(),

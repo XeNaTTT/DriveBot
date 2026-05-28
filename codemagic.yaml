@@ -80,6 +80,8 @@ workflows:
             --release \
             --build-name=1.0.$PROJECT_BUILD_NUMBER \
             --build-number=$PROJECT_BUILD_NUMBER \
+            --dart-define=SUPABASE_URL=$SUPABASE_URL \
+            --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY \
             --export-options-plist=/Users/builder/export_options.plist
 
     artifacts:

@@ -3,11 +3,8 @@ import 'dart:async';
 import '../domain/app_user.dart';
 import '../domain/auth_repository.dart';
 
-class GuestAuthRepository implements AuthRepository {
-  GuestAuthRepository({bool startAsGuest = true}) {
-    _currentUser = startAsGuest ? const AppUser.guest() : null;
-    _controller.add(_currentUser);
-  }
+final class GuestAuthRepository implements AuthRepository {
+  GuestAuthRepository({AppUser? initialUser}) : _currentUser = initialUser;
 
   final StreamController<AppUser?> _controller =
       StreamController<AppUser?>.broadcast();
@@ -27,18 +24,29 @@ class GuestAuthRepository implements AuthRepository {
   }
 
   @override
-  Future<AppUser> signIn({required String email, required String password}) =>
-      continueAsGuest();
-
-  @override
-  Future<AppUser> signUp({required String email, required String password}) =>
-      continueAsGuest();
+  Future<void> ensureProfileAndSettings(AppUser user) async {}
 
   @override
   Future<void> sendPasswordResetEmail(String email) async {}
 
   @override
+  Future<AppUser> signInWithEmailPassword({
+    required String email,
+    required String password,
+  }) async =>
+      continueAsGuest();
+
+  @override
   Future<void> signOut() async => _setUser(null);
+
+  @override
+  Future<AppUser> signUpWithEmailPassword({
+    required String email,
+    required String password,
+  }) =>
+      continueAsGuest();
+
+  Future<void> dispose() => _controller.close();
 
   void _setUser(AppUser? user) {
     _currentUser = user;
