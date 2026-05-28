@@ -56,8 +56,9 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
       return;
     }
 
+    CameraRuntimeController? controller;
     try {
-      final controller =
+      controller =
           await widget.cameraRuntimeService.createBackCameraController();
       if (!mounted) {
         await controller?.dispose();
@@ -68,24 +69,13 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
         return;
       }
 
-      _backCameras = cameras
-          .where((camera) => camera.lensDirection == CameraLensDirection.back)
-          .toList(growable: false);
-      final initialized = await _createInitializedCamera(
-        selectedCamera,
-        preferUltraWide: true,
-      );
+      await controller.initialize();
       if (!mounted) {
-        await initialized.controller.dispose();
+        await controller.dispose();
         return;
       }
 
-      final minZoom = await controller.getMinZoomLevel();
-      final maxZoom = await controller.getMaxZoomLevel();
-      final zoomProfile = CameraZoomProfile.fromBounds(
-        minZoom: minZoom,
-        maxZoom: maxZoom,
-      );
+      final zoomProfile = await _createInitialZoomProfile(controller);
       await controller.setZoomLevel(zoomProfile.defaultZoom);
       if (!mounted) {
         await controller.dispose();
@@ -98,11 +88,25 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
         minZoom: zoomProfile.minZoom,
         maxZoom: zoomProfile.maxZoom,
       ));
+    } on CameraException {
+      await controller?.dispose();
+      if (mounted) {
+        _setCameraState(const CameraRuntimeState.failed());
+      }
     } catch (_) {
+      await controller?.dispose();
       if (mounted) {
         _setCameraState(const CameraRuntimeState.failed());
       }
     }
+  }
+
+  Future<CameraZoomProfile> _createInitialZoomProfile(
+    CameraRuntimeController controller,
+  ) async {
+    final minZoom = await controller.getMinZoomLevel();
+    final maxZoom = await controller.getMaxZoomLevel();
+    return CameraZoomProfile.fromBounds(minZoom: minZoom, maxZoom: maxZoom);
   }
 
   Future<void> _toggleZoom() async {
@@ -163,8 +167,6 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
   void _disposeController() {
     final controller = _controller;
     _controller = null;
-    _activeCamera = null;
-    _backCameras = const [];
     controller?.dispose();
   }
 
