@@ -1,5 +1,3 @@
-import 'package:camera/camera.dart';
-
 import '../../location/domain/sensor_permission_status.dart';
 
 enum CameraRuntimeAvailability {
@@ -22,9 +20,6 @@ class CameraRuntimeState {
     this.minZoom,
     this.maxZoom,
     this.isSwitchingZoom = false,
-    this.supportsUltraWide = false,
-    this.currentZoomMode = CameraZoomMode.normal,
-    this.lensType = CameraLensType.unknown,
   });
 
   const CameraRuntimeState.initializing()
@@ -53,9 +48,6 @@ class CameraRuntimeState {
     required double currentZoomLevel,
     required double minZoom,
     required double maxZoom,
-    required bool supportsUltraWide,
-    CameraZoomMode currentZoomMode = CameraZoomMode.normal,
-    CameraLensType lensType = CameraLensType.unknown,
     bool isSwitchingZoom = false,
   }) : this._(
           CameraRuntimeAvailability.ready,
@@ -64,9 +56,6 @@ class CameraRuntimeState {
           currentZoomLevel: currentZoomLevel,
           minZoom: minZoom,
           maxZoom: maxZoom,
-          supportsUltraWide: supportsUltraWide,
-          currentZoomMode: currentZoomMode,
-          lensType: lensType,
           isSwitchingZoom: isSwitchingZoom,
         );
 
@@ -86,32 +75,24 @@ class CameraRuntimeState {
   final double? minZoom;
   final double? maxZoom;
   final bool isSwitchingZoom;
-  final bool supportsUltraWide;
-  final CameraZoomMode currentZoomMode;
-  final CameraLensType lensType;
 
   bool get shouldUseFallback =>
       availability != CameraRuntimeAvailability.ready &&
       availability != CameraRuntimeAvailability.initializing;
 
-  String get currentZoomLabel => switch (currentZoomMode) {
-        CameraZoomMode.ultraWide => '0.5x',
-        CameraZoomMode.normal => '1x',
-      };
+  bool get supportsUltraWide => (minZoom ?? 1) <= CameraZoomProfile.ultraWide;
+
+  String get currentZoomLabel =>
+      (currentZoomLevel ?? 1) < CameraZoomProfile.normal ? '0.5x' : '1x';
 
   CameraRuntimeState copyWithZoom({
     required double currentZoomLevel,
     bool? isSwitchingZoom,
-    CameraZoomMode? currentZoomMode,
-    CameraLensType? lensType,
   }) {
     return CameraRuntimeState.ready(
       currentZoomLevel: currentZoomLevel,
       minZoom: minZoom ?? CameraZoomProfile.normal,
       maxZoom: maxZoom ?? CameraZoomProfile.normal,
-      supportsUltraWide: supportsUltraWide,
-      currentZoomMode: currentZoomMode ?? this.currentZoomMode,
-      lensType: lensType ?? this.lensType,
       isSwitchingZoom: isSwitchingZoom ?? this.isSwitchingZoom,
     );
   }
@@ -122,8 +103,6 @@ class CameraZoomProfile {
     required this.minZoom,
     required this.maxZoom,
     required this.defaultZoom,
-    required this.defaultZoomMode,
-    required this.supportsUltraWide,
   });
 
   static const ultraWide = 0.5;
@@ -132,33 +111,23 @@ class CameraZoomProfile {
   final double minZoom;
   final double maxZoom;
   final double defaultZoom;
-  final CameraZoomMode defaultZoomMode;
-  final bool supportsUltraWide;
+
+  bool get supportsUltraWide => minZoom <= ultraWide;
 
   static CameraZoomProfile fromBounds({
     required double minZoom,
     required double maxZoom,
-    bool hasUltraWideLens = false,
-    bool preferUltraWide = true,
   }) {
     final safeMin = minZoom <= maxZoom ? minZoom : maxZoom;
     final safeMax = maxZoom >= minZoom ? maxZoom : minZoom;
-    final supportsUltraWideZoom = safeMin <= ultraWide;
-    final supportsUltraWide = hasUltraWideLens || supportsUltraWideZoom;
-    final useUltraWide = preferUltraWide && supportsUltraWide;
-    final defaultZoom = useUltraWide
-        ? (hasUltraWideLens
-            ? clamp(normal, safeMin, safeMax)
-            : clamp(ultraWide, safeMin, safeMax))
-        : clamp(normal, safeMin, safeMax);
+    final defaultZoom = safeMin <= ultraWide
+        ? ultraWide
+        : (safeMin <= normal && safeMax >= normal ? normal : safeMin);
 
     return CameraZoomProfile(
       minZoom: safeMin,
       maxZoom: safeMax,
-      defaultZoom: defaultZoom,
-      defaultZoomMode:
-          useUltraWide ? CameraZoomMode.ultraWide : CameraZoomMode.normal,
-      supportsUltraWide: supportsUltraWide,
+      defaultZoom: clamp(defaultZoom, safeMin, safeMax),
     );
   }
 
@@ -166,18 +135,8 @@ class CameraZoomProfile {
     return requestedZoom.clamp(minZoom, maxZoom).toDouble();
   }
 
-  double zoomForMode(CameraZoomMode mode, {required bool usesUltraWideLens}) {
-    return switch (mode) {
-      CameraZoomMode.ultraWide => usesUltraWideLens
-          ? clamp(normal, minZoom, maxZoom)
-          : clamp(ultraWide, minZoom, maxZoom),
-      CameraZoomMode.normal => clamp(normal, minZoom, maxZoom),
-    };
-  }
-
-  CameraZoomMode toggledMode(CameraZoomMode currentMode) {
-    return currentMode == CameraZoomMode.ultraWide
-        ? CameraZoomMode.normal
-        : CameraZoomMode.ultraWide;
+  double toggleTarget(double currentZoom) {
+    final requested = currentZoom < normal ? normal : ultraWide;
+    return clamp(requested, minZoom, maxZoom);
   }
 }

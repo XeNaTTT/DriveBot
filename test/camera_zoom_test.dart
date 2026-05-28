@@ -83,40 +83,6 @@ void main() {
       expect(find.byKey(const Key('camera-zoom-toggle')), findsNothing);
     });
 
-    testWidgets('selects physical ultra-wide lens by default on iPhone',
-        (tester) async {
-      final ultraWide = _FakeCameraRuntimeController(minZoom: 1, maxZoom: 6);
-      final wide = _FakeCameraRuntimeController(minZoom: 1, maxZoom: 6);
-
-      await tester.pumpWidget(_buildMultiLensCameraHud(
-        ultraWideController: ultraWide,
-        wideController: wide,
-      ));
-      await tester.pumpAndSettle();
-
-      expect(ultraWide.zoomLevels, [1]);
-      expect(wide.zoomLevels, isEmpty);
-      expect(find.text('0.5x'), findsOneWidget);
-    });
-
-    testWidgets('toggles physical ultra-wide lens to wide lens',
-        (tester) async {
-      final ultraWide = _FakeCameraRuntimeController(minZoom: 1, maxZoom: 6);
-      final wide = _FakeCameraRuntimeController(minZoom: 1, maxZoom: 6);
-
-      await tester.pumpWidget(_buildMultiLensCameraHud(
-        ultraWideController: ultraWide,
-        wideController: wide,
-      ));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('camera-zoom-toggle')));
-      await tester.pumpAndSettle();
-
-      expect(ultraWide.zoomLevels, [1]);
-      expect(wide.zoomLevels, [1]);
-      expect(find.text('1x'), findsOneWidget);
-    });
-
     testWidgets('exposes German zoom toggle semantics label', (tester) async {
       final semantics = tester.ensureSemantics();
       final controller = _FakeCameraRuntimeController(minZoom: 0.5, maxZoom: 6);
@@ -149,42 +115,6 @@ Widget _buildCameraHud(_FakeCameraRuntimeController? controller) {
                 ),
               ],
         createCameraController: (_) => controller!,
-      ),
-    ),
-  );
-}
-
-Widget _buildMultiLensCameraHud({
-  required _FakeCameraRuntimeController ultraWideController,
-  required _FakeCameraRuntimeController wideController,
-}) {
-  const ultraWide = CameraDescription(
-    name: 'Back Ultra Wide Camera',
-    lensDirection: CameraLensDirection.back,
-    sensorOrientation: 90,
-    lensType: CameraLensType.ultraWide,
-  );
-  const wide = CameraDescription(
-    name: 'Back Wide Camera',
-    lensDirection: CameraLensDirection.back,
-    sensorOrientation: 90,
-    lensType: CameraLensType.wide,
-  );
-
-  return MaterialApp(
-    home: CameraHudBackground(
-      permissionStatus: const SensorPermissionStatus(
-        camera: SensorPermissionState.granted,
-        location: SensorPermissionState.granted,
-        motion: SensorPermissionState.granted,
-      ),
-      cameraRuntimeService: CameraRuntimeService(
-        loadCameraDescriptions: () async => const [wide, ultraWide],
-        createCameraController: (camera) => switch (camera.lensType) {
-          CameraLensType.ultraWide => ultraWideController,
-          CameraLensType.wide => wideController,
-          _ => wideController,
-        },
       ),
     ),
   );

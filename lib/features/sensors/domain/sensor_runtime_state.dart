@@ -35,7 +35,8 @@ class SensorRuntimeState {
   final SensorPermissionStatus permissionStatus;
   final MotionRuntimeState motionStatus;
 
-  bool get locationAvailable => locationStatus.hasLiveLocation;
+  bool get locationAvailable =>
+      locationStatus.hasLiveLocation && !locationStatus.isMock;
   bool get headingAvailable => locationStatus.hasLiveHeading;
   bool get motionAvailable => motionStatus.isAvailable;
 

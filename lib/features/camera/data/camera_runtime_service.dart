@@ -25,13 +25,6 @@ class CameraRuntimeService {
   final CameraDescriptionsLoader loadCameraDescriptions;
   final CameraControllerFactory createCameraController;
 
-  Future<List<CameraDescription>> loadBackCameras() async {
-    final cameras = await loadCameraDescriptions();
-    return cameras
-        .where((camera) => camera.lensDirection == CameraLensDirection.back)
-        .toList(growable: false);
-  }
-
   Future<CameraRuntimeController?> createBackCameraController() async {
     final cameras = await loadCameraDescriptions();
     if (cameras.isEmpty) return null;

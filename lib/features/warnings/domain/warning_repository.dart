@@ -6,5 +6,9 @@ abstract class WarningRepository {
 }
 
 abstract class WarningDataSourceStatus {
-  String get dataSourceLabel;
+  WarningDataSource get dataSource;
+
+  String get dataSourceLabel => dataSource.userFacingGermanLabel;
+
+  String get debugDataSourceLabel => dataSource.debugGermanLabel;
 }

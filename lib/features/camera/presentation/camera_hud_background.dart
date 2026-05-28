@@ -9,11 +9,13 @@ class CameraHudBackground extends StatefulWidget {
   const CameraHudBackground({
     required this.permissionStatus,
     this.cameraRuntimeService = const CameraRuntimeService(),
+    this.onStateChanged,
     super.key,
   });
 
   final SensorPermissionStatus permissionStatus;
   final CameraRuntimeService cameraRuntimeService;
+  final ValueChanged<CameraRuntimeState>? onStateChanged;
 
   @override
   State<CameraHudBackground> createState() => _CameraHudBackgroundState();
@@ -21,8 +23,6 @@ class CameraHudBackground extends StatefulWidget {
 
 class _CameraHudBackgroundState extends State<CameraHudBackground> {
   CameraRuntimeController? _controller;
-  CameraDescription? _activeCamera;
-  List<CameraDescription> _backCameras = const [];
   CameraRuntimeState _state = const CameraRuntimeState.initializing();
 
   @override
@@ -51,19 +51,20 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
   Future<void> _initializeCamera() async {
     if (widget.permissionStatus.camera != SensorPermissionState.granted) {
       if (mounted) {
-        setState(() => _state = const CameraRuntimeState.permissionDenied());
+        _setCameraState(const CameraRuntimeState.permissionDenied());
       }
       return;
     }
 
     try {
-      final cameras =
-          await widget.cameraRuntimeService.loadCameraDescriptions();
-      final selectedCamera =
-          CameraRuntimeService.selectInitialBackCamera(cameras);
-      if (!mounted) return;
-      if (selectedCamera == null) {
-        setState(() => _state = const CameraRuntimeState.unavailable());
+      final controller =
+          await widget.cameraRuntimeService.createBackCameraController();
+      if (!mounted) {
+        await controller?.dispose();
+        return;
+      }
+      if (controller == null) {
+        _setCameraState(const CameraRuntimeState.unavailable());
         return;
       }
 
@@ -79,131 +80,32 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
         return;
       }
 
-      setState(() {
-        _controller = initialized.controller;
-        _activeCamera = selectedCamera;
-        _state = initialized.state;
-      });
+      final minZoom = await controller.getMinZoomLevel();
+      final maxZoom = await controller.getMaxZoomLevel();
+      final zoomProfile = CameraZoomProfile.fromBounds(
+        minZoom: minZoom,
+        maxZoom: maxZoom,
+      );
+      await controller.setZoomLevel(zoomProfile.defaultZoom);
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+
+      _controller = controller;
+      _setCameraState(CameraRuntimeState.ready(
+        currentZoomLevel: zoomProfile.defaultZoom,
+        minZoom: zoomProfile.minZoom,
+        maxZoom: zoomProfile.maxZoom,
+      ));
     } catch (_) {
       if (mounted) {
-        setState(() => _state = const CameraRuntimeState.failed());
+        _setCameraState(const CameraRuntimeState.failed());
       }
     }
   }
 
   Future<void> _toggleZoom() async {
-    if (!_state.supportsUltraWide || _state.isSwitchingZoom) return;
-
-    final targetMode = CameraZoomProfile(
-      minZoom: _state.minZoom ?? CameraZoomProfile.normal,
-      maxZoom: _state.maxZoom ?? CameraZoomProfile.normal,
-      defaultZoom: _state.currentZoomLevel ?? CameraZoomProfile.normal,
-      defaultZoomMode: _state.currentZoomMode,
-      supportsUltraWide: _state.supportsUltraWide,
-    ).toggledMode(_state.currentZoomMode);
-
-    final targetCamera = _cameraForMode(targetMode);
-    final activeCamera = _activeCamera;
-    if (targetCamera != null && targetCamera != activeCamera) {
-      await _switchCameraLens(targetCamera, targetMode);
-      return;
-    }
-
-    await _setZoomOnActiveController(targetMode);
-  }
-
-  Future<_InitializedCamera> _createInitializedCamera(
-    CameraDescription camera, {
-    required bool preferUltraWide,
-  }) async {
-    final controller = widget.cameraRuntimeService.createControllerFor(camera);
-    await controller.initialize();
-
-    final minZoom = await controller.getMinZoomLevel();
-    final maxZoom = await controller.getMaxZoomLevel();
-    final zoomProfile = CameraZoomProfile.fromBounds(
-      minZoom: minZoom,
-      maxZoom: maxZoom,
-      hasUltraWideLens: _hasUltraWideLens,
-      preferUltraWide: preferUltraWide,
-    );
-    final mode = preferUltraWide && _isUltraWideLens(camera)
-        ? CameraZoomMode.ultraWide
-        : zoomProfile.defaultZoomMode;
-    final zoom = zoomProfile.zoomForMode(
-      mode,
-      usesUltraWideLens: _isUltraWideLens(camera),
-    );
-    await controller.setZoomLevel(zoom);
-
-    return _InitializedCamera(
-      controller: controller,
-      state: CameraRuntimeState.ready(
-        currentZoomLevel: zoom,
-        minZoom: zoomProfile.minZoom,
-        maxZoom: zoomProfile.maxZoom,
-        supportsUltraWide: zoomProfile.supportsUltraWide,
-        currentZoomMode: mode,
-        lensType: camera.lensType,
-      ),
-    );
-  }
-
-  Future<void> _switchCameraLens(
-    CameraDescription targetCamera,
-    CameraZoomMode targetMode,
-  ) async {
-    final previousState = _state;
-    setState(() => _state = previousState.copyWithZoom(
-          currentZoomLevel:
-              previousState.currentZoomLevel ?? CameraZoomProfile.normal,
-          isSwitchingZoom: true,
-        ));
-
-    CameraRuntimeController? nextController;
-    try {
-      final initialized = await _createInitializedCamera(
-        targetCamera,
-        preferUltraWide: targetMode == CameraZoomMode.ultraWide,
-      );
-      nextController = initialized.controller;
-      if (!mounted) {
-        await nextController.dispose();
-        return;
-      }
-
-      final previousController = _controller;
-      setState(() {
-        _controller = initialized.controller;
-        _activeCamera = targetCamera;
-        _state = initialized.state.copyWithZoom(
-          currentZoomLevel: initialized.state.currentZoomLevel!,
-          isSwitchingZoom: false,
-          currentZoomMode: targetMode,
-          lensType: targetCamera.lensType,
-        );
-      });
-      await previousController?.dispose();
-    } on CameraException {
-      await nextController?.dispose();
-      if (!mounted) return;
-      setState(() => _state = previousState.copyWithZoom(
-            currentZoomLevel:
-                previousState.currentZoomLevel ?? CameraZoomProfile.normal,
-            isSwitchingZoom: false,
-          ));
-    } catch (_) {
-      await nextController?.dispose();
-      if (!mounted) return;
-      setState(() => _state = previousState.copyWithZoom(
-            currentZoomLevel:
-                previousState.currentZoomLevel ?? CameraZoomProfile.normal,
-            isSwitchingZoom: false,
-          ));
-    }
-  }
-
-  Future<void> _setZoomOnActiveController(CameraZoomMode targetMode) async {
     final controller = _controller;
     final currentZoom = _state.currentZoomLevel;
     final minZoom = _state.minZoom;
@@ -211,65 +113,52 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
     if (controller == null ||
         currentZoom == null ||
         minZoom == null ||
-        maxZoom == null) {
+        maxZoom == null ||
+        !_state.supportsUltraWide ||
+        _state.isSwitchingZoom) {
       return;
     }
 
-    final previousState = _state;
-    final profile = CameraZoomProfile(
+    final previousZoom = currentZoom;
+    final targetZoom = CameraZoomProfile(
       minZoom: minZoom,
       maxZoom: maxZoom,
       defaultZoom: currentZoom,
-      defaultZoomMode: _state.currentZoomMode,
-      supportsUltraWide: _state.supportsUltraWide,
-    );
-    final targetZoom = profile.zoomForMode(
-      targetMode,
-      usesUltraWideLens: _isUltraWideLens(_activeCamera),
-    );
+    ).toggleTarget(currentZoom);
 
-    setState(() => _state = _state.copyWithZoom(
-          currentZoomLevel: currentZoom,
-          isSwitchingZoom: true,
-        ));
+    _setCameraState(_state.copyWithZoom(
+      currentZoomLevel: previousZoom,
+      isSwitchingZoom: true,
+    ));
 
     try {
       await controller.setZoomLevel(targetZoom);
       if (!mounted) return;
-      setState(() => _state = _state.copyWithZoom(
-            currentZoomLevel: targetZoom,
-            currentZoomMode: targetMode,
-            isSwitchingZoom: false,
-          ));
+      _setCameraState(_state.copyWithZoom(
+        currentZoomLevel: targetZoom,
+        isSwitchingZoom: false,
+      ));
     } on CameraException {
       if (!mounted) return;
-      setState(() => _state = previousState.copyWithZoom(
-            currentZoomLevel: previousState.currentZoomLevel!,
-            isSwitchingZoom: false,
-          ));
+      _setCameraState(_state.copyWithZoom(
+        currentZoomLevel: previousZoom,
+        isSwitchingZoom: false,
+      ));
     } catch (_) {
       if (!mounted) return;
-      setState(() => _state = previousState.copyWithZoom(
-            currentZoomLevel: previousState.currentZoomLevel!,
-            isSwitchingZoom: false,
-          ));
+      _setCameraState(_state.copyWithZoom(
+        currentZoomLevel: previousZoom,
+        isSwitchingZoom: false,
+      ));
     }
   }
 
-  CameraDescription? _cameraForMode(CameraZoomMode mode) {
-    return switch (mode) {
-      CameraZoomMode.ultraWide =>
-        CameraRuntimeService.selectUltraWideBackCamera(_backCameras),
-      CameraZoomMode.normal =>
-        CameraRuntimeService.selectNormalBackCamera(_backCameras),
-    };
+  void _setCameraState(CameraRuntimeState state) {
+    setState(() => _state = state);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onStateChanged?.call(state);
+    });
   }
-
-  bool get _hasUltraWideLens =>
-      CameraRuntimeService.selectUltraWideBackCamera(_backCameras) != null;
-
-  bool _isUltraWideLens(CameraDescription? camera) =>
-      camera?.lensType == CameraLensType.ultraWide;
 
   void _disposeController() {
     final controller = _controller;
@@ -302,13 +191,6 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
       if (isReady) _ZoomToggle(state: _state, onPressed: _toggleZoom),
     ]);
   }
-}
-
-class _InitializedCamera {
-  const _InitializedCamera({required this.controller, required this.state});
-
-  final CameraRuntimeController controller;
-  final CameraRuntimeState state;
 }
 
 class _CameraFallbackStatus extends StatelessWidget {
