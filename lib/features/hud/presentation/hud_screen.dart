@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../ar/domain/ar_projection_mapper.dart';
+import '../../ar/presentation/ar_marker_layer.dart';
 import '../../camera/presentation/camera_hud_background.dart';
 import '../../data_sources/domain/data_source_registry.dart';
 import '../../location/domain/location_repository.dart';
@@ -8,7 +10,6 @@ import '../../location/domain/permission_repository.dart';
 import '../../location/domain/sensor_permission_status.dart';
 import '../../warnings/domain/warning_repository.dart';
 import '../../warnings/domain/warning_request.dart';
-import '../domain/bearing_to_ar_position_mapper.dart';
 import '../domain/hud_repository.dart';
 import '../domain/hud_warning_item.dart';
 
@@ -20,7 +21,7 @@ class HudScreen extends StatefulWidget {
     required this.locationRepository,
     required this.dataSourceRegistry,
     required this.permissionRepository,
-    this.arPositionMapper = const BearingToArPositionMapper(),
+    this.projectionMapper = const ArProjectionMapper(),
     this.cameraLayerBuilder,
     super.key,
   });
@@ -29,7 +30,7 @@ class HudScreen extends StatefulWidget {
   final LocationRepository locationRepository;
   final DataSourceRegistry dataSourceRegistry;
   final PermissionRepository permissionRepository;
-  final BearingToArPositionMapper arPositionMapper;
+  final ArProjectionMapper projectionMapper;
   final CameraLayerBuilder? cameraLayerBuilder;
 
   @override
@@ -37,357 +38,76 @@ class HudScreen extends StatefulWidget {
 }
 
 class _HudScreenState extends State<HudScreen> {
-  HudWarningItem? _selectedWarning;
-
   @override
   void initState() {
     super.initState();
-    _refreshLiveWarnings();
-  }
-
-  @override
-  void didUpdateWidget(covariant HudScreen oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.hudRepository != widget.hudRepository) {
-      _refreshLiveWarnings();
-    }
-  }
-
-  Future<void> _refreshLiveWarnings() async {
     final repository = widget.hudRepository;
-    if (repository is! WarningRepository) return;
-
-    await (repository as WarningRepository).getWarnings(
-      const WarningRequest.fallback(),
-    );
-    if (mounted) setState(() {});
+    if (repository is WarningRepository) {
+      (repository as WarningRepository)
+          .getWarnings(const WarningRequest.fallback());
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final warnings = widget.hudRepository.getNearbyWarnings();
+    final warnings = [...widget.hudRepository.getNearbyWarnings()]
+      ..sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
 
     return ValueListenableBuilder(
       valueListenable: widget.locationRepository.locationStatusListenable,
       builder: (context, location, _) => ValueListenableBuilder(
         valueListenable: widget.permissionRepository.permissionStatusListenable,
         builder: (context, permissions, __) {
-          final prioritizedWarnings = _prioritizeWarnings(warnings);
-          final primaryWarning =
-              prioritizedWarnings.isNotEmpty ? prioritizedWarnings.first : null;
-          final warningDataLabel = _warningDataLabel(widget.hudRepository);
+          final markers = widget.projectionMapper.project(
+            warnings: warnings,
+            userHeadingDegrees: location.headingDegrees,
+          );
+          final primary = markers.isNotEmpty
+              ? markers.first.warning
+              : (warnings.isEmpty ? null : warnings.first);
+          final moreCount = markers.length > 1 ? markers.length - 1 : 0;
+          final source = widget.hudRepository is WarningDataSourceStatus &&
+                  (widget.hudRepository as WarningDataSourceStatus)
+                      .dataSourceLabel
+                      .contains('Live')
+              ? 'Live'
+              : 'Fallback';
 
           return Scaffold(
-            body: LayoutBuilder(
-              builder: (context, constraints) {
-                final horizontalPadding =
-                    constraints.maxWidth < 390 ? 12.0 : 16.0;
-                return Stack(
-                  children: [
-                    widget.cameraLayerBuilder?.call(permissions) ??
-                        CameraHudBackground(permissionStatus: permissions),
-                    ..._buildArMarkers(
-                      constraints: constraints,
-                      location: location,
-                      warnings: prioritizedWarnings,
-                    ),
-                    SafeArea(
-                      child: Semantics(
-                        label: 'Heads-up driving dashboard',
-                        child: Padding(
-                          key: const Key('hud-root'),
-                          padding: EdgeInsets.symmetric(
-                              horizontal: horizontalPadding),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              _HudStatusBar(status: location),
-                              const SizedBox(height: 10),
-                              _HudPermissionFallback(status: permissions),
-                              const SizedBox(height: 10),
-                              _HudCenterOverlay(
-                                warnings: warnings,
-                                status: location,
-                                priorityWarning: primaryWarning,
-                                dataSourceLabel: warningDataLabel,
-                              ),
-                              const SizedBox(height: 10),
-                              Expanded(
-                                child: _HudWarningList(
-                                  warnings: warnings,
-                                  selectedWarning: _selectedWarning,
-                                  onWarningTap: (warning) {
-                                    setState(() => _selectedWarning = warning);
-                                  },
-                                ),
-                              ),
-                            ],
+            body: Stack(children: [
+              widget.cameraLayerBuilder?.call(permissions) ??
+                  CameraHudBackground(permissionStatus: permissions),
+              ArMarkerLayer(markers: markers),
+              SafeArea(
+                child: Padding(
+                  key: const Key('hud-root'),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Column(children: [
+                    _StatusBar(status: location),
+                    const SizedBox(height: 8),
+                    if (!permissions.allGranted) const _FallbackPill(),
+                    const Spacer(),
+                    if (moreCount > 0)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Container(
+                          key: const Key('overflow-warning-count'),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.45),
+                            borderRadius: BorderRadius.circular(999),
                           ),
+                          child: Text('+$moreCount more'),
                         ),
                       ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  List<Widget> _buildArMarkers({
-    required BoxConstraints constraints,
-    required LocationStatus location,
-    required List<HudWarningItem> warnings,
-  }) {
-    final markerWidth = constraints.maxWidth < 390 ? 120.0 : 138.0;
-    return warnings.take(3).map((warning) {
-      final arPosition = widget.arPositionMapper.map(
-        userHeadingDegrees: location.headingDegrees,
-        warningBearingDegrees: warning.bearingDegrees,
-        warningDistanceMeters: warning.distanceMeters,
-      );
-      final leftFactor = ((arPosition.horizontalAlignment + 1) / 2).clamp(
-        0.08,
-        0.92,
-      );
-      final top = (130 + ((1 - arPosition.verticalBias) * 180)).clamp(
-        120.0,
-        constraints.maxHeight - 200,
-      );
-
-      return Positioned(
-        left: (leftFactor * constraints.maxWidth) - (markerWidth / 2),
-        top: top,
-        child: _ArWarningMarker(
-          warning: warning,
-          emphasized: warning == warnings.first,
-          width: markerWidth,
-        ),
-      );
-    }).toList();
-  }
-
-  List<HudWarningItem> _prioritizeWarnings(List<HudWarningItem> warnings) {
-    final sorted = [...warnings]..sort((a, b) {
-        final priorityCompare = _warningPriority(
-          a.type,
-        ).compareTo(_warningPriority(b.type));
-        if (priorityCompare != 0) {
-          return priorityCompare;
-        }
-        return a.distanceMeters.compareTo(b.distanceMeters);
-      });
-    return sorted;
-  }
-
-  int _warningPriority(WarningType type) => switch (type) {
-        WarningType.speedCamera => 0,
-        WarningType.roadwork => 1,
-        WarningType.speedLimit => 2,
-        WarningType.weather => 3,
-        WarningType.chargingStation => 4,
-      };
-
-  String _warningDataLabel(HudRepository repository) {
-    if (repository is WarningDataSourceStatus) {
-      return (repository as WarningDataSourceStatus).dataSourceLabel;
-    }
-    return 'Fallback data';
-  }
-}
-
-class _HudStatusBar extends StatelessWidget {
-  const _HudStatusBar({required this.status});
-
-  final LocationStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Semantics(
-      key: const Key('hud-status-bar'),
-      container: true,
-      label: 'Current speed, heading, and GPS status',
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.35),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0x3357E3FF)),
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final compact = constraints.maxWidth < 420;
-            return Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                _StatusChip(
-                  label: 'Speed',
-                  value: '${status.speedKph} km/h',
-                  compact: compact,
-                  theme: theme,
-                ),
-                _StatusChip(
-                  label: 'Heading',
-                  value:
-                      '${status.headingDegrees} deg ${status.cardinalHeading}',
-                  compact: compact,
-                  theme: theme,
-                ),
-                _StatusChip(
-                  label: 'GPS',
-                  value: status.gpsFixStatus.name.toUpperCase(),
-                  compact: compact,
-                  theme: theme,
-                ),
-                _StatusChip(
-                  label: 'Mode',
-                  value: status.isMock ? 'Fallback' : 'Live sensors',
-                  compact: compact,
-                  theme: theme,
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({
-    required this.label,
-    required this.value,
-    required this.compact,
-    required this.theme,
-  });
-  final String label;
-  final String value;
-  final bool compact;
-  final ThemeData theme;
-
-  @override
-  Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: BoxConstraints(minWidth: compact ? 92 : 120),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label, style: theme.textTheme.labelMedium),
-          Text(
-            value,
-            style: theme.textTheme.titleMedium,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HudPermissionFallback extends StatelessWidget {
-  const _HudPermissionFallback({required this.status});
-
-  final SensorPermissionStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    if (status.allGranted) return const SizedBox.shrink();
-
-    return Semantics(
-      key: const Key('permission-fallback'),
-      label: 'Permission fallback mode is active',
-      child: Material(
-        color: const Color(0xFF3A1700),
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onLongPress: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Grant camera, location, and motion for full AR guidance.',
+                    const SizedBox(height: 8),
+                    _PrimaryCard(warning: primary, source: source),
+                    const SizedBox(height: 8),
+                  ]),
                 ),
               ),
-            );
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0x99FFA94D)),
-            ),
-            child: Text(
-              'Fallback active: grant camera, location, and motion for live AR guidance.',
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _HudCenterOverlay extends StatelessWidget {
-  const _HudCenterOverlay({
-    required this.warnings,
-    required this.status,
-    required this.priorityWarning,
-    required this.dataSourceLabel,
-  });
-
-  final List<HudWarningItem> warnings;
-  final LocationStatus status;
-  final HudWarningItem? priorityWarning;
-  final String dataSourceLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final highestSeverity = warnings.isEmpty
-        ? 0
-        : warnings.map((w) => w.severity).reduce((a, b) => a > b ? a : b);
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        color: Colors.black.withValues(alpha: 0.45),
-        border: Border.all(color: const Color(0x6657E3FF), width: 1.2),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final useVerticalLayout = constraints.maxWidth < 480;
-          final riskText = Text(
-            'Risk $highestSeverity/5',
-            style: Theme.of(context).textTheme.titleLarge,
-          );
-          final summary = _OverlaySummary(
-            warnings: warnings,
-            status: status,
-            priorityWarning: priorityWarning,
-            dataSourceLabel: dataSourceLabel,
-          );
-          if (useVerticalLayout) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [summary, const SizedBox(height: 8), riskText],
-            );
-          }
-          return Row(
-            children: [
-              Expanded(child: summary),
-              const SizedBox(width: 12),
-              FittedBox(child: riskText),
-            ],
+            ]),
           );
         },
       ),
@@ -395,233 +115,75 @@ class _HudCenterOverlay extends StatelessWidget {
   }
 }
 
-class _OverlaySummary extends StatelessWidget {
-  const _OverlaySummary({
-    required this.warnings,
-    required this.status,
-    required this.priorityWarning,
-    required this.dataSourceLabel,
-  });
-  final List<HudWarningItem> warnings;
+class _StatusBar extends StatelessWidget {
+  const _StatusBar({required this.status});
   final LocationStatus status;
-  final HudWarningItem? priorityWarning;
-  final String dataSourceLabel;
-
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('DriveBot HUD', style: Theme.of(context).textTheme.titleLarge),
-        Text(
-          'Active alerts: ${warnings.length}',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-        Text(
-          priorityWarning == null
-              ? 'Primary: no active warnings'
-              : 'Primary: ${priorityWarning!.title} (${priorityWarning!.distanceMeters} m)',
-          key: const Key('primary-warning-title'),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        Text(
-          status.isSpeedEstimatedFromGps
-              ? 'Speed: live sensors'
-              : 'Speed: fallback estimate',
-          style: Theme.of(context).textTheme.bodySmall,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        Text(
-          'Data: $dataSourceLabel',
-          key: const Key('warning-data-source-label'),
-          style: Theme.of(context).textTheme.bodySmall,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ],
-    );
-  }
-}
-
-class _HudWarningList extends StatelessWidget {
-  const _HudWarningList({
-    required this.warnings,
-    required this.selectedWarning,
-    required this.onWarningTap,
-  });
-
-  final List<HudWarningItem> warnings;
-  final HudWarningItem? selectedWarning;
-  final ValueChanged<HudWarningItem> onWarningTap;
-
-  @override
-  Widget build(BuildContext context) {
-    if (warnings.isEmpty) {
-      return const _HudEmptyState();
-    }
-    return ListView.builder(
-      padding: EdgeInsets.zero,
-      itemCount: warnings.length,
-      itemBuilder: (context, index) {
-        final item = warnings[index];
-        return _HudWarningCard(
-          item: item,
-          highlighted: selectedWarning == item || index == 0,
-          onTap: () => onWarningTap(item),
-          key: Key('warning-card-${item.type.name}'),
-        );
-      },
-    );
-  }
-}
-
-class _HudEmptyState extends StatelessWidget {
-  const _HudEmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Semantics(
-        key: const Key('empty-warning-state'),
-        label: 'No active warnings',
-        child: Text(
-          'No active alerts nearby.',
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-      ),
-    );
-  }
-}
-
-class _ArWarningMarker extends StatelessWidget {
-  const _ArWarningMarker({
-    required this.warning,
-    required this.emphasized,
-    required this.width,
-  });
-
-  final HudWarningItem warning;
-  final bool emphasized;
-  final double width;
-
-  @override
-  Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: BoxConstraints.tightFor(width: width),
-      child: Container(
+  Widget build(BuildContext context) => Container(
+        key: const Key('hud-status-bar'),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.62),
+          color: Colors.black.withValues(alpha: 0.35),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: _colorForWarning(warning.type),
-            width: emphasized ? 2 : 1.2,
-          ),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              warning.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${warning.distanceMeters} m',
-              style: const TextStyle(fontSize: 12),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Color _colorForWarning(WarningType type) => switch (type) {
-        WarningType.speedCamera => const Color(0xFFFF7B72),
-        WarningType.speedLimit => const Color(0xFFFFC857),
-        WarningType.roadwork => const Color(0xFFFFA94D),
-        WarningType.weather => const Color(0xFF74C0FC),
-        WarningType.chargingStation => const Color(0xFF63E6BE),
-      };
+        child:
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Text('${status.speedKph} km/h'),
+          Text('${status.headingDegrees}° ${status.cardinalHeading}'),
+          Text(status.isMock ? 'Fallback' : 'Live'),
+        ]),
+      );
 }
 
-class _HudWarningCard extends StatelessWidget {
-  const _HudWarningCard({
-    required this.item,
-    required this.highlighted,
-    required this.onTap,
-    super.key,
-  });
-
-  final HudWarningItem item;
-  final bool highlighted;
-  final VoidCallback onTap;
-
+class _FallbackPill extends StatelessWidget {
+  const _FallbackPill();
   @override
-  Widget build(BuildContext context) {
-    final color = switch (item.type) {
-      WarningType.speedCamera => const Color(0xFFFF7B72),
-      WarningType.speedLimit => const Color(0xFFFFC857),
-      WarningType.roadwork => const Color(0xFFFFA94D),
-      WarningType.weather => const Color(0xFF74C0FC),
-      WarningType.chargingStation => const Color(0xFF63E6BE),
-    };
+  Widget build(BuildContext context) => Container(
+        key: const Key('permission-fallback'),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.45),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: const Color(0x99FFA94D)),
+        ),
+        child: const Text(
+          'Fallback mode · grant camera/location/motion for live AR',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      );
+}
 
-    return Semantics(
-      label: '${item.title}. ${item.distanceMeters} meters away.',
-      child: Card(
-        color: Colors.black.withValues(alpha: highlighted ? 0.65 : 0.5),
-        margin: const EdgeInsets.only(bottom: 10),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(
-            color: color.withValues(alpha: highlighted ? 0.95 : 0.6),
-            width: highlighted ? 2 : 1,
+class _PrimaryCard extends StatelessWidget {
+  const _PrimaryCard({required this.warning, required this.source});
+  final HudWarningItem? warning;
+  final String source;
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        key: const Key('primary-warning-card'),
+        width: double.infinity,
+        height: 84,
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0x6657E3FF)),
+          ),
+          child: FittedBox(
+            alignment: Alignment.centerLeft,
+            fit: BoxFit.scaleDown,
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(warning?.title ?? 'No active warnings',
+                  key: const Key('primary-warning-title')),
+              Text(warning == null
+                  ? 'No instruction'
+                  : '${warning!.distanceMeters} m · ${warning!.detail} · S${warning!.severity}'),
+              Text('Source: $source',
+                  key: const Key('warning-data-source-label')),
+            ]),
           ),
         ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                Icon(Icons.warning_amber_rounded, color: color, size: 30),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        item.detail,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${item.distanceMeters} m',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+      );
 }
