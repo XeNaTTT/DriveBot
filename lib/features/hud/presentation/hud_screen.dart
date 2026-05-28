@@ -26,6 +26,7 @@ class HudScreen extends StatefulWidget {
     required this.permissionRepository,
     this.projectionMapper = const ArProjectionMapper(),
     this.cameraLayerBuilder,
+    this.accountEntryPoint,
     super.key,
   });
 
@@ -35,6 +36,7 @@ class HudScreen extends StatefulWidget {
   final PermissionRepository permissionRepository;
   final ArProjectionMapper projectionMapper;
   final CameraLayerBuilder? cameraLayerBuilder;
+  final Widget? accountEntryPoint;
 
   @override
   State<HudScreen> createState() => _HudScreenState();
@@ -111,7 +113,18 @@ class _HudScreenState extends State<HudScreen> {
                   key: const Key('hud-root'),
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Column(children: [
-                    _StatusBar(status: location, runtime: runtime),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                            child:
+                                _StatusBar(status: location, runtime: runtime)),
+                        if (widget.accountEntryPoint != null) ...[
+                          const SizedBox(width: 8),
+                          widget.accountEntryPoint!,
+                        ],
+                      ],
+                    ),
                     if (kDebugMode) ...[
                       const SizedBox(height: 8),
                       _DebugSourceIndicator(
