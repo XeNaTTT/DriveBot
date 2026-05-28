@@ -28,6 +28,7 @@ This repository currently contains a **mock-data MVP** and architecture foundati
 - `lib/features/data_sources` — source metadata abstractions + mock registry
 - `lib/shared` — reusable theme, models, widgets/utilities
 - `docs` — product and data planning docs
+- `supabase` — local database migrations and seed data for future account-backed features
 
 ## Setup
 
@@ -44,6 +45,21 @@ flutter pub get
 flutter analyze
 flutter test
 flutter run
+```
+
+### Supabase Local Schema
+
+The MVP remains mock-data first in the Flutter app, but the repository includes a
+Supabase migration for future account-backed features:
+
+- `profiles` stores UI-agnostic authenticated user profile metadata.
+- `user_settings` stores safety-focused HUD preferences such as enabled warning
+  categories and high-contrast mode.
+
+Apply the schema with the Supabase CLI when local Supabase is configured:
+
+```bash
+supabase db reset
 ```
 
 If `flutter` is not available in your PATH, install Flutter and run `flutter doctor` first.
