@@ -20,7 +20,7 @@ class CameraHudBackground extends StatefulWidget {
 }
 
 class _CameraHudBackgroundState extends State<CameraHudBackground> {
-  CameraController? _controller;
+  CameraRuntimeController? _controller;
   CameraRuntimeState _state = const CameraRuntimeState.initializing();
 
   @override
@@ -72,14 +72,78 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
         return;
       }
 
+      final minZoom = await controller.getMinZoomLevel();
+      final maxZoom = await controller.getMaxZoomLevel();
+      final zoomProfile = CameraZoomProfile.fromBounds(
+        minZoom: minZoom,
+        maxZoom: maxZoom,
+      );
+      await controller.setZoomLevel(zoomProfile.defaultZoom);
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+
       setState(() {
         _controller = controller;
-        _state = const CameraRuntimeState.ready();
+        _state = CameraRuntimeState.ready(
+          currentZoomLevel: zoomProfile.defaultZoom,
+          minZoom: zoomProfile.minZoom,
+          maxZoom: zoomProfile.maxZoom,
+        );
       });
     } catch (_) {
       if (mounted) {
         setState(() => _state = const CameraRuntimeState.failed());
       }
+    }
+  }
+
+  Future<void> _toggleZoom() async {
+    final controller = _controller;
+    final currentZoom = _state.currentZoomLevel;
+    final minZoom = _state.minZoom;
+    final maxZoom = _state.maxZoom;
+    if (controller == null ||
+        currentZoom == null ||
+        minZoom == null ||
+        maxZoom == null ||
+        !_state.supportsUltraWide ||
+        _state.isSwitchingZoom) {
+      return;
+    }
+
+    final previousZoom = currentZoom;
+    final targetZoom = CameraZoomProfile(
+      minZoom: minZoom,
+      maxZoom: maxZoom,
+      defaultZoom: currentZoom,
+    ).toggleTarget(currentZoom);
+
+    setState(() => _state = _state.copyWithZoom(
+          currentZoomLevel: previousZoom,
+          isSwitchingZoom: true,
+        ));
+
+    try {
+      await controller.setZoomLevel(targetZoom);
+      if (!mounted) return;
+      setState(() => _state = _state.copyWithZoom(
+            currentZoomLevel: targetZoom,
+            isSwitchingZoom: false,
+          ));
+    } on CameraException {
+      if (!mounted) return;
+      setState(() => _state = _state.copyWithZoom(
+            currentZoomLevel: previousZoom,
+            isSwitchingZoom: false,
+          ));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _state = _state.copyWithZoom(
+            currentZoomLevel: previousZoom,
+            isSwitchingZoom: false,
+          ));
     }
   }
 
@@ -92,18 +156,57 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
-    if (_state.availability == CameraRuntimeAvailability.ready &&
+    final isReady = _state.availability == CameraRuntimeAvailability.ready &&
         controller != null &&
-        controller.value.isInitialized) {
-      return KeyedSubtree(
-        key: const Key('camera-preview-layer'),
-        child: _CameraPreviewBackground(controller: controller),
-      );
-    }
+        controller.isInitialized;
 
-    return const KeyedSubtree(
-      key: Key('mock-background-layer'),
-      child: CameraFallbackHudBackground(),
+    return Stack(children: [
+      if (isReady)
+        KeyedSubtree(
+          key: const Key('camera-preview-layer'),
+          child: controller.buildPreview(),
+        )
+      else
+        const KeyedSubtree(
+          key: Key('mock-background-layer'),
+          child: CameraFallbackHudBackground(),
+        ),
+      if (!isReady && _state.shouldUseFallback)
+        _CameraFallbackStatus(state: _state),
+      if (isReady) _ZoomToggle(state: _state, onPressed: _toggleZoom),
+    ]);
+  }
+}
+
+class _CameraFallbackStatus extends StatelessWidget {
+  const _CameraFallbackStatus({required this.state});
+
+  final CameraRuntimeState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = switch (state.availability) {
+      CameraRuntimeAvailability.permissionDenied => 'Kamerazugriff verweigert',
+      CameraRuntimeAvailability.unavailable ||
+      CameraRuntimeAvailability.failed =>
+        'Kamera nicht verfügbar',
+      _ => 'Fallback',
+    };
+
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.center,
+        child: Container(
+          key: const Key('camera-fallback-status'),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: const Color(0x99FFA94D)),
+          ),
+          child: Text(label),
+        ),
+      ),
     );
   }
 }
@@ -126,22 +229,43 @@ class CameraFallbackHudBackground extends StatelessWidget {
   }
 }
 
-class _CameraPreviewBackground extends StatelessWidget {
-  const _CameraPreviewBackground({required this.controller});
+class _ZoomToggle extends StatelessWidget {
+  const _ZoomToggle({required this.state, required this.onPressed});
 
-  final CameraController controller;
+  final CameraRuntimeState state;
+  final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: Colors.black,
-      child: SizedBox.expand(
-        child: FittedBox(
-          fit: BoxFit.cover,
-          child: SizedBox(
-            width: controller.value.previewSize?.height ?? 1,
-            height: controller.value.previewSize?.width ?? 1,
-            child: CameraPreview(controller),
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: Padding(
+          padding: const EdgeInsets.only(right: 12),
+          child: Semantics(
+            label: 'Kamera-Zoom wechseln',
+            button: true,
+            enabled: state.supportsUltraWide,
+            child: FilledButton.tonal(
+              key: const Key('camera-zoom-toggle'),
+              onPressed: state.supportsUltraWide && !state.isSwitchingZoom
+                  ? onPressed
+                  : null,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(56, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                visualDensity: VisualDensity.compact,
+                shape: const StadiumBorder(),
+                backgroundColor: Colors.black.withValues(alpha: 0.55),
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: Colors.black.withValues(alpha: 0.35),
+                disabledForegroundColor: Colors.white70,
+              ),
+              child: Text(
+                state.currentZoomLabel,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
           ),
         ),
       ),

@@ -37,10 +37,12 @@ void main() {
         ),
       );
 
-  testWidgets('compact iPhone layout renders', (tester) async {
+  testWidgets('compact iPhone layout renders without RenderFlex overflow',
+      (tester) async {
     await tester.pumpWidget(
         buildHud(warnings: _sampleWarnings, size: const Size(320, 568)));
     expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('hud-root')), findsOneWidget);
   });
 
   testWidgets('large text scale still renders', (tester) async {
@@ -59,9 +61,18 @@ void main() {
     expect(find.byType(ListView), findsNothing);
   });
 
-  testWidgets('fallback mode still renders', (tester) async {
+  testWidgets('fallback mode still renders German guidance', (tester) async {
     await tester.pumpWidget(buildHud(warnings: _sampleWarnings));
     expect(find.byKey(const Key('permission-fallback')), findsOneWidget);
+    expect(find.textContaining('Fallback aktiv'), findsOneWidget);
+  });
+
+  testWidgets('key HUD labels are German', (tester) async {
+    await tester.pumpWidget(buildHud(warnings: _sampleWarnings));
+
+    expect(find.textContaining('Tempo'), findsOneWidget);
+    expect(find.textContaining('Richtung'), findsOneWidget);
+    expect(find.textContaining('Modus'), findsOneWidget);
   });
 
   testWidgets('camera unavailable falls back to mock background',
@@ -128,7 +139,7 @@ class _FakeLocationRepository implements LocationRepository {
       const LocationStatus(
           speedKph: 84,
           headingDegrees: 58,
-          gpsFixStatus: GpsFixStatus.strong,
+          gpsFixStatus: GpsFixStatus.unavailable,
           isMock: true,
           isSpeedEstimatedFromGps: false));
 }
