@@ -1,14 +1,14 @@
 create table if not exists public.speed_camera_reports (
   id uuid primary key default gen_random_uuid(),
   report_type text not null check (report_type in ('mobile', 'fixed')),
-  user_id uuid nullable references auth.users(id) on delete set null,
+  user_id uuid references auth.users(id) on delete set null,
   latitude double precision not null,
   longitude double precision not null,
-  location_accuracy_meters double precision nullable,
-  heading_degrees double precision nullable,
-  speed_kmh double precision nullable,
-  camera_zoom_label text nullable,
-  app_mode text nullable check (app_mode in ('liveAr', 'partialLive', 'fallback')),
+  location_accuracy_meters double precision,
+  heading_degrees double precision,
+  speed_kmh double precision,
+  camera_zoom_label text,
+  app_mode text check (app_mode in ('liveAr', 'partialLive', 'fallback')),
   confidence text not null default 'low' check (confidence in ('high', 'medium', 'low')),
   source text not null default 'community',
   moderation_status text not null default 'active' check (moderation_status in ('active', 'hidden', 'rejected')),
@@ -41,7 +41,7 @@ $$;
 
 drop trigger if exists speed_camera_reports_set_expiry on public.speed_camera_reports;
 create trigger speed_camera_reports_set_expiry
-before insert or update of report_type, created_at
+before insert or update
 on public.speed_camera_reports
 for each row
 execute function public.set_speed_camera_report_expiry();

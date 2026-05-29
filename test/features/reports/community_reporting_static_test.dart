@@ -45,6 +45,10 @@ void main() {
     expect(migration.readAsStringSync(), contains("interval '1 year'"));
   });
 
+  test('migration avoids unsupported nullable keyword', () {
+    expect(migration.readAsStringSync(), isNot(contains(' nullable')));
+  });
+
   test('no service role key is committed', () {
     final files = Directory.current
         .listSync(recursive: true)
