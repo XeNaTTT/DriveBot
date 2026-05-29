@@ -72,10 +72,25 @@ class _HudScreenState extends State<HudScreen> {
     final repository = widget.hudRepository;
     if (repository is! WarningRepository) return;
 
+    final location = widget.locationRepository.locationStatusListenable.value;
     await (repository as WarningRepository).getWarnings(
-      const WarningRequest.fallback(),
+      _warningRequestFor(location),
     );
     if (mounted) setState(() {});
+  }
+
+  WarningRequest _warningRequestFor(LocationStatus location) {
+    final latitude = location.latitude;
+    final longitude = location.longitude;
+    if (!location.hasLiveLocation || latitude == null || longitude == null) {
+      return const WarningRequest.fallback();
+    }
+
+    return WarningRequest(
+      latitude: latitude,
+      longitude: longitude,
+      headingDegrees: location.headingDegrees,
+    );
   }
 
   void _handleCameraStateChanged(CameraRuntimeState state) {

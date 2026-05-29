@@ -11,6 +11,8 @@ class LocationStatus {
     required this.isSpeedEstimatedFromGps,
     this.isHeadingFromCompass = false,
     this.isHeadingFromGps = false,
+    this.latitude,
+    this.longitude,
   });
 
   final int speedKph;
@@ -20,6 +22,8 @@ class LocationStatus {
   final bool isSpeedEstimatedFromGps;
   final bool isHeadingFromCompass;
   final bool isHeadingFromGps;
+  final double? latitude;
+  final double? longitude;
 
   bool get hasLiveLocation =>
       gpsFixStatus == GpsFixStatus.strong ||
@@ -46,6 +50,8 @@ class LocationStatus {
     bool? isSpeedEstimatedFromGps,
     bool? isHeadingFromCompass,
     bool? isHeadingFromGps,
+    double? latitude,
+    double? longitude,
   }) {
     return LocationStatus(
       speedKph: speedKph ?? this.speedKph,
@@ -56,6 +62,8 @@ class LocationStatus {
           isSpeedEstimatedFromGps ?? this.isSpeedEstimatedFromGps,
       isHeadingFromCompass: isHeadingFromCompass ?? this.isHeadingFromCompass,
       isHeadingFromGps: isHeadingFromGps ?? this.isHeadingFromGps,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
     );
   }
 }
