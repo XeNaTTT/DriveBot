@@ -43,7 +43,8 @@ class WarningMapper {
       'roadwork' || 'roadworks' => WarningType.roadwork,
       'weather' => WarningType.weather,
       'chargingstation' || 'charging_station' => WarningType.chargingStation,
-      _ => WarningType.weather,
+      'notice' || 'hint' || 'advisory' => WarningType.notice,
+      _ => WarningType.notice,
     };
   }
 }

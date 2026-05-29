@@ -6,6 +6,9 @@ import '../../ar/presentation/ar_marker_layer.dart';
 import '../../camera/domain/camera_runtime_state.dart';
 import '../../camera/presentation/camera_hud_background.dart';
 import '../../data_sources/domain/data_source_registry.dart';
+import '../../filters/application/information_category_controller.dart';
+import '../../filters/domain/information_category.dart';
+import '../../filters/presentation/category_filter_button.dart';
 import '../../location/domain/location_repository.dart';
 import '../../location/domain/location_status.dart';
 import '../../location/domain/permission_repository.dart';
@@ -43,12 +46,26 @@ class HudScreen extends StatefulWidget {
 }
 
 class _HudScreenState extends State<HudScreen> {
+  final InformationCategoryController _categoryController =
+      InformationCategoryController();
   CameraRuntimeState _cameraState = const CameraRuntimeState.initializing();
 
   @override
   void initState() {
     super.initState();
+    _categoryController.addListener(_handleCategoryFilterChanged);
     _loadWarnings();
+  }
+
+  @override
+  void dispose() {
+    _categoryController.removeListener(_handleCategoryFilterChanged);
+    _categoryController.dispose();
+    super.dispose();
+  }
+
+  void _handleCategoryFilterChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadWarnings() async {
@@ -77,8 +94,12 @@ class _HudScreenState extends State<HudScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final warnings = [...widget.hudRepository.getNearbyWarnings()]
+    final allWarnings = [...widget.hudRepository.getNearbyWarnings()]
       ..sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
+    final warnings = allWarnings
+        .where((warning) =>
+            _categoryController.isActive(warning.informationCategory))
+        .toList(growable: false);
 
     return ValueListenableBuilder(
       valueListenable: widget.locationRepository.locationStatusListenable,
@@ -119,6 +140,8 @@ class _HudScreenState extends State<HudScreen> {
                         Expanded(
                             child:
                                 _StatusBar(status: location, runtime: runtime)),
+                        const SizedBox(width: 8),
+                        CategoryFilterButton(controller: _categoryController),
                         if (widget.accountEntryPoint != null) ...[
                           const SizedBox(width: 8),
                           widget.accountEntryPoint!,
@@ -155,7 +178,12 @@ class _HudScreenState extends State<HudScreen> {
                         ),
                       ),
                     const SizedBox(height: 8),
-                    _PrimaryCard(warning: primary, source: source),
+                    _PrimaryCard(
+                      warning: primary,
+                      source: source,
+                      hasActiveCategories:
+                          _categoryController.hasActiveCategories,
+                    ),
                     const SizedBox(height: 8),
                   ]),
                 ),
@@ -318,9 +346,14 @@ class _StatusPill extends StatelessWidget {
 }
 
 class _PrimaryCard extends StatelessWidget {
-  const _PrimaryCard({required this.warning, required this.source});
+  const _PrimaryCard({
+    required this.warning,
+    required this.source,
+    required this.hasActiveCategories,
+  });
   final HudWarningItem? warning;
   final String source;
+  final bool hasActiveCategories;
   @override
   Widget build(BuildContext context) => SizedBox(
         key: const Key('primary-warning-card'),
@@ -338,10 +371,15 @@ class _PrimaryCard extends StatelessWidget {
             fit: BoxFit.scaleDown,
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(warning?.title ?? 'Keine aktiven Warnungen',
+              Text(
+                  hasActiveCategories
+                      ? warning?.title ?? 'Keine aktiven Warnungen'
+                      : 'Keine Kategorien aktiv',
                   key: const Key('primary-warning-title')),
               Text(warning == null
-                  ? 'Keine Anweisung'
+                  ? (hasActiveCategories
+                      ? 'Keine Anweisung'
+                      : 'Filter anpassen')
                   : '${warning!.distanceMeters} m · ${warning!.detail} · S${warning!.severity}'),
               Text('Quelle: $source',
                   key: const Key('warning-data-source-label')),

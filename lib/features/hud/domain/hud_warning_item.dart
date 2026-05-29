@@ -1,4 +1,11 @@
-enum WarningType { speedCamera, speedLimit, roadwork, weather, chargingStation }
+enum WarningType {
+  speedCamera,
+  speedLimit,
+  roadwork,
+  weather,
+  chargingStation,
+  notice,
+}
 
 class HudWarningItem {
   const HudWarningItem({
