@@ -1,5 +1,8 @@
+import 'package:driveassistant_ar/features/ar/application/ar_info_object_factory.dart';
+import 'package:driveassistant_ar/features/ar/domain/ar_info_object.dart';
 import 'package:driveassistant_ar/features/ar/domain/ar_projection_mapper.dart';
 import 'package:driveassistant_ar/features/hud/domain/hud_warning_item.dart';
+import 'package:driveassistant_ar/features/location/domain/location_status.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -7,7 +10,7 @@ void main() {
 
   test('object outside FOV is hidden', () {
     final markers = mapper.project(
-      warnings: [_warning(95)],
+      objects: [_object(_warning(95))],
       userHeadingDegrees: 0,
     );
     expect(markers, isEmpty);
@@ -15,7 +18,7 @@ void main() {
 
   test('object inside FOV is visible', () {
     final markers = mapper.project(
-      warnings: [_warning(20)],
+      objects: [_object(_warning(20))],
       userHeadingDegrees: 0,
     );
     expect(markers, hasLength(1));
@@ -23,7 +26,11 @@ void main() {
 
   test('maps left center right x positions', () {
     final markers = mapper.project(
-      warnings: [_warning(330), _warning(0), _warning(30)],
+      objects: [
+        _object(_warning(330)),
+        _object(_warning(0)),
+        _object(_warning(30)),
+      ],
       userHeadingDegrees: 0,
     );
     expect(markers[0].normalizedX, closeTo(0, 0.01));
@@ -32,10 +39,21 @@ void main() {
   });
 }
 
+ArInfoObject _object(HudWarningItem warning) =>
+    const ArInfoObjectFactory().create(warning, _location);
+
+const _location = LocationStatus(
+  speedKph: 0,
+  headingDegrees: 0,
+  gpsFixStatus: GpsFixStatus.unavailable,
+  isMock: true,
+  isSpeedEstimatedFromGps: false,
+);
+
 HudWarningItem _warning(int bearing) => HudWarningItem(
   type: WarningType.speedCamera,
   title: 'A3 Suben',
-  detail: 'Keep distance',
+  detail: 'Abstand halten',
   distanceMeters: 1200,
   bearingDegrees: bearing,
   severity: 3,

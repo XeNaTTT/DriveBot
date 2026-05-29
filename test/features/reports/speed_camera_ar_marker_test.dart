@@ -1,6 +1,9 @@
+import 'package:driveassistant_ar/features/ar/application/ar_info_object_factory.dart';
+import 'package:driveassistant_ar/features/ar/domain/ar_info_object.dart';
 import 'package:driveassistant_ar/features/ar/domain/ar_projection_mapper.dart';
 import 'package:driveassistant_ar/features/ar/presentation/ar_marker_layer.dart';
 import 'package:driveassistant_ar/features/hud/domain/hud_warning_item.dart';
+import 'package:driveassistant_ar/features/location/domain/location_status.dart';
 import 'package:driveassistant_ar/features/reports/presentation/speed_camera_ar_marker.dart';
 import 'package:driveassistant_ar/shared/theme/app_theme.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets('Speed camera silhouette renders', (tester) async {
-    await tester.pumpWidget(_markerApp(_warning('Mobiler Blitzer')));
+    await tester.pumpWidget(_markerApp(_object(_warning('Mobiler Blitzer'))));
     expect(find.byKey(const Key('speed-camera-ar-marker')), findsOneWidget);
     expect(find.byType(CustomPaint), findsWidgets);
   });
@@ -19,8 +22,12 @@ void main() {
         theme: buildAppTheme(),
         home: Column(
           children: [
-            SpeedCameraArMarker(warning: _warning('Mobiler Blitzer')),
-            SpeedCameraArMarker(warning: _warning('Fester Blitzer')),
+            SpeedCameraArMarker(
+              infoObject: _object(_warning('Mobiler Blitzer')),
+            ),
+            SpeedCameraArMarker(
+              infoObject: _object(_warning('Fester Blitzer')),
+            ),
           ],
         ),
       ),
@@ -31,7 +38,7 @@ void main() {
 
   test('Marker inside FOV is visible', () {
     final markers = const ArProjectionMapper().project(
-      warnings: [_warning('Mobiler Blitzer', bearing: 58)],
+      objects: [_object(_warning('Mobiler Blitzer', bearing: 58))],
       userHeadingDegrees: 58,
     );
     expect(markers, hasLength(1));
@@ -39,7 +46,7 @@ void main() {
 
   test('Marker outside FOV is hidden', () {
     final markers = const ArProjectionMapper().project(
-      warnings: [_warning('Mobiler Blitzer', bearing: 140)],
+      objects: [_object(_warning('Mobiler Blitzer', bearing: 140))],
       userHeadingDegrees: 58,
     );
     expect(markers, isEmpty);
@@ -61,7 +68,7 @@ void main() {
 
   testWidgets('Label is clamped inside screen', (tester) async {
     final markers = const ArProjectionMapper().project(
-      warnings: [_warning('Mobiler Blitzer', bearing: 30)],
+      objects: [_object(_warning('Mobiler Blitzer', bearing: 30))],
       userHeadingDegrees: 58,
     );
     await tester.pumpWidget(
@@ -82,11 +89,22 @@ void main() {
   });
 }
 
-Widget _markerApp(HudWarningItem warning) => MaterialApp(
+Widget _markerApp(ArInfoObject object) => MaterialApp(
   theme: buildAppTheme(),
   home: Scaffold(
-    body: Center(child: SpeedCameraArMarker(warning: warning)),
+    body: Center(child: SpeedCameraArMarker(infoObject: object)),
   ),
+);
+
+ArInfoObject _object(HudWarningItem warning) =>
+    const ArInfoObjectFactory().create(warning, _location);
+
+const _location = LocationStatus(
+  speedKph: 0,
+  headingDegrees: 58,
+  gpsFixStatus: GpsFixStatus.unavailable,
+  isMock: true,
+  isSpeedEstimatedFromGps: false,
 );
 
 HudWarningItem _warning(String title, {int bearing = 58, DateTime? validTo}) =>
