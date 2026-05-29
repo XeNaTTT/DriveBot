@@ -18,10 +18,12 @@ void main() {
       isSupabaseConfigured: true,
     );
 
-    await tester.pumpWidget(MaterialApp(
-      theme: buildAppTheme(),
-      home: LoginScreen(controller: controller),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: LoginScreen(controller: controller),
+      ),
+    );
 
     expect(find.text('Nutzerkonto'), findsOneWidget);
     expect(find.text('E-Mail'), findsOneWidget);
@@ -40,20 +42,22 @@ void main() {
       isSupabaseConfigured: true,
     );
 
-    await tester.pumpWidget(MaterialApp(
-      theme: buildAppTheme(),
-      home: AuthGate(
-        controller: controller,
-        builder: (_, controller) => Scaffold(
-          body: Stack(
-            children: [
-              const Text('HUD'),
-              AccountEntryButton(controller: controller),
-            ],
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: AuthGate(
+          controller: controller,
+          builder: (_, controller) => Scaffold(
+            body: Stack(
+              children: [
+                const Text('HUD'),
+                AccountEntryButton(controller: controller),
+              ],
+            ),
           ),
         ),
       ),
-    ));
+    );
 
     expect(find.text('Anmelden'), findsOneWidget);
 
@@ -72,15 +76,16 @@ void main() {
     );
     await controller.continueAsGuest();
 
-    await tester.pumpWidget(MaterialApp(
-      theme: buildAppTheme(),
-      home: AuthGate(
-        controller: controller,
-        builder: (_, controller) => Scaffold(
-          body: AccountEntryButton(controller: controller),
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: AuthGate(
+          controller: controller,
+          builder: (_, controller) =>
+              Scaffold(body: AccountEntryButton(controller: controller)),
         ),
       ),
-    ));
+    );
 
     expect(
       find.text('Supabase ist nicht konfiguriert. Die App läuft im Gastmodus.'),
@@ -104,10 +109,12 @@ void main() {
     );
     await controller.continueAsGuest();
 
-    await tester.pumpWidget(MaterialApp(
-      theme: buildAppTheme(),
-      home: ProfileScreen(controller: controller),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: ProfileScreen(controller: controller),
+      ),
+    );
 
     expect(find.text('Profil'), findsOneWidget);
     expect(find.text('Nutzerkonto'), findsOneWidget);
@@ -171,6 +178,5 @@ final class _FakeAuthRepository implements AuthRepository {
   Future<AppUser> signUpWithEmailPassword({
     required String email,
     required String password,
-  }) =>
-      signInWithEmailPassword(email: email, password: password);
+  }) => signInWithEmailPassword(email: email, password: password);
 }

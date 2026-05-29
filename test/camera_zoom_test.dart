@@ -45,8 +45,9 @@ void main() {
       expect(find.text('1x'), findsOneWidget);
     });
 
-    testWidgets('toggles from 1x to 0.5x when ultra-wide is supported',
-        (tester) async {
+    testWidgets('toggles from 1x to 0.5x when ultra-wide is supported', (
+      tester,
+    ) async {
       final controller = _FakeCameraRuntimeController(minZoom: 0.5, maxZoom: 6);
 
       await tester.pumpWidget(_buildCameraHud(controller));
@@ -60,8 +61,9 @@ void main() {
       expect(find.text('0.5x'), findsOneWidget);
     });
 
-    testWidgets('shows disabled 1x when ultra-wide is unavailable',
-        (tester) async {
+    testWidgets('shows disabled 1x when ultra-wide is unavailable', (
+      tester,
+    ) async {
       final controller = _FakeCameraRuntimeController(minZoom: 0.7, maxZoom: 6);
 
       await tester.pumpWidget(_buildCameraHud(controller));
@@ -132,10 +134,8 @@ class _FakeCameraRuntimeController implements CameraRuntimeController {
   bool get isInitialized => _isInitialized;
 
   @override
-  Widget buildPreview() => const ColoredBox(
-        key: Key('fake-camera-preview'),
-        color: Colors.black,
-      );
+  Widget buildPreview() =>
+      const ColoredBox(key: Key('fake-camera-preview'), color: Colors.black);
 
   @override
   Future<void> dispose() async {}

@@ -4,8 +4,8 @@ import '../domain/information_category.dart';
 
 class InformationCategoryController extends ChangeNotifier {
   InformationCategoryController({Set<InformationCategory>? activeCategories})
-      : _activeCategories =
-            activeCategories ?? Set.of(InformationCategory.values);
+    : _activeCategories =
+          activeCategories ?? Set.of(InformationCategory.values);
 
   Set<InformationCategory> _activeCategories;
 

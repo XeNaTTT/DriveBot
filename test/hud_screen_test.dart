@@ -19,28 +19,27 @@ void main() {
     required List<HudWarningItem> warnings,
     Size size = const Size(390, 844),
     double textScaleFactor = 1,
-  }) =>
-      MediaQuery(
-        data: MediaQueryData(
-          size: size,
-          textScaler: TextScaler.linear(textScaleFactor),
-        ),
-        child: MaterialApp(
-          theme: buildAppTheme(),
-          home: HudScreen(
-            hudRepository: _FakeHudRepository(warnings),
-            locationRepository: const _FakeLocationRepository(),
-            dataSourceRegistry: const _FakeDataSourceRegistry(),
-            permissionRepository: _FakePermissionRepository(
-              const SensorPermissionStatus(
-                camera: SensorPermissionState.denied,
-                location: SensorPermissionState.denied,
-                motion: SensorPermissionState.denied,
-              ),
-            ),
+  }) => MediaQuery(
+    data: MediaQueryData(
+      size: size,
+      textScaler: TextScaler.linear(textScaleFactor),
+    ),
+    child: MaterialApp(
+      theme: buildAppTheme(),
+      home: HudScreen(
+        hudRepository: _FakeHudRepository(warnings),
+        locationRepository: const _FakeLocationRepository(),
+        dataSourceRegistry: const _FakeDataSourceRegistry(),
+        permissionRepository: _FakePermissionRepository(
+          const SensorPermissionStatus(
+            camera: SensorPermissionState.denied,
+            location: SensorPermissionState.denied,
+            motion: SensorPermissionState.denied,
           ),
         ),
-      );
+      ),
+    ),
+  );
 
   Future<void> openFilterMenu(WidgetTester tester) async {
     await tester.tap(find.byKey(const Key('category-filter-button')));
@@ -53,8 +52,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('compact iPhone layout renders without RenderFlex overflow',
-      (tester) async {
+  testWidgets('compact iPhone layout renders without RenderFlex overflow', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       buildHud(warnings: _sampleWarnings, size: const Size(320, 568)),
     );
@@ -63,8 +63,9 @@ void main() {
   });
 
   testWidgets('large text scale still renders', (tester) async {
-    await tester
-        .pumpWidget(buildHud(warnings: _sampleWarnings, textScaleFactor: 1.6));
+    await tester.pumpWidget(
+      buildHud(warnings: _sampleWarnings, textScaleFactor: 1.6),
+    );
     expect(find.byKey(const Key('primary-warning-card')), findsOneWidget);
   });
 
@@ -125,8 +126,9 @@ void main() {
     }
   });
 
-  testWidgets('toggling Blitzer hides speed camera warnings and markers',
-      (tester) async {
+  testWidgets('toggling Blitzer hides speed camera warnings and markers', (
+    tester,
+  ) async {
     await tester.pumpWidget(buildHud(warnings: _sampleWarnings));
     expect(find.text('Blitzer A3'), findsOneWidget);
     expect(find.byKey(const Key('ar-marker-speedCamera')), findsOneWidget);
@@ -138,8 +140,9 @@ void main() {
     expect(find.text('Baustelle A3'), findsOneWidget);
   });
 
-  testWidgets('toggling Baustellen hides roadwork warnings and markers',
-      (tester) async {
+  testWidgets('toggling Baustellen hides roadwork warnings and markers', (
+    tester,
+  ) async {
     await tester.pumpWidget(buildHud(warnings: _sampleWarnings));
     expect(find.byKey(const Key('ar-marker-roadwork')), findsOneWidget);
 
@@ -163,8 +166,9 @@ void main() {
     expect(find.text('Tempolimit 80'), findsOneWidget);
   });
 
-  testWidgets('empty state appears when all categories are off',
-      (tester) async {
+  testWidgets('empty state appears when all categories are off', (
+    tester,
+  ) async {
     await tester.pumpWidget(buildHud(warnings: _sampleWarnings));
 
     for (final label in [
@@ -183,8 +187,9 @@ void main() {
     expect(find.byKey(const Key('ar-marker-roadwork')), findsNothing);
   });
 
-  testWidgets('debug source indicator marks mock HUD data as fallback',
-      (tester) async {
+  testWidgets('debug source indicator marks mock HUD data as fallback', (
+    tester,
+  ) async {
     await tester.pumpWidget(buildHud(warnings: _sampleWarnings));
 
     expect(find.byKey(const Key('debug-source-indicator')), findsOneWidget);
@@ -194,16 +199,23 @@ void main() {
     expect(find.text('Quelle: Fallback-Daten'), findsOneWidget);
   });
 
-  testWidgets('camera unavailable falls back to mock background',
-      (tester) async {
-    await tester.pumpWidget(const MaterialApp(
+  testWidgets('camera unavailable falls back to mock background', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
         home: CameraHudBackground(
-            permissionStatus: SensorPermissionStatus(
-                camera: SensorPermissionState.granted,
-                location: SensorPermissionState.granted,
-                motion: SensorPermissionState.unavailable),
-            cameraRuntimeService:
-                CameraRuntimeService(loadCameraDescriptions: _loadNoCameras))));
+          permissionStatus: SensorPermissionStatus(
+            camera: SensorPermissionState.granted,
+            location: SensorPermissionState.granted,
+            motion: SensorPermissionState.unavailable,
+          ),
+          cameraRuntimeService: CameraRuntimeService(
+            loadCameraDescriptions: _loadNoCameras,
+          ),
+        ),
+      ),
+    );
     await tester.pump();
     expect(find.byKey(const Key('mock-background-layer')), findsOneWidget);
   });

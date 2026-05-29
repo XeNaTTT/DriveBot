@@ -58,8 +58,8 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
 
     CameraRuntimeController? controller;
     try {
-      controller =
-          await widget.cameraRuntimeService.createBackCameraController();
+      controller = await widget.cameraRuntimeService
+          .createBackCameraController();
       if (!mounted) {
         await controller?.dispose();
         return;
@@ -83,11 +83,13 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
       }
 
       _controller = controller;
-      _setCameraState(CameraRuntimeState.ready(
-        currentZoomLevel: zoomProfile.defaultZoom,
-        minZoom: zoomProfile.minZoom,
-        maxZoom: zoomProfile.maxZoom,
-      ));
+      _setCameraState(
+        CameraRuntimeState.ready(
+          currentZoomLevel: zoomProfile.defaultZoom,
+          minZoom: zoomProfile.minZoom,
+          maxZoom: zoomProfile.maxZoom,
+        ),
+      );
     } on CameraException {
       await controller?.dispose();
       if (mounted) {
@@ -130,30 +132,38 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
       defaultZoom: currentZoom,
     ).toggleTarget(currentZoom);
 
-    _setCameraState(_state.copyWithZoom(
-      currentZoomLevel: previousZoom,
-      isSwitchingZoom: true,
-    ));
+    _setCameraState(
+      _state.copyWithZoom(
+        currentZoomLevel: previousZoom,
+        isSwitchingZoom: true,
+      ),
+    );
 
     try {
       await controller.setZoomLevel(targetZoom);
       if (!mounted) return;
-      _setCameraState(_state.copyWithZoom(
-        currentZoomLevel: targetZoom,
-        isSwitchingZoom: false,
-      ));
+      _setCameraState(
+        _state.copyWithZoom(
+          currentZoomLevel: targetZoom,
+          isSwitchingZoom: false,
+        ),
+      );
     } on CameraException {
       if (!mounted) return;
-      _setCameraState(_state.copyWithZoom(
-        currentZoomLevel: previousZoom,
-        isSwitchingZoom: false,
-      ));
+      _setCameraState(
+        _state.copyWithZoom(
+          currentZoomLevel: previousZoom,
+          isSwitchingZoom: false,
+        ),
+      );
     } catch (_) {
       if (!mounted) return;
-      _setCameraState(_state.copyWithZoom(
-        currentZoomLevel: previousZoom,
-        isSwitchingZoom: false,
-      ));
+      _setCameraState(
+        _state.copyWithZoom(
+          currentZoomLevel: previousZoom,
+          isSwitchingZoom: false,
+        ),
+      );
     }
   }
 
@@ -173,25 +183,28 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
-    final isReady = _state.availability == CameraRuntimeAvailability.ready &&
+    final isReady =
+        _state.availability == CameraRuntimeAvailability.ready &&
         controller != null &&
         controller.isInitialized;
 
-    return Stack(children: [
-      if (isReady)
-        KeyedSubtree(
-          key: const Key('camera-preview-layer'),
-          child: controller.buildPreview(),
-        )
-      else
-        const KeyedSubtree(
-          key: Key('mock-background-layer'),
-          child: CameraFallbackHudBackground(),
-        ),
-      if (!isReady && _state.shouldUseFallback)
-        _CameraFallbackStatus(state: _state),
-      if (isReady) _ZoomToggle(state: _state, onPressed: _toggleZoom),
-    ]);
+    return Stack(
+      children: [
+        if (isReady)
+          KeyedSubtree(
+            key: const Key('camera-preview-layer'),
+            child: controller.buildPreview(),
+          )
+        else
+          const KeyedSubtree(
+            key: Key('mock-background-layer'),
+            child: CameraFallbackHudBackground(),
+          ),
+        if (!isReady && _state.shouldUseFallback)
+          _CameraFallbackStatus(state: _state),
+        if (isReady) _ZoomToggle(state: _state, onPressed: _toggleZoom),
+      ],
+    );
   }
 }
 
@@ -205,8 +218,7 @@ class _CameraFallbackStatus extends StatelessWidget {
     final label = switch (state.availability) {
       CameraRuntimeAvailability.permissionDenied => 'Kamerazugriff verweigert',
       CameraRuntimeAvailability.unavailable ||
-      CameraRuntimeAvailability.failed =>
-        'Kamera nicht verfügbar',
+      CameraRuntimeAvailability.failed => 'Kamera nicht verfügbar',
       _ => 'Fallback',
     };
 

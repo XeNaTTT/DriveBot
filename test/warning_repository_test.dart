@@ -57,34 +57,36 @@ void main() {
     expect(result.warnings, _fallbackWarnings);
   });
 
-  test('API repository returns cached warnings without second client call',
-      () async {
-    var calls = 0;
-    final repository = ApiWarningRepository(
-      cache: InMemoryWarningCache(),
-      client: (_) async {
-        calls += 1;
-        return const [
-          ApiWarningPayload(
-            type: 'weather',
-            title: 'Rain',
-            detail: 'Wet road surface',
-            distanceMeters: 1500,
-            bearingDegrees: 10,
-            severity: 2,
-          ),
-        ];
-      },
-    );
+  test(
+    'API repository returns cached warnings without second client call',
+    () async {
+      var calls = 0;
+      final repository = ApiWarningRepository(
+        cache: InMemoryWarningCache(),
+        client: (_) async {
+          calls += 1;
+          return const [
+            ApiWarningPayload(
+              type: 'weather',
+              title: 'Rain',
+              detail: 'Wet road surface',
+              distanceMeters: 1500,
+              bearingDegrees: 10,
+              severity: 2,
+            ),
+          ];
+        },
+      );
 
-    final first = await repository.getWarnings(request);
-    final second = await repository.getWarnings(request);
+      final first = await repository.getWarnings(request);
+      final second = await repository.getWarnings(request);
 
-    expect(first.source, WarningDataSource.liveApi);
-    expect(second.source, WarningDataSource.cache);
-    expect(second.warnings.single.title, 'Rain');
-    expect(calls, 1);
-  });
+      expect(first.source, WarningDataSource.liveApi);
+      expect(second.source, WarningDataSource.cache);
+      expect(second.warnings.single.title, 'Rain');
+      expect(calls, 1);
+    },
+  );
 }
 
 const _fallbackWarnings = [

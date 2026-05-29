@@ -17,23 +17,30 @@ class ArMarkerLayer extends StatelessWidget {
             const markerWidth = 170.0;
             const edgePadding = 8.0;
             return Stack(
-              children: markers.map((marker) {
-                final rawLeft = (marker.normalizedX * constraints.maxWidth) -
-                    (markerWidth / 2);
-                final left = rawLeft.clamp(edgePadding,
-                    constraints.maxWidth - markerWidth - edgePadding);
-                final top = (marker.top * constraints.maxHeight)
-                    .clamp(24.0, constraints.maxHeight - 72.0);
-                return Positioned(
-                  left: left,
-                  top: top,
-                  width: markerWidth,
-                  child: KeyedSubtree(
-                    key: Key('ar-marker-${marker.warning.type.name}'),
-                    child: ArMarkerWidget(warning: marker.warning),
-                  ),
-                );
-              }).toList(growable: false),
+              children: markers
+                  .map((marker) {
+                    final rawLeft =
+                        (marker.normalizedX * constraints.maxWidth) -
+                        (markerWidth / 2);
+                    final left = rawLeft.clamp(
+                      edgePadding,
+                      constraints.maxWidth - markerWidth - edgePadding,
+                    );
+                    final top = (marker.top * constraints.maxHeight).clamp(
+                      24.0,
+                      constraints.maxHeight - 72.0,
+                    );
+                    return Positioned(
+                      left: left,
+                      top: top,
+                      width: markerWidth,
+                      child: KeyedSubtree(
+                        key: Key('ar-marker-${marker.warning.type.name}'),
+                        child: ArMarkerWidget(warning: marker.warning),
+                      ),
+                    );
+                  })
+                  .toList(growable: false),
             );
           },
         ),

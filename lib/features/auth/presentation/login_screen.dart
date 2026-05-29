@@ -90,8 +90,9 @@ final class _LoginScreenState extends State<LoginScreen> {
                     ),
                     TextButton(
                       key: const Key('auth-password-reset-button'),
-                      onPressed:
-                          widget.controller.isBusy ? null : _sendPasswordReset,
+                      onPressed: widget.controller.isBusy
+                          ? null
+                          : _sendPasswordReset,
                       child: const Text('Passwort vergessen?'),
                     ),
                     const Divider(height: 32),
@@ -115,14 +116,14 @@ final class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _signIn() => widget.controller.signIn(
-        email: _emailController.text,
-        password: _passwordController.text,
-      );
+    email: _emailController.text,
+    password: _passwordController.text,
+  );
 
   Future<void> _signUp() => widget.controller.signUp(
-        email: _emailController.text,
-        password: _passwordController.text,
-      );
+    email: _emailController.text,
+    password: _passwordController.text,
+  );
 
   Future<void> _sendPasswordReset() =>
       widget.controller.sendPasswordResetEmail(_emailController.text);

@@ -7,9 +7,8 @@ import '../../warnings/domain/warning_repository_result.dart';
 import '../../warnings/domain/warning_request.dart';
 import 'open_meteo_client.dart';
 
-typedef OpenMeteoWeatherFetcher = Future<OpenMeteoDrivingWeather?> Function(
-  WarningRequest request,
-);
+typedef OpenMeteoWeatherFetcher =
+    Future<OpenMeteoDrivingWeather?> Function(WarningRequest request);
 
 class OpenMeteoWarningRepository implements WarningRepository {
   OpenMeteoWarningRepository({
@@ -68,7 +67,7 @@ class OpenMeteoWarningRepository implements WarningRepository {
     final rainAmount = [
       weather.precipitationMm,
       weather.rainMm,
-      weather.showersMm
+      weather.showersMm,
     ].reduce((a, b) => a > b ? a : b);
 
     if (rainAmount >= 7) {

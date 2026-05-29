@@ -23,16 +23,18 @@ void main() {
       expect(SpeedUtils.speedKphFromMetersPerSecond(120), 260);
     });
 
-    test('fallback speed is preserved when runtime location is unavailable',
-        () {
-      expect(
-        SpeedUtils.fallbackAwareSpeedKph(
-          metersPerSecond: null,
-          fallbackSpeedKph: 84,
-        ),
-        84,
-      );
-    });
+    test(
+      'fallback speed is preserved when runtime location is unavailable',
+      () {
+        expect(
+          SpeedUtils.fallbackAwareSpeedKph(
+            metersPerSecond: null,
+            fallbackSpeedKph: 84,
+          ),
+          84,
+        );
+      },
+    );
   });
 
   group('heading normalization', () {
@@ -49,25 +51,27 @@ void main() {
       expect(HeadingUtils.cardinalDirection(315), 'NW');
     });
 
-    test('falls back from unavailable compass to gps course then mock heading',
-        () {
-      expect(
-        HeadingUtils.fallbackAwareHeading(
-          compassHeading: null,
-          gpsCourse: 181,
-          fallbackHeading: 58,
-        ),
-        181,
-      );
-      expect(
-        HeadingUtils.fallbackAwareHeading(
-          compassHeading: double.nan,
-          gpsCourse: double.infinity,
-          fallbackHeading: 58,
-        ),
-        58,
-      );
-    });
+    test(
+      'falls back from unavailable compass to gps course then mock heading',
+      () {
+        expect(
+          HeadingUtils.fallbackAwareHeading(
+            compassHeading: null,
+            gpsCourse: 181,
+            fallbackHeading: 58,
+          ),
+          181,
+        );
+        expect(
+          HeadingUtils.fallbackAwareHeading(
+            compassHeading: double.nan,
+            gpsCourse: double.infinity,
+            fallbackHeading: 58,
+          ),
+          58,
+        );
+      },
+    );
 
     test('invalid heading values return null', () {
       expect(HeadingUtils.normalizeHeading(double.nan), isNull);

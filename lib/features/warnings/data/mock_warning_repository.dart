@@ -7,7 +7,7 @@ import '../domain/warning_request.dart';
 
 class MockWarningRepository implements WarningRepository, HudRepository {
   MockWarningRepository({List<HudWarningItem>? warnings})
-      : _warnings = warnings ?? MockHudRepository().getNearbyWarnings();
+    : _warnings = warnings ?? MockHudRepository().getNearbyWarnings();
 
   final List<HudWarningItem> _warnings;
 

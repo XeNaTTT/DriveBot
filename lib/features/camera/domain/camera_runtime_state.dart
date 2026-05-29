@@ -23,26 +23,26 @@ class CameraRuntimeState {
   });
 
   const CameraRuntimeState.initializing()
-      : this._(
-          CameraRuntimeAvailability.initializing,
-          cameraAvailable: false,
-          cameraPermissionState: SensorPermissionState.unavailable,
-        );
+    : this._(
+        CameraRuntimeAvailability.initializing,
+        cameraAvailable: false,
+        cameraPermissionState: SensorPermissionState.unavailable,
+      );
 
   const CameraRuntimeState.permissionDenied()
-      : this._(
-          CameraRuntimeAvailability.permissionDenied,
-          cameraAvailable: false,
-          cameraPermissionState: SensorPermissionState.denied,
-        );
+    : this._(
+        CameraRuntimeAvailability.permissionDenied,
+        cameraAvailable: false,
+        cameraPermissionState: SensorPermissionState.denied,
+      );
 
   const CameraRuntimeState.unavailable([String? message])
-      : this._(
-          CameraRuntimeAvailability.unavailable,
-          cameraAvailable: false,
-          cameraPermissionState: SensorPermissionState.granted,
-          message: message,
-        );
+    : this._(
+        CameraRuntimeAvailability.unavailable,
+        cameraAvailable: false,
+        cameraPermissionState: SensorPermissionState.granted,
+        message: message,
+      );
 
   const CameraRuntimeState.ready({
     required double currentZoomLevel,
@@ -50,22 +50,22 @@ class CameraRuntimeState {
     required double maxZoom,
     bool isSwitchingZoom = false,
   }) : this._(
-          CameraRuntimeAvailability.ready,
-          cameraAvailable: true,
-          cameraPermissionState: SensorPermissionState.granted,
-          currentZoomLevel: currentZoomLevel,
-          minZoom: minZoom,
-          maxZoom: maxZoom,
-          isSwitchingZoom: isSwitchingZoom,
-        );
+         CameraRuntimeAvailability.ready,
+         cameraAvailable: true,
+         cameraPermissionState: SensorPermissionState.granted,
+         currentZoomLevel: currentZoomLevel,
+         minZoom: minZoom,
+         maxZoom: maxZoom,
+         isSwitchingZoom: isSwitchingZoom,
+       );
 
   const CameraRuntimeState.failed([String? message])
-      : this._(
-          CameraRuntimeAvailability.failed,
-          cameraAvailable: false,
-          cameraPermissionState: SensorPermissionState.granted,
-          message: message,
-        );
+    : this._(
+        CameraRuntimeAvailability.failed,
+        cameraAvailable: false,
+        cameraPermissionState: SensorPermissionState.granted,
+        message: message,
+      );
 
   final CameraRuntimeAvailability availability;
   final String? message;

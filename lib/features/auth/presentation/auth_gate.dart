@@ -4,17 +4,11 @@ import '../application/auth_controller.dart';
 import 'login_screen.dart';
 import 'profile_screen.dart';
 
-typedef AuthenticatedChildBuilder = Widget Function(
-  BuildContext context,
-  AuthController controller,
-);
+typedef AuthenticatedChildBuilder =
+    Widget Function(BuildContext context, AuthController controller);
 
 final class AuthGate extends StatelessWidget {
-  const AuthGate({
-    required this.controller,
-    required this.builder,
-    super.key,
-  });
+  const AuthGate({required this.controller, required this.builder, super.key});
 
   final AuthController controller;
   final AuthenticatedChildBuilder builder;

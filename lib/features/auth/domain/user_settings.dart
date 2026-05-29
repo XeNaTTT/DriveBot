@@ -23,10 +23,10 @@ final class UserSettings {
   });
 
   const UserSettings.guest()
-      : userId = 'guest',
-        preferredCameraZoom = null,
-        useLiveData = true,
-        showDebugSourceLabels = false;
+    : userId = 'guest',
+      preferredCameraZoom = null,
+      useLiveData = true,
+      showDebugSourceLabels = false;
 
   final String userId;
   final double? preferredCameraZoom;

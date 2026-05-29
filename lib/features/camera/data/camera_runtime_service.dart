@@ -2,9 +2,8 @@ import 'package:camera/camera.dart';
 import 'package:flutter/widgets.dart';
 
 typedef CameraDescriptionsLoader = Future<List<CameraDescription>> Function();
-typedef CameraControllerFactory = CameraRuntimeController Function(
-  CameraDescription camera,
-);
+typedef CameraControllerFactory =
+    CameraRuntimeController Function(CameraDescription camera);
 
 abstract class CameraRuntimeController {
   Future<void> initialize();
@@ -88,13 +87,10 @@ class CameraRuntimeService {
 }
 
 CameraRuntimeController createDefaultCameraController(
-    CameraDescription camera) {
+  CameraDescription camera,
+) {
   return CameraControllerAdapter(
-    CameraController(
-      camera,
-      ResolutionPreset.high,
-      enableAudio: false,
-    ),
+    CameraController(camera, ResolutionPreset.high, enableAudio: false),
   );
 }
 

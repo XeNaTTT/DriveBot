@@ -7,9 +7,8 @@ import '../../warnings/domain/warning_repository_result.dart';
 import '../../warnings/domain/warning_request.dart';
 import 'autobahn_client.dart';
 
-typedef AutobahnTrafficFetcher = Future<List<AutobahnTrafficItem>> Function(
-  String roadId,
-);
+typedef AutobahnTrafficFetcher =
+    Future<List<AutobahnTrafficItem>> Function(String roadId);
 
 class AutobahnWarningRepository implements WarningRepository {
   AutobahnWarningRepository({

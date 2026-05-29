@@ -7,7 +7,7 @@ final class AppUser {
   });
 
   const AppUser.authenticated({required String id, String? email})
-      : this._(id: id, email: email, isGuest: false);
+    : this._(id: id, email: email, isGuest: false);
 
   const AppUser.guest() : this._(id: 'guest', email: null, isGuest: true);
 
