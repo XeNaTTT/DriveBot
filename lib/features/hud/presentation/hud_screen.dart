@@ -3,7 +3,11 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../ar/application/ar_info_object_factory.dart';
+import '../../ar/application/ar_selection_controller.dart';
+import '../../ar/domain/ar_info_object.dart';
 import '../../ar/domain/ar_projection_mapper.dart';
+import '../../ar/presentation/ar_info_detail_card.dart';
 import '../../ar/presentation/ar_marker_layer.dart';
 import '../../camera/domain/camera_runtime_state.dart';
 import '../../camera/presentation/camera_hud_background.dart';
@@ -21,7 +25,6 @@ import '../../sensors/domain/sensor_runtime_state.dart';
 import '../../warnings/domain/warning_repository.dart';
 import '../../warnings/domain/warning_request.dart';
 import '../domain/hud_repository.dart';
-import '../domain/hud_warning_item.dart';
 
 typedef CameraLayerBuilder = Widget Function(SensorPermissionStatus status);
 
@@ -57,6 +60,8 @@ class _HudScreenState extends State<HudScreen> {
   CameraRuntimeState _cameraState = const CameraRuntimeState.initializing();
   bool _showReportingChoices = false;
   Timer? _messageTimer;
+  final ArSelectionController _selectionController = ArSelectionController();
+  final ArInfoObjectFactory _infoObjectFactory = const ArInfoObjectFactory();
 
   @override
   void initState() {
@@ -71,6 +76,7 @@ class _HudScreenState extends State<HudScreen> {
     _categoryController.removeListener(_handleCategoryFilterChanged);
     widget.reportController?.removeListener(_handleReportControllerChanged);
     _messageTimer?.cancel();
+    _selectionController.dispose();
     _categoryController.dispose();
     super.dispose();
   }
@@ -149,27 +155,37 @@ class _HudScreenState extends State<HudScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final allWarnings = [...widget.hudRepository.getNearbyWarnings()]
-      ..sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
-    final warnings = allWarnings
-        .where(
-          (warning) =>
-              _categoryController.isActive(warning.informationCategory),
-        )
-        .toList(growable: false);
+    final allWarnings = [...widget.hudRepository.getNearbyWarnings()];
 
     return ValueListenableBuilder(
       valueListenable: widget.locationRepository.locationStatusListenable,
       builder: (context, location, _) => ValueListenableBuilder(
         valueListenable: widget.permissionRepository.permissionStatusListenable,
         builder: (context, permissions, __) {
+          final warnings = allWarnings
+              .where(
+                (warning) =>
+                    _categoryController.isActive(warning.informationCategory),
+              )
+              .toList(growable: false);
+          final infoObjects =
+              _infoObjectFactory.createAll(
+                warnings: warnings,
+                location: location,
+              )..sort(
+                (a, b) => (a.distanceMeters ?? double.infinity).compareTo(
+                  b.distanceMeters ?? double.infinity,
+                ),
+              );
           final markers = widget.projectionMapper.project(
-            warnings: warnings,
+            objects: infoObjects,
             userHeadingDegrees: location.headingDegrees,
           );
+          _collapseMissingSelection(markers.map((m) => m.infoObject.id));
           final primary = markers.isNotEmpty
-              ? markers.first.warning
-              : (warnings.isEmpty ? null : warnings.first);
+              ? markers.first.infoObject
+              : (infoObjects.isEmpty ? null : infoObjects.first);
+          final selectedObject = _selectedObject(infoObjects);
           final moreCount = markers.length > 1 ? markers.length - 1 : 0;
           final runtime = SensorRuntimeState(
             cameraAvailable: _cameraState.cameraAvailable,
@@ -186,7 +202,14 @@ class _HudScreenState extends State<HudScreen> {
             body: Stack(
               children: [
                 _buildCameraLayer(permissions),
-                ArMarkerLayer(markers: markers),
+                if (selectedObject != null)
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: () => setState(_selectionController.collapse),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
                 if (widget.reportController != null)
                   _ReportOverlay(
                     showChoices: _showReportingChoices,
@@ -276,12 +299,41 @@ class _HudScreenState extends State<HudScreen> {
                     ),
                   ),
                 ),
+                if (selectedObject != null)
+                  ArInfoDetailCard(
+                    infoObject: selectedObject,
+                    onClose: () => setState(_selectionController.collapse),
+                  ),
+                ArMarkerLayer(
+                  markers: markers,
+                  selectedInfoObjectId:
+                      _selectionController.selectedInfoObjectId,
+                  onMarkerTap: (id) =>
+                      setState(() => _selectionController.select(id)),
+                ),
               ],
             ),
           );
         },
       ),
     );
+  }
+
+  ArInfoObject? _selectedObject(List<ArInfoObject> objects) {
+    final selectedId = _selectionController.selectedInfoObjectId;
+    if (selectedId == null) return null;
+    for (final object in objects) {
+      if (object.id == selectedId) return object;
+    }
+    return null;
+  }
+
+  void _collapseMissingSelection(Iterable<String> visibleIds) {
+    final selectedId = _selectionController.selectedInfoObjectId;
+    if (selectedId == null || visibleIds.contains(selectedId)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _selectionController.collapse());
+    });
   }
 }
 
@@ -575,7 +627,7 @@ class _PrimaryCard extends StatelessWidget {
     required this.source,
     required this.hasActiveCategories,
   });
-  final HudWarningItem? warning;
+  final ArInfoObject? warning;
   final String source;
   final bool hasActiveCategories;
   @override
@@ -607,7 +659,7 @@ class _PrimaryCard extends StatelessWidget {
                   ? (hasActiveCategories
                         ? 'Keine Anweisung'
                         : 'Filter anpassen')
-                  : '${warning!.distanceMeters} m · ${warning!.detail} · S${warning!.severity}',
+                  : '${warning!.formattedDistance} · ${warning!.subtitle} · S${warning!.warning.severity}',
             ),
             Text(
               'Quelle: $source',

@@ -21,6 +21,7 @@ class HudWarningItem {
     this.longitude,
     this.validFrom,
     this.validTo,
+    this.id,
   });
 
   final WarningType type;
@@ -35,4 +36,16 @@ class HudWarningItem {
   final double? longitude;
   final DateTime? validFrom;
   final DateTime? validTo;
+  final String? id;
+
+  bool get hasCoordinates => latitude != null && longitude != null;
+
+  String get stableId =>
+      id ??
+      [
+        type.name,
+        title,
+        latitude?.toStringAsFixed(6) ?? bearingDegrees.toString(),
+        longitude?.toStringAsFixed(6) ?? distanceMeters.toString(),
+      ].join('|');
 }

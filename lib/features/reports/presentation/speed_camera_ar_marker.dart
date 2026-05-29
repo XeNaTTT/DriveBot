@@ -1,72 +1,93 @@
 import 'package:flutter/material.dart';
 
-import '../../hud/domain/hud_warning_item.dart';
+import '../../ar/domain/ar_info_object.dart';
 
 class SpeedCameraArMarker extends StatelessWidget {
-  const SpeedCameraArMarker({required this.warning, super.key});
+  const SpeedCameraArMarker({
+    required this.infoObject,
+    this.onTap,
+    this.selected = false,
+    super.key,
+  });
 
-  final HudWarningItem warning;
+  final ArInfoObject infoObject;
+  final VoidCallback? onTap;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
     const color = Color(0xFFFF7B72);
     return Semantics(
+      button: true,
       label:
-          '${warning.title}, ${warning.distanceMeters} Meter, Quelle Community',
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(width: 1, height: 16, color: color.withValues(alpha: 0.65)),
-          Container(
-            key: const Key('speed-camera-ar-marker'),
-            constraints: const BoxConstraints(minHeight: 44),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.38),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: color.withValues(alpha: 0.9), width: 1),
+          '${infoObject.title}, ${infoObject.formattedDistance}, Quelle Community',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 1,
+              height: 16,
+              color: color.withValues(alpha: 0.65),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(
-                  width: 26,
-                  height: 26,
-                  child: CustomPaint(painter: _SpeedCameraSilhouettePainter()),
+            Container(
+              key: const Key('speed-camera-ar-marker'),
+              constraints: const BoxConstraints(minHeight: 44),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: selected ? 0.54 : 0.38),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: color.withValues(alpha: 0.95),
+                  width: selected ? 1.8 : 1,
                 ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _displayTitle(warning.title),
-                        key: Key('speed-camera-label-${warning.title}'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      Text(
-                        '${_distanceLabel(warning.distanceMeters)} · Quelle: Community',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.white.withValues(alpha: 0.82),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: CustomPaint(
+                      painter: _SpeedCameraSilhouettePainter(),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _displayTitle(infoObject.title),
+                          key: Key('speed-camera-label-${infoObject.title}'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          '${infoObject.formattedDistance} · Quelle: Community',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.white.withValues(alpha: 0.82),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -75,11 +96,6 @@ class SpeedCameraArMarker extends StatelessWidget {
       title == 'Mobiler Blitzer' || title == 'Fester Blitzer'
       ? title
       : 'Kamera';
-
-  static String _distanceLabel(int meters) {
-    if (meters < 1000) return '$meters m';
-    return '${(meters / 1000).toStringAsFixed(1)} km';
-  }
 }
 
 class _SpeedCameraSilhouettePainter extends CustomPainter {
