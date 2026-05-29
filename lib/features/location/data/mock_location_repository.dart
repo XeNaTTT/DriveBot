@@ -12,6 +12,8 @@ class MockLocationRepository implements LocationRepository {
           gpsFixStatus: GpsFixStatus.strong,
           isMock: true,
           isSpeedEstimatedFromGps: false,
+          latitude: 50.1109,
+          longitude: 8.6821,
         ),
       );
 

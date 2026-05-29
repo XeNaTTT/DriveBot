@@ -12,8 +12,8 @@ pipeline.
 | Speed (`Tempo … km/h`) | `LocationStatus.speedKph` from `IosLocationRuntime` on iOS | Geolocator reports a finite non-negative GPS speed | `MockLocationRepository` reports 84 km/h when sensors/services are unavailable; stationary/unknown live speed maps to 0 km/h |
 | Heading (`Richtung …`) | Compass heading from `flutter_compass`, then GPS course from geolocator | Compass or GPS heading is available | Mock heading 58° / NE is used when live heading is unavailable |
 | Location health / mode | `LocationStatus.gpsFixStatus`, permissions, and camera runtime state | GPS fix is live and not marked mock, heading is live, and camera is ready | Fallback mode is shown when the HUD is driven by mock sensor values |
-| Primary warning card | `CompositeWarningRepository` | Open-Meteo or Autobahn API returns warnings, including cached API results | `MockWarningRepository` supplies static warning objects when APIs fail or return no warnings |
-| AR markers | Projected from the same warning objects through `ArProjectionMapper` | Marker titles/distances/bearings are API-backed only when the warning repository is API-backed | Static mock warnings are projected into AR when fallback warnings are active |
+| Primary warning card | `CompositeWarningRepository` | Open-Meteo or filtered Autobahn API warnings return warning objects, including cached API results | `MockWarningRepository` supplies static warning objects when APIs fail, time out, cannot parse, have no current location, or return no warnings |
+| AR markers | Projected from the same warning objects through `ArProjectionMapper` | Autobahn warnings are pre-filtered to entries with coordinates inside 5 km and within the AR field of view; marker titles/distances/bearings are API-backed only when the warning repository is API-backed | Static mock warnings are projected into AR when fallback warnings are active |
 
 ## Debug/source indicator
 
@@ -35,7 +35,7 @@ The primary warning card uses German source labels:
 ### Integrated in the MVP
 
 - Open-Meteo: weather-related driving warnings.
-- Autobahn API: roadwork and traffic-warning items for the configured road ID.
+- Autobahn API: roadwork, warning, and closure items for the configured road ID via `/o/autobahn/{roadId}/services/roadworks`, `/warnings`, and `/closures`; entries without coordinates, outside 5 km, or outside the AR field of view are ignored before they reach the HUD.
 - iOS sensors: camera availability, GPS speed/course, compass heading, and motion availability.
 
 ### Still planned / not yet integrated
@@ -52,7 +52,7 @@ The primary warning card uses German source labels:
 Each provider should remain behind a feature-level adapter/repository with:
 
 - transport client abstraction
-- mapping to UI-agnostic domain models
+- mapping to UI-agnostic domain models with provider metadata (for example `source`, `roadId`, coordinates, validity, distance, bearing, and severity)
 - retry/timeouts and graceful degradation
 - provider-specific rate-limit and attribution handling
 

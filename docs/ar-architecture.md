@@ -27,8 +27,8 @@ and marker projection when available. Warning objects can be API-backed
 - GPS/sensor services unavailable -> `MockLocationRepository` values.
 - Heading unavailable -> mock heading is used until compass or GPS course is
   available.
-- APIs fail or return no warnings -> `MockWarningRepository` supplies static
-  warnings.
+- APIs fail, time out, cannot parse, have no current location, or return no
+  warnings -> `MockWarningRepository` supplies static warnings.
 - Debug builds show source pills for camera, location, and warnings to prevent
   mock data from being mistaken for live data.
 
@@ -48,6 +48,6 @@ Output:
 
 ## Warning prioritization
 
-Warnings are sorted by distance for the current HUD display. The first projected
+Warnings are sorted by distance for the current HUD display. Autobahn warnings are additionally filtered to coordinated entries within 5 km and within the configured AR field of view, with ahead-of-user entries preferred before the HUD displays them. The first projected
 marker is used for the primary warning card; if no marker is inside the field of
 view, the nearest warning is shown in the card.

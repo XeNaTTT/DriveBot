@@ -58,6 +58,8 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
       gpsFixStatus: GpsFixStatus.unavailable,
       isMock: true,
       isSpeedEstimatedFromGps: false,
+      latitude: 50.1109,
+      longitude: 8.6821,
     ),
   );
   final ValueNotifier<SensorPermissionStatus> _permissionStatus = ValueNotifier(
@@ -327,6 +329,8 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
       isSpeedEstimatedFromGps: hasValidSpeed,
       isHeadingFromCompass: compassHeading != null,
       isHeadingFromGps: compassHeading == null && gpsHeading != null,
+      latitude: position.latitude,
+      longitude: position.longitude,
     );
   }
 
