@@ -16,7 +16,9 @@ Supabase service role key and relies on backend RLS policies for
 - If both values are present, the Flutter app initializes Supabase and listens
   for auth state changes.
 - If either value is missing, or initialization fails, initialization is skipped
-  and DriveBot starts directly in `Gastmodus`.
+  and DriveBot starts directly in `Gastmodus`; the Supabase notice is available
+  from the account menu behind the top-right profile icon instead of covering
+  the HUD.
 - Supabase configured and no session: show the German login screen with a guest
   option.
 - Supabase configured and authenticated: upsert the user's profile/settings and
@@ -34,6 +36,8 @@ Supabase service role key and relies on backend RLS policies for
 - `Konto erstellen` with email/password.
 - `Passwort vergessen?` / `Passwort zurücksetzen` email flow.
 - `Ohne Konto fortfahren` guest flow.
+- Account menu from the top-right profile icon, including the missing-Supabase
+  guest-mode notice when applicable.
 - `Abmelden` from the profile screen.
 - Compact profile settings with a `Datenquellen anzeigen` debug-source toggle.
 - Auth state listener through the repository/controller boundary.
