@@ -5,6 +5,14 @@ import 'core/config/supabase_config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final supabaseConfigured = await SupabaseConfig.initializeIfConfigured();
+
+  const supabaseConfig = SupabaseConfig.defaultConfig;
+  for (final diagnostic in supabaseConfig.safeDiagnostics) {
+    debugPrint(diagnostic);
+  }
+
+  final supabaseConfigured = await SupabaseConfig.initializeIfConfigured(
+    config: supabaseConfig,
+  );
   runApp(DriveAssistantApp(supabaseConfigured: supabaseConfigured));
 }

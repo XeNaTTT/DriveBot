@@ -20,6 +20,46 @@ void main() {
     controller.dispose();
   });
 
+  test('Supabase config requires non-empty URL and anon key', () {
+    expect(
+      const SupabaseConfig(
+        url: 'https://example.supabase.co',
+        anonKey: 'key',
+      ).canInitialize,
+      isTrue,
+    );
+    expect(
+      const SupabaseConfig(url: '', anonKey: 'key').canInitialize,
+      isFalse,
+    );
+    expect(
+      const SupabaseConfig(
+        url: 'https://example.supabase.co',
+        anonKey: '',
+      ).canInitialize,
+      isFalse,
+    );
+    expect(
+      const SupabaseConfig(url: '   ', anonKey: '   ').canInitialize,
+      isFalse,
+    );
+  });
+
+  test('Supabase diagnostics never expose configured values', () {
+    const config = SupabaseConfig(
+      url: 'https://example.supabase.co',
+      anonKey: 'public-anon-key-value',
+    );
+    final diagnostics = config.safeDiagnostics.join('\n');
+
+    expect(config.safeDiagnostics, [
+      'Supabase URL configured: yes',
+      'Supabase key configured: yes',
+    ]);
+    expect(diagnostics, isNot(contains(config.url)));
+    expect(diagnostics, isNot(contains(config.anonKey)));
+  });
+
   test('auth controller guest state', () async {
     final controller = AuthController(
       repository: _FakeAuthRepository(),

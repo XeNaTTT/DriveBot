@@ -14,7 +14,16 @@ final class SupabaseConfig {
   final String url;
   final String anonKey;
 
-  bool get canInitialize => url.trim().isNotEmpty && anonKey.trim().isNotEmpty;
+  bool get isUrlConfigured => url.trim().isNotEmpty;
+
+  bool get isAnonKeyConfigured => anonKey.trim().isNotEmpty;
+
+  bool get canInitialize => isUrlConfigured && isAnonKeyConfigured;
+
+  List<String> get safeDiagnostics => [
+    'Supabase URL configured: ${isUrlConfigured ? 'yes' : 'no'}',
+    'Supabase key configured: ${isAnonKeyConfigured ? 'yes' : 'no'}',
+  ];
 
   static const defaultConfig = SupabaseConfig();
 
