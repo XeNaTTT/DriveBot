@@ -65,6 +65,38 @@ void main() {
     controller.dispose();
   });
 
+  testWidgets('Supabase guest notice lives in account menu', (tester) async {
+    final controller = AuthController(
+      repository: _FakeAuthRepository(),
+      isSupabaseConfigured: false,
+    );
+    await controller.continueAsGuest();
+
+    await tester.pumpWidget(MaterialApp(
+      theme: buildAppTheme(),
+      home: AuthGate(
+        controller: controller,
+        builder: (_, controller) => Scaffold(
+          body: AccountEntryButton(controller: controller),
+        ),
+      ),
+    ));
+
+    expect(
+      find.text('Supabase ist nicht konfiguriert. Die App läuft im Gastmodus.'),
+      findsNothing,
+    );
+    expect(find.text('Supabase nicht konfiguriert'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('account-entry-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Supabase nicht konfiguriert'), findsOneWidget);
+    expect(find.text('Die App läuft im Gastmodus.'), findsOneWidget);
+    expect(find.text('Profil öffnen'), findsOneWidget);
+    controller.dispose();
+  });
+
   testWidgets('profile screen renders guest state', (tester) async {
     final controller = AuthController(
       repository: _FakeAuthRepository(),

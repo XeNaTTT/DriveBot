@@ -29,18 +29,7 @@ final class AuthGate extends StatelessWidget {
           return LoginScreen(controller: controller);
         }
 
-        return Stack(
-          children: [
-            builder(context, controller),
-            if (!controller.isSupabaseConfigured)
-              const Positioned(
-                left: 16,
-                right: 16,
-                bottom: 16,
-                child: SafeArea(child: _SupabaseFallbackBanner()),
-              ),
-          ],
-        );
+        return builder(context, controller);
       },
     );
   }
@@ -53,41 +42,69 @@ final class AccountEntryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      label: 'Nutzerkonto',
-      button: true,
-      child: IconButton.filledTonal(
-        key: const Key('account-entry-button'),
-        tooltip: 'Profil',
-        onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => ProfileScreen(controller: controller),
+    return PopupMenuButton<_AccountMenuAction>(
+      key: const Key('account-entry-button'),
+      tooltip: 'Nutzerkonto',
+      position: PopupMenuPosition.under,
+      onSelected: (action) {
+        switch (action) {
+          case _AccountMenuAction.openProfile:
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => ProfileScreen(controller: controller),
+              ),
+            );
+        }
+      },
+      itemBuilder: (context) => [
+        if (!controller.isSupabaseConfigured)
+          const PopupMenuItem<_AccountMenuAction>(
+            enabled: false,
+            child: _SupabaseFallbackMenuNotice(),
+          ),
+        if (!controller.isSupabaseConfigured) const PopupMenuDivider(),
+        const PopupMenuItem<_AccountMenuAction>(
+          value: _AccountMenuAction.openProfile,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.account_circle),
+            title: Text('Profil öffnen'),
           ),
         ),
-        icon: const Icon(Icons.account_circle),
+      ],
+      child: Semantics(
+        label: 'Nutzerkonto',
+        button: true,
+        child: Material(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          shape: const CircleBorder(),
+          child: const Padding(
+            padding: EdgeInsets.all(12),
+            child: Icon(Icons.account_circle),
+          ),
+        ),
       ),
     );
   }
 }
 
-final class _SupabaseFallbackBanner extends StatelessWidget {
-  const _SupabaseFallbackBanner();
+enum _AccountMenuAction { openProfile }
+
+final class _SupabaseFallbackMenuNotice extends StatelessWidget {
+  const _SupabaseFallbackMenuNotice();
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.84),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white24),
-      ),
-      child: const Padding(
-        padding: EdgeInsets.all(14),
-        child: Text(
-          'Supabase ist nicht konfiguriert. Die App läuft im Gastmodus.',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 280),
+      child: const ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(Icons.info_outline),
+        title: Text(
+          'Supabase nicht konfiguriert',
+          style: TextStyle(fontWeight: FontWeight.w700),
         ),
+        subtitle: Text('Die App läuft im Gastmodus.'),
       ),
     );
   }
