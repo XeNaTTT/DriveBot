@@ -42,6 +42,18 @@ final class ProfileScreen extends StatelessWidget {
                     const SizedBox(height: 12),
                     Text(controller.profileWarning!),
                   ],
+                  const SizedBox(height: 24),
+                  SwitchListTile.adaptive(
+                    key: const Key('profile-debug-source-toggle'),
+                    value: controller.settings.showDebugSourceLabels,
+                    onChanged: controller.isBusy
+                        ? null
+                        : controller.setShowDebugSourceLabels,
+                    title: const Text('Datenquellen anzeigen'),
+                    subtitle: const Text(
+                      'Blendet Debug-Hinweise zu Live- und Mock-Daten ein.',
+                    ),
+                  ),
                   const Spacer(),
                   OutlinedButton(
                     key: const Key('profile-back-button'),

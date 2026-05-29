@@ -1,7 +1,10 @@
 import 'app_user.dart';
+import 'user_settings.dart';
 
 abstract interface class AuthRepository {
   AppUser? get currentUser;
+
+  UserSettings get currentSettings;
 
   Stream<AppUser?> get authStateChanges;
 
@@ -22,4 +25,6 @@ abstract interface class AuthRepository {
   Future<void> signOut();
 
   Future<void> ensureProfileAndSettings(AppUser user);
+
+  Future<UserSettings> updateSettings(UserSettings settings);
 }

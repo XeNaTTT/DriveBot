@@ -4,6 +4,7 @@ import 'package:driveassistant_ar/core/config/supabase_config.dart';
 import 'package:driveassistant_ar/features/auth/application/auth_controller.dart';
 import 'package:driveassistant_ar/features/auth/domain/app_user.dart';
 import 'package:driveassistant_ar/features/auth/domain/auth_repository.dart';
+import 'package:driveassistant_ar/features/auth/domain/user_settings.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -91,6 +92,25 @@ void main() {
         controller.profileWarning, 'Netzwerkfehler. Bitte versuche es erneut.');
     controller.dispose();
   });
+
+  test('debug setting toggle is saved through repository', () async {
+    final repository = _FakeAuthRepository(
+      initialUser: const AppUser.authenticated(
+        id: 'user-1',
+        email: 'person@example.com',
+      ),
+    );
+    final controller = AuthController(
+      repository: repository,
+      isSupabaseConfigured: true,
+    );
+
+    await controller.setShowDebugSourceLabels(true);
+
+    expect(controller.settings.showDebugSourceLabels, isTrue);
+    expect(repository.updatedSettings?.showDebugSourceLabels, isTrue);
+    controller.dispose();
+  });
 }
 
 final class _FakeAuthRepository implements AuthRepository {
@@ -100,11 +120,15 @@ final class _FakeAuthRepository implements AuthRepository {
   final bool throwOnUpsert;
   final _controller = StreamController<AppUser?>.broadcast();
   AppUser? _currentUser;
+  UserSettings _settings = const UserSettings.guest();
   bool didUpsertProfile = false;
+  UserSettings? updatedSettings;
 
   @override
   AppUser? get currentUser => _currentUser ?? initialUser;
 
+  @override
+  UserSettings get currentSettings => _settings;
   @override
   Future<AppUser> continueAsGuest() async {
     const user = AppUser.guest();
@@ -126,6 +150,13 @@ final class _FakeAuthRepository implements AuthRepository {
 
   @override
   Future<void> sendPasswordResetEmail(String email) async {}
+
+  @override
+  Future<UserSettings> updateSettings(UserSettings settings) async {
+    updatedSettings = settings;
+    _settings = settings;
+    return _settings;
+  }
 
   @override
   Future<AppUser> signInWithEmailPassword({
