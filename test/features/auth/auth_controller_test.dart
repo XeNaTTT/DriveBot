@@ -100,6 +100,21 @@ void main() {
     controller.dispose();
   });
 
+  test('Apple sign-in uses repository auth action', () async {
+    final repository = _FakeAuthRepository();
+    final controller = AuthController(
+      repository: repository,
+      isSupabaseConfigured: true,
+    );
+
+    await controller.signInWithApple();
+
+    expect(controller.status, AuthStatus.loggedIn);
+    expect(controller.user?.email, 'apple@example.com');
+    expect(repository.didUpsertProfile, isTrue);
+    controller.dispose();
+  });
+
   test('sign out returns safely', () async {
     final controller = AuthController(
       repository: _FakeAuthRepository(
@@ -248,4 +263,8 @@ final class _FakeAuthRepository implements AuthRepository {
     }
     return signInWithEmailPassword(email: email, password: password);
   }
+
+  @override
+  Future<AppUser> signInWithApple() =>
+      signInWithEmailPassword(email: 'apple@example.com', password: 'apple');
 }

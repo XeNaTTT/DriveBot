@@ -5,6 +5,33 @@ typedef CameraDescriptionsLoader = Future<List<CameraDescription>> Function();
 typedef CameraControllerFactory =
     CameraRuntimeController Function(CameraDescription camera);
 
+class CameraRuntimeCameraSelection {
+  const CameraRuntimeCameraSelection({
+    required this.camera,
+    required this.controller,
+    required this.availableCameras,
+  });
+
+  final CameraDescription camera;
+  final CameraRuntimeController controller;
+  final List<CameraDescription> availableCameras;
+
+  bool get hasSeparateUltraWideBackCamera => availableCameras.any(
+    (camera) =>
+        camera.lensDirection == CameraLensDirection.back &&
+        camera.lensType == CameraLensType.ultraWide,
+  );
+
+  bool get hasSeparateNormalBackCamera => availableCameras.any(
+    (camera) =>
+        camera.lensDirection == CameraLensDirection.back &&
+        camera.lensType != CameraLensType.ultraWide,
+  );
+
+  bool get canSwitchBackLens =>
+      hasSeparateUltraWideBackCamera && hasSeparateNormalBackCamera;
+}
+
 abstract class CameraRuntimeController {
   Future<void> initialize();
   Future<void> dispose();
@@ -25,11 +52,21 @@ class CameraRuntimeService {
   final CameraControllerFactory createCameraController;
 
   Future<CameraRuntimeController?> createBackCameraController() async {
+    final selection = await createInitialBackCameraSelection();
+    return selection?.controller;
+  }
+
+  Future<CameraRuntimeCameraSelection?>
+  createInitialBackCameraSelection() async {
     final cameras = await loadCameraDescriptions();
     if (cameras.isEmpty) return null;
 
     final camera = selectInitialBackCamera(cameras) ?? cameras.first;
-    return createCameraController(camera);
+    return CameraRuntimeCameraSelection(
+      camera: camera,
+      controller: createCameraController(camera),
+      availableCameras: cameras,
+    );
   }
 
   CameraRuntimeController createControllerFor(CameraDescription camera) {

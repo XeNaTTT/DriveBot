@@ -21,8 +21,8 @@ Supabase service role key and relies on backend RLS policies for
   the HUD.
 - Supabase configured and no session: show the German login screen with a guest
   option.
-- Supabase configured and authenticated with a real Supabase session: upsert the
-  user's profile/settings and show the HUD.
+- Supabase configured and authenticated with a real Supabase session (email or
+  Apple): upsert the user's profile/settings and show the HUD.
 - Login is optional. Users can choose `Ohne Konto fortfahren` and keep using the
   HUD without an account.
 - Signing out returns safely to the logged-out auth state; the user can sign in
@@ -35,6 +35,8 @@ Supabase service role key and relies on backend RLS policies for
 ## Supported flows
 
 - `Anmelden` with email/password.
+- `Mit Apple anmelden` using native Sign in with Apple, a nonce, and Supabase
+  `OAuthProvider.apple` ID-token exchange.
 - `Konto erstellen` with email/password.
 - `Passwort vergessen?` / `Passwort zurücksetzen` email flow.
 - `Ohne Konto fortfahren` guest flow.
@@ -56,7 +58,9 @@ Auth is feature-scoped under `lib/features/auth`:
 
 The HUD remains feature-owned. Auth UI is composed around the HUD through
 constructor injection, so camera, sensor, AR, warning, and reporting behavior
-stay independent from the auth provider.
+stay independent from the auth provider. Apple sign-in is implemented in the
+Supabase auth repository rather than in presentation code, keeping provider
+details behind the repository boundary.
 
 ## Codemagic
 
