@@ -68,6 +68,8 @@ workflows:
         script: |
           flutter build ios \
             --release \
+            --dart-define=SUPABASE_URL=$SUPABASE_URL \
+            --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY \
             --no-codesign
 
       - name: Apply provisioning profiles
