@@ -31,8 +31,40 @@ void main() {
     expect(find.text('Anmelden'), findsOneWidget);
     expect(find.text('Konto erstellen'), findsOneWidget);
     expect(find.text('Passwort vergessen?'), findsOneWidget);
+    expect(find.text('Mit Apple anmelden'), findsOneWidget);
     expect(find.text('Ohne Konto fortfahren'), findsOneWidget);
     expect(find.text('Gastmodus'), findsOneWidget);
+    controller.dispose();
+  });
+
+  testWidgets('Apple sign-in opens the HUD/main app', (tester) async {
+    final controller = AuthController(
+      repository: _FakeAuthRepository(),
+      isSupabaseConfigured: true,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: AuthGate(
+          controller: controller,
+          builder: (_, controller) => Scaffold(
+            body: Stack(
+              children: [
+                const Text('HUD'),
+                AccountEntryButton(controller: controller),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('auth-apple-sign-in-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('HUD'), findsOneWidget);
+    expect(controller.user?.email, 'apple@example.com');
     controller.dispose();
   });
 
@@ -179,4 +211,8 @@ final class _FakeAuthRepository implements AuthRepository {
     required String email,
     required String password,
   }) => signInWithEmailPassword(email: email, password: password);
+
+  @override
+  Future<AppUser> signInWithApple() =>
+      signInWithEmailPassword(email: 'apple@example.com', password: 'apple');
 }

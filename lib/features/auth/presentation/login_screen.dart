@@ -96,6 +96,15 @@ final class _LoginScreenState extends State<LoginScreen> {
                       child: const Text('Passwort vergessen?'),
                     ),
                     const Divider(height: 32),
+                    FilledButton.icon(
+                      key: const Key('auth-apple-sign-in-button'),
+                      onPressed: widget.controller.isBusy
+                          ? null
+                          : widget.controller.signInWithApple,
+                      icon: const Icon(Icons.apple),
+                      label: const Text('Mit Apple anmelden'),
+                    ),
+                    const SizedBox(height: 8),
                     FilledButton.tonal(
                       key: const Key('auth-continue-guest-button'),
                       onPressed: widget.controller.isBusy

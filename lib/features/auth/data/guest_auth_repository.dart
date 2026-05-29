@@ -62,6 +62,9 @@ final class GuestAuthRepository implements AuthRepository {
     required String password,
   }) => continueAsGuest();
 
+  @override
+  Future<AppUser> signInWithApple() => continueAsGuest();
+
   Future<void> dispose() => _controller.close();
 
   void _setUser(AppUser? user) {

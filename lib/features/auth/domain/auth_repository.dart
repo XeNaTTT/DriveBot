@@ -20,6 +20,8 @@ abstract interface class AuthRepository {
     required String password,
   });
 
+  Future<AppUser> signInWithApple();
+
   Future<void> sendPasswordResetEmail(String email);
 
   Future<void> signOut();

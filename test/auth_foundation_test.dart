@@ -205,6 +205,10 @@ final class _FakeAuthRepository implements AuthRepository {
     required String password,
   }) => signInWithEmailPassword(email: email, password: password);
 
+  @override
+  Future<AppUser> signInWithApple() =>
+      signInWithEmailPassword(email: 'apple@example.com', password: 'apple');
+
   void _setUser(AppUser? user) {
     currentUser = user;
     _controller.add(user);

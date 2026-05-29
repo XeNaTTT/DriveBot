@@ -74,6 +74,13 @@ final class AuthController extends ChangeNotifier {
     );
   }
 
+  Future<void> signInWithApple() async {
+    await _runAuthAction(
+      failureMessage: 'Apple-Anmeldung fehlgeschlagen',
+      action: _repository.signInWithApple,
+    );
+  }
+
   Future<void> sendPasswordResetEmail(String email) async {
     final trimmedEmail = email.trim();
     if (!_looksLikeEmail(trimmedEmail)) {

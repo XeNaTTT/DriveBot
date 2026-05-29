@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 
 import '../domain/app_user.dart';
@@ -53,6 +57,12 @@ final class SupabaseAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<AppUser> signInWithApple() async {
+    final response = await _client.auth.signInWithApple();
+    return _requireAuthenticatedSession(response.session);
+  }
+
+  @override
   Future<void> sendPasswordResetEmail(String email) =>
       _client.auth.resetPasswordForEmail(email.trim());
 
@@ -100,5 +110,29 @@ final class SupabaseAuthRepository implements AuthRepository {
   static AppUser? _mapUser(User? user) {
     if (user == null) return null;
     return AppUser.authenticated(id: user.id, email: user.email);
+  }
+}
+
+extension SupabaseAppleSignIn on GoTrueClient {
+  Future<AuthResponse> signInWithApple() async {
+    final rawNonce = generateRawNonce();
+    final hashedNonce = sha256.convert(utf8.encode(rawNonce)).toString();
+    final credential = await SignInWithApple.getAppleIDCredential(
+      scopes: [
+        AppleIDAuthorizationScopes.email,
+        AppleIDAuthorizationScopes.fullName,
+      ],
+      nonce: hashedNonce,
+    );
+    final idToken = credential.identityToken;
+    if (idToken == null) {
+      throw const AuthException('Apple hat kein ID-Token zurückgegeben.');
+    }
+
+    return signInWithIdToken(
+      provider: OAuthProvider.apple,
+      idToken: idToken,
+      nonce: rawNonce,
+    );
   }
 }
