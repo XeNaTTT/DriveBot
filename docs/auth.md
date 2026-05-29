@@ -21,12 +21,14 @@ Supabase service role key and relies on backend RLS policies for
   the HUD.
 - Supabase configured and no session: show the German login screen with a guest
   option.
-- Supabase configured and authenticated: upsert the user's profile/settings and
-  show the HUD.
+- Supabase configured and authenticated with a real Supabase session: upsert the
+  user's profile/settings and show the HUD.
 - Login is optional. Users can choose `Ohne Konto fortfahren` and keep using the
   HUD without an account.
 - Signing out returns safely to the logged-out auth state; the user can sign in
   again or continue as a guest.
+- Sign-up responses that require email confirmation but do not include a session
+  stay logged out and ask the user to confirm their email before signing in.
 - Profile/settings upsert failures are reported as a safe German network warning
   but do not crash login or signup.
 

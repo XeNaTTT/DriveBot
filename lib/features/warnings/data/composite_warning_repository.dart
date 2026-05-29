@@ -8,22 +8,21 @@ import 'mock_warning_repository.dart';
 class CompositeWarningRepository
     implements WarningRepository, WarningDataSourceStatus, HudRepository {
   CompositeWarningRepository({
-    required WarningRepository primary,
+    required this.primary,
     MockWarningRepository? fallback,
-  })  : _primary = primary,
-        _fallback = fallback ?? MockWarningRepository() {
+  }) : _fallback = fallback ?? MockWarningRepository() {
     _latestWarnings = _fallback.getNearbyWarnings();
     _latestResult = WarningRepositoryResult.fallback(_latestWarnings);
   }
 
-  final WarningRepository _primary;
+  final WarningRepository primary;
   final MockWarningRepository _fallback;
   late WarningRepositoryResult _latestResult;
   late List<HudWarningItem> _latestWarnings;
 
   @override
   Future<WarningRepositoryResult> getWarnings(WarningRequest request) async {
-    final primaryResult = await _primary.getWarnings(request);
+    final primaryResult = await primary.getWarnings(request);
     if (primaryResult.hasWarnings) {
       _latestWarnings = primaryResult.warnings;
       _latestResult = primaryResult;

@@ -12,16 +12,16 @@ final class AuthController extends ChangeNotifier {
   AuthController({
     required AuthRepository repository,
     required bool isSupabaseConfigured,
-  })  : _repository = repository,
-        _isSupabaseConfigured = isSupabaseConfigured,
-        _status = isSupabaseConfigured
-            ? (repository.currentUser == null
-                ? AuthStatus.loggedOut
-                : AuthStatus.loggedIn)
-            : AuthStatus.guest,
-        _user = isSupabaseConfigured
-            ? repository.currentUser
-            : (repository.currentUser ?? const AppUser.guest()) {
+  }) : _repository = repository,
+       _isSupabaseConfigured = isSupabaseConfigured,
+       _status = isSupabaseConfigured
+           ? (repository.currentUser == null
+                 ? AuthStatus.loggedOut
+                 : AuthStatus.loggedIn)
+           : AuthStatus.guest,
+       _user = isSupabaseConfigured
+           ? repository.currentUser
+           : (repository.currentUser ?? const AppUser.guest()) {
     _subscription = _repository.authStateChanges.listen(_handleAuthChange);
     if (!_isSupabaseConfigured && _user?.isGuest != true) {
       unawaited(continueAsGuest());
@@ -61,20 +61,16 @@ final class AuthController extends ChangeNotifier {
   Future<void> signIn({required String email, required String password}) async {
     await _runAuthAction(
       failureMessage: 'Anmeldung fehlgeschlagen',
-      action: () => _repository.signInWithEmailPassword(
-        email: email,
-        password: password,
-      ),
+      action: () =>
+          _repository.signInWithEmailPassword(email: email, password: password),
     );
   }
 
   Future<void> signUp({required String email, required String password}) async {
     await _runAuthAction(
       failureMessage: 'Konto konnte nicht erstellt werden',
-      action: () => _repository.signUpWithEmailPassword(
-        email: email,
-        password: password,
-      ),
+      action: () =>
+          _repository.signUpWithEmailPassword(email: email, password: password),
     );
   }
 
@@ -126,8 +122,9 @@ final class AuthController extends ChangeNotifier {
       final authenticatedUser = await action();
       _user = authenticatedUser;
       _settings = UserSettings(userId: authenticatedUser.id);
-      _status =
-          authenticatedUser.isGuest ? AuthStatus.guest : AuthStatus.loggedIn;
+      _status = authenticatedUser.isGuest
+          ? AuthStatus.guest
+          : AuthStatus.loggedIn;
       await _ensureProfileGracefully(authenticatedUser);
     }, failureMessage: failureMessage);
   }
@@ -164,8 +161,9 @@ final class AuthController extends ChangeNotifier {
     if (changedUser == null) {
       if (_status != AuthStatus.guest) {
         _user = null;
-        _status =
-            _isSupabaseConfigured ? AuthStatus.loggedOut : AuthStatus.guest;
+        _status = _isSupabaseConfigured
+            ? AuthStatus.loggedOut
+            : AuthStatus.guest;
       }
     } else {
       _user = changedUser;
@@ -182,6 +180,11 @@ final class AuthController extends ChangeNotifier {
     }
     if (message.contains('password') || message.contains('credential')) {
       return 'Falsches Passwort oder unbekanntes Konto.';
+    }
+    if (message.contains('confirm') ||
+        message.contains('bestätig') ||
+        message.contains('bestaetig')) {
+      return 'Bitte bestätige deine E-Mail-Adresse, bevor du dich anmeldest.';
     }
     if (message.contains('network') ||
         message.contains('socket') ||

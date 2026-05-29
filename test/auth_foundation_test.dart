@@ -34,8 +34,9 @@ void main() {
     );
     addTearDown(controller.dispose);
 
-    await tester
-        .pumpWidget(MaterialApp(home: LoginScreen(controller: controller)));
+    await tester.pumpWidget(
+      MaterialApp(home: LoginScreen(controller: controller)),
+    );
 
     expect(find.text('Anmelden'), findsOneWidget);
     expect(find.text('Konto erstellen'), findsOneWidget);
@@ -55,12 +56,14 @@ void main() {
     );
     addTearDown(controller.dispose);
 
-    await tester.pumpWidget(MaterialApp(
-      home: AuthGate(
-        controller: controller,
-        builder: (context, controller) => const Text('HUD'),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: AuthGate(
+          controller: controller,
+          builder: (context, controller) => const Text('HUD'),
+        ),
       ),
-    ));
+    );
 
     expect(find.text('Ohne Konto fortfahren'), findsOneWidget);
     await tester.tap(find.byKey(const Key('auth-continue-guest-button')));
@@ -114,8 +117,9 @@ void main() {
     );
     addTearDown(controller.dispose);
 
-    await tester
-        .pumpWidget(MaterialApp(home: ProfileScreen(controller: controller)));
+    await tester.pumpWidget(
+      MaterialApp(home: ProfileScreen(controller: controller)),
+    );
 
     expect(find.text('Profil'), findsOneWidget);
     expect(find.text('Nutzerkonto'), findsOneWidget);
@@ -146,16 +150,14 @@ void main() {
 }
 
 final class _FakeAuthRepository implements AuthRepository {
-  _FakeAuthRepository({AppUser? currentUser}) : _currentUser = currentUser;
+  _FakeAuthRepository({this.currentUser});
 
   final StreamController<AppUser?> _controller =
       StreamController<AppUser?>.broadcast();
-  AppUser? _currentUser;
+  @override
+  AppUser? currentUser;
   UserSettings _settings = const UserSettings.guest();
   int signOutCount = 0;
-
-  @override
-  AppUser? get currentUser => _currentUser;
 
   @override
   UserSettings get currentSettings => _settings;
@@ -201,11 +203,10 @@ final class _FakeAuthRepository implements AuthRepository {
   Future<AppUser> signUpWithEmailPassword({
     required String email,
     required String password,
-  }) =>
-      signInWithEmailPassword(email: email, password: password);
+  }) => signInWithEmailPassword(email: email, password: password);
 
   void _setUser(AppUser? user) {
-    _currentUser = user;
+    currentUser = user;
     _controller.add(user);
   }
 }

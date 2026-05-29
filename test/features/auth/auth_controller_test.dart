@@ -78,6 +78,23 @@ void main() {
     controller.dispose();
   });
 
+  test('sign-up that requires email confirmation stays logged out', () async {
+    final controller = AuthController(
+      repository: _FakeAuthRepository(requireEmailConfirmation: true),
+      isSupabaseConfigured: true,
+    );
+
+    await controller.signUp(email: 'person@example.com', password: 'secret');
+
+    expect(controller.status, AuthStatus.loggedOut);
+    expect(controller.user, isNull);
+    expect(
+      controller.errorMessage,
+      'Bitte bestätige deine E-Mail-Adresse, bevor du dich anmeldest.',
+    );
+    controller.dispose();
+  });
+
   test('profile/settings upsert failure does not crash', () async {
     final controller = AuthController(
       repository: _FakeAuthRepository(throwOnUpsert: true),
@@ -89,7 +106,9 @@ void main() {
     expect(controller.status, AuthStatus.loggedIn);
     expect(controller.errorMessage, isNull);
     expect(
-        controller.profileWarning, 'Netzwerkfehler. Bitte versuche es erneut.');
+      controller.profileWarning,
+      'Netzwerkfehler. Bitte versuche es erneut.',
+    );
     controller.dispose();
   });
 
@@ -114,10 +133,15 @@ void main() {
 }
 
 final class _FakeAuthRepository implements AuthRepository {
-  _FakeAuthRepository({this.initialUser, this.throwOnUpsert = false});
+  _FakeAuthRepository({
+    this.initialUser,
+    this.throwOnUpsert = false,
+    this.requireEmailConfirmation = false,
+  });
 
   final AppUser? initialUser;
   final bool throwOnUpsert;
+  final bool requireEmailConfirmation;
   final _controller = StreamController<AppUser?>.broadcast();
   AppUser? _currentUser;
   UserSettings _settings = const UserSettings.guest();
@@ -178,6 +202,10 @@ final class _FakeAuthRepository implements AuthRepository {
   Future<AppUser> signUpWithEmailPassword({
     required String email,
     required String password,
-  }) =>
-      signInWithEmailPassword(email: email, password: password);
+  }) {
+    if (requireEmailConfirmation) {
+      throw StateError('email confirmation required');
+    }
+    return signInWithEmailPassword(email: email, password: password);
+  }
 }
