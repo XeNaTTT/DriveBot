@@ -23,3 +23,5 @@ android/app/src/main/java/io/flutter/plugins/
 *.xcarchive
 *.app
 *.dSYM
+
+node_modules/
