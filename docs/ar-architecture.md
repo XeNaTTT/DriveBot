@@ -15,6 +15,9 @@ and marker projection when available. Warning objects can be API-backed
   updates.
 - `CameraHudBackground` reports its runtime state to `HudScreen` so debug builds
   can distinguish a ready live camera from the fallback grid.
+- Back camera selection prefers the ultra-wide lens when exposed by the device,
+  and the HUD zoom control can switch between separate ultra-wide and wide back
+  cameras when optical zoom bounds do not expose a 0.5x value.
 - Permission outcomes covered:
   - granted
   - denied

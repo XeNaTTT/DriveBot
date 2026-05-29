@@ -61,6 +61,59 @@ void main() {
       expect(find.text('0.5x'), findsOneWidget);
     });
 
+    testWidgets('switches between separate ultra-wide and wide cameras', (
+      tester,
+    ) async {
+      final ultraWideController = _FakeCameraRuntimeController(
+        minZoom: 1,
+        maxZoom: 6,
+      );
+      final wideController = _FakeCameraRuntimeController(
+        minZoom: 1,
+        maxZoom: 6,
+      );
+
+      await tester.pumpWidget(
+        _buildCameraHudWithCameras(
+          cameras: const [
+            CameraDescription(
+              name: 'Ultra Wide Back Camera',
+              lensDirection: CameraLensDirection.back,
+              sensorOrientation: 90,
+              lensType: CameraLensType.ultraWide,
+            ),
+            CameraDescription(
+              name: 'Wide Back Camera',
+              lensDirection: CameraLensDirection.back,
+              sensorOrientation: 90,
+              lensType: CameraLensType.wide,
+            ),
+          ],
+          controllersByName: {
+            'Ultra Wide Back Camera': ultraWideController,
+            'Wide Back Camera': wideController,
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(ultraWideController.zoomLevels, [1]);
+      expect(find.text('0.5x'), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('camera-zoom-toggle')))
+            .onPressed,
+        isNotNull,
+      );
+
+      await tester.tap(find.byKey(const Key('camera-zoom-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(wideController.zoomLevels, [1]);
+      expect(ultraWideController.disposeCount, 1);
+      expect(find.text('1x'), findsOneWidget);
+    });
+
     testWidgets('shows disabled 1x when ultra-wide is unavailable', (
       tester,
     ) async {
@@ -122,6 +175,25 @@ Widget _buildCameraHud(_FakeCameraRuntimeController? controller) {
   );
 }
 
+Widget _buildCameraHudWithCameras({
+  required List<CameraDescription> cameras,
+  required Map<String, _FakeCameraRuntimeController> controllersByName,
+}) {
+  return MaterialApp(
+    home: CameraHudBackground(
+      permissionStatus: const SensorPermissionStatus(
+        camera: SensorPermissionState.granted,
+        location: SensorPermissionState.granted,
+        motion: SensorPermissionState.granted,
+      ),
+      cameraRuntimeService: CameraRuntimeService(
+        loadCameraDescriptions: () async => cameras,
+        createCameraController: (camera) => controllersByName[camera.name]!,
+      ),
+    ),
+  );
+}
+
 class _FakeCameraRuntimeController implements CameraRuntimeController {
   _FakeCameraRuntimeController({required this.minZoom, required this.maxZoom});
 
@@ -129,6 +201,7 @@ class _FakeCameraRuntimeController implements CameraRuntimeController {
   final double maxZoom;
   final List<double> zoomLevels = [];
   bool _isInitialized = false;
+  int disposeCount = 0;
 
   @override
   bool get isInitialized => _isInitialized;
@@ -138,7 +211,10 @@ class _FakeCameraRuntimeController implements CameraRuntimeController {
       const ColoredBox(key: Key('fake-camera-preview'), color: Colors.black);
 
   @override
-  Future<void> dispose() async {}
+  Future<void> dispose() async {
+    disposeCount += 1;
+    _isInitialized = false;
+  }
 
   @override
   Future<double> getMaxZoomLevel() async => maxZoom;

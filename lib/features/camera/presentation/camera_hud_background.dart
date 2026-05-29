@@ -23,6 +23,8 @@ class CameraHudBackground extends StatefulWidget {
 
 class _CameraHudBackgroundState extends State<CameraHudBackground> {
   CameraRuntimeController? _controller;
+  CameraDescription? _currentCamera;
+  List<CameraDescription> _availableCameras = const [];
   CameraRuntimeState _state = const CameraRuntimeState.initializing();
 
   @override
@@ -58,16 +60,20 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
 
     CameraRuntimeController? controller;
     try {
-      controller = await widget.cameraRuntimeService
-          .createBackCameraController();
+      final selection = await widget.cameraRuntimeService
+          .createInitialBackCameraSelection();
+      controller = selection?.controller;
       if (!mounted) {
         await controller?.dispose();
         return;
       }
-      if (controller == null) {
+      if (selection == null || controller == null) {
         _setCameraState(const CameraRuntimeState.unavailable());
         return;
       }
+
+      _availableCameras = selection.availableCameras;
+      _currentCamera = selection.camera;
 
       await controller.initialize();
       if (!mounted) {
@@ -88,6 +94,8 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
           currentZoomLevel: zoomProfile.defaultZoom,
           minZoom: zoomProfile.minZoom,
           maxZoom: zoomProfile.maxZoom,
+          zoomMode: _zoomModeFor(selection.camera, zoomProfile.defaultZoom),
+          canSwitchLens: selection.canSwitchBackLens,
         ),
       );
     } on CameraException {
@@ -111,6 +119,14 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
     return CameraZoomProfile.fromBounds(minZoom: minZoom, maxZoom: maxZoom);
   }
 
+  CameraZoomMode _zoomModeFor(CameraDescription camera, double zoom) {
+    if (camera.lensType == CameraLensType.ultraWide ||
+        zoom < CameraZoomProfile.normal) {
+      return CameraZoomMode.ultraWide;
+    }
+    return CameraZoomMode.normal;
+  }
+
   Future<void> _toggleZoom() async {
     final controller = _controller;
     final currentZoom = _state.currentZoomLevel;
@@ -122,6 +138,11 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
         maxZoom == null ||
         !_state.supportsUltraWide ||
         _state.isSwitchingZoom) {
+      return;
+    }
+
+    if (_state.canSwitchLens) {
+      await _switchBackLens();
       return;
     }
 
@@ -146,6 +167,9 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
         _state.copyWithZoom(
           currentZoomLevel: targetZoom,
           isSwitchingZoom: false,
+          zoomMode: targetZoom < CameraZoomProfile.normal
+              ? CameraZoomMode.ultraWide
+              : CameraZoomMode.normal,
         ),
       );
     } on CameraException {
@@ -167,6 +191,70 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
     }
   }
 
+  Future<void> _switchBackLens() async {
+    final currentCamera = _currentCamera;
+    final currentZoom = _state.currentZoomLevel;
+    if (currentCamera == null || currentZoom == null) return;
+
+    final targetCamera = currentCamera.lensType == CameraLensType.ultraWide
+        ? CameraRuntimeService.selectNormalBackCamera(_availableCameras)
+        : CameraRuntimeService.selectUltraWideBackCamera(_availableCameras);
+    if (targetCamera == null || targetCamera == currentCamera) return;
+
+    final previousController = _controller;
+    final previousCamera = currentCamera;
+    _setCameraState(
+      _state.copyWithZoom(currentZoomLevel: currentZoom, isSwitchingZoom: true),
+    );
+
+    CameraRuntimeController? nextController;
+    try {
+      nextController = widget.cameraRuntimeService.createControllerFor(
+        targetCamera,
+      );
+      await nextController.initialize();
+      final zoomProfile = await _createInitialZoomProfile(nextController);
+      await nextController.setZoomLevel(zoomProfile.defaultZoom);
+      if (!mounted) {
+        await nextController.dispose();
+        return;
+      }
+
+      _controller = nextController;
+      _currentCamera = targetCamera;
+      await previousController?.dispose();
+      _setCameraState(
+        CameraRuntimeState.ready(
+          currentZoomLevel: zoomProfile.defaultZoom,
+          minZoom: zoomProfile.minZoom,
+          maxZoom: zoomProfile.maxZoom,
+          zoomMode: _zoomModeFor(targetCamera, zoomProfile.defaultZoom),
+          canSwitchLens: true,
+        ),
+      );
+    } on CameraException {
+      await nextController?.dispose();
+      if (!mounted) return;
+      _currentCamera = previousCamera;
+      _setCameraState(
+        _state.copyWithZoom(
+          currentZoomLevel: currentZoom,
+          isSwitchingZoom: false,
+        ),
+      );
+    } catch (_) {
+      await nextController?.dispose();
+      if (!mounted) return;
+      _currentCamera = previousCamera;
+      _setCameraState(
+        _state.copyWithZoom(
+          currentZoomLevel: currentZoom,
+          isSwitchingZoom: false,
+        ),
+      );
+    }
+  }
+
   void _setCameraState(CameraRuntimeState state) {
     setState(() => _state = state);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -177,6 +265,8 @@ class _CameraHudBackgroundState extends State<CameraHudBackground> {
   void _disposeController() {
     final controller = _controller;
     _controller = null;
+    _currentCamera = null;
+    _availableCameras = const [];
     controller?.dispose();
   }
 

@@ -20,6 +20,8 @@ class CameraRuntimeState {
     this.minZoom,
     this.maxZoom,
     this.isSwitchingZoom = false,
+    this.zoomMode = CameraZoomMode.normal,
+    this.canSwitchLens = false,
   });
 
   const CameraRuntimeState.initializing()
@@ -49,6 +51,8 @@ class CameraRuntimeState {
     required double minZoom,
     required double maxZoom,
     bool isSwitchingZoom = false,
+    CameraZoomMode zoomMode = CameraZoomMode.normal,
+    bool canSwitchLens = false,
   }) : this._(
          CameraRuntimeAvailability.ready,
          cameraAvailable: true,
@@ -57,6 +61,8 @@ class CameraRuntimeState {
          minZoom: minZoom,
          maxZoom: maxZoom,
          isSwitchingZoom: isSwitchingZoom,
+         zoomMode: zoomMode,
+         canSwitchLens: canSwitchLens,
        );
 
   const CameraRuntimeState.failed([String? message])
@@ -75,25 +81,35 @@ class CameraRuntimeState {
   final double? minZoom;
   final double? maxZoom;
   final bool isSwitchingZoom;
+  final CameraZoomMode zoomMode;
+  final bool canSwitchLens;
 
   bool get shouldUseFallback =>
       availability != CameraRuntimeAvailability.ready &&
       availability != CameraRuntimeAvailability.initializing;
 
-  bool get supportsUltraWide => (minZoom ?? 1) <= CameraZoomProfile.ultraWide;
+  bool get supportsUltraWide =>
+      canSwitchLens || (minZoom ?? 1) <= CameraZoomProfile.ultraWide;
 
   String get currentZoomLabel =>
-      (currentZoomLevel ?? 1) < CameraZoomProfile.normal ? '0.5x' : '1x';
+      zoomMode == CameraZoomMode.ultraWide ||
+          (currentZoomLevel ?? 1) < CameraZoomProfile.normal
+      ? '0.5x'
+      : '1x';
 
   CameraRuntimeState copyWithZoom({
     required double currentZoomLevel,
     bool? isSwitchingZoom,
+    CameraZoomMode? zoomMode,
+    bool? canSwitchLens,
   }) {
     return CameraRuntimeState.ready(
       currentZoomLevel: currentZoomLevel,
       minZoom: minZoom ?? CameraZoomProfile.normal,
       maxZoom: maxZoom ?? CameraZoomProfile.normal,
       isSwitchingZoom: isSwitchingZoom ?? this.isSwitchingZoom,
+      zoomMode: zoomMode ?? this.zoomMode,
+      canSwitchLens: canSwitchLens ?? this.canSwitchLens,
     );
   }
 }
