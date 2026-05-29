@@ -35,7 +35,7 @@ class OpenMeteoDrivingWeather {
 
 class OpenMeteoClient {
   OpenMeteoClient({HttpClient? httpClient})
-      : _httpClient = httpClient ?? HttpClient();
+    : _httpClient = httpClient ?? HttpClient();
 
   final HttpClient _httpClient;
 

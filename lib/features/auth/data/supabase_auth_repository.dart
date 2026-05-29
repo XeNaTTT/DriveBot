@@ -65,7 +65,7 @@ final class SupabaseAuthRepository implements AuthRepository {
 
     final updatedAt = DateTime.now().toUtc().toIso8601String();
     await _client.from('profiles').upsert({
-      'user_id': user.id,
+      'id': user.id,
       'email': user.email,
       'updated_at': updatedAt,
     });

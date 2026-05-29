@@ -11,8 +11,8 @@ class SpeedUtils {
       return 0;
     }
 
-    final speed =
-        (metersPerSecond * metersPerSecondToKilometersPerHour).round();
+    final speed = (metersPerSecond * metersPerSecondToKilometersPerHour)
+        .round();
     if (speed > maximumSafeRoadSpeedKph) return maximumSafeRoadSpeedKph;
     return speed;
   }

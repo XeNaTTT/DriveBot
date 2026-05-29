@@ -13,7 +13,7 @@ class MotionRuntimeState {
   });
 
   const MotionRuntimeState.unavailable()
-      : this(availability: MotionRuntimeAvailability.unavailable);
+    : this(availability: MotionRuntimeAvailability.unavailable);
 
   final MotionRuntimeAvailability availability;
   final double? pitchDegrees;
@@ -55,10 +55,10 @@ class SensorRuntimeState {
   }
 
   String get modeLabel => switch (mode) {
-        SensorRuntimeMode.liveAr => 'Live-AR',
-        SensorRuntimeMode.partialLive => 'Teilweise live',
-        SensorRuntimeMode.fallback => 'Fallback',
-      };
+    SensorRuntimeMode.liveAr => 'Live-AR',
+    SensorRuntimeMode.partialLive => 'Teilweise live',
+    SensorRuntimeMode.fallback => 'Fallback',
+  };
 
   List<String> get compactMessages {
     final messages = <String>[];

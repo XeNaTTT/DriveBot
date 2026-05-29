@@ -52,8 +52,9 @@ void main() {
 
   test('empty API response falls back through composite repository', () async {
     final repository = CompositeWarningRepository(
-      primary:
-          AutobahnWarningRepository(fetchTrafficItems: (_) async => const []),
+      primary: AutobahnWarningRepository(
+        fetchTrafficItems: (_) async => const [],
+      ),
       fallback: MockWarningRepository(warnings: _fallbackWarnings),
     );
 
@@ -102,17 +103,14 @@ void main() {
   });
 
   test('parses Autobahn JSON safely', () {
-    final items = AutobahnTrafficParser.parse(
-      {
-        'roadworks': [
-          {
-            'title': 'A3 Baustelle',
-            'description': 'Rechter Fahrstreifen gesperrt.',
-          },
-        ],
-      },
-      isRoadwork: true,
-    );
+    final items = AutobahnTrafficParser.parse({
+      'roadworks': [
+        {
+          'title': 'A3 Baustelle',
+          'description': 'Rechter Fahrstreifen gesperrt.',
+        },
+      ],
+    }, isRoadwork: true);
 
     expect(items.single.title, 'A3 Baustelle');
     expect(items.single.isRoadwork, isTrue);

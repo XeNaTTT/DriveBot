@@ -10,12 +10,12 @@ extension WarningDataSourceLabels on WarningDataSource {
       isApiBacked ? 'Live-Daten' : 'Fallback-Daten';
 
   String get debugGermanLabel => switch (this) {
-        WarningDataSource.liveApi => 'API',
-        WarningDataSource.cache => 'API-Cache',
-        WarningDataSource.fallback => 'Mock',
-        WarningDataSource.empty => 'Mock',
-        WarningDataSource.failure => 'Mock',
-      };
+    WarningDataSource.liveApi => 'API',
+    WarningDataSource.cache => 'API-Cache',
+    WarningDataSource.fallback => 'Mock',
+    WarningDataSource.empty => 'Mock',
+    WarningDataSource.failure => 'Mock',
+  };
 }
 
 class WarningRepositoryResult {
@@ -26,23 +26,23 @@ class WarningRepositoryResult {
   });
 
   const WarningRepositoryResult.live(List<HudWarningItem> warnings)
-      : this(warnings: warnings, source: WarningDataSource.liveApi);
+    : this(warnings: warnings, source: WarningDataSource.liveApi);
 
   const WarningRepositoryResult.fallback(List<HudWarningItem> warnings)
-      : this(warnings: warnings, source: WarningDataSource.fallback);
+    : this(warnings: warnings, source: WarningDataSource.fallback);
 
   const WarningRepositoryResult.cache(List<HudWarningItem> warnings)
-      : this(warnings: warnings, source: WarningDataSource.cache);
+    : this(warnings: warnings, source: WarningDataSource.cache);
 
   const WarningRepositoryResult.empty()
-      : this(warnings: const [], source: WarningDataSource.empty);
+    : this(warnings: const [], source: WarningDataSource.empty);
 
   const WarningRepositoryResult.failure(String reason)
-      : this(
-          warnings: const [],
-          source: WarningDataSource.failure,
-          failureReason: reason,
-        );
+    : this(
+        warnings: const [],
+        source: WarningDataSource.failure,
+        failureReason: reason,
+      );
 
   final List<HudWarningItem> warnings;
   final WarningDataSource source;

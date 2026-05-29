@@ -6,14 +6,18 @@ void main() {
   const mapper = ArProjectionMapper(horizontalFovDegrees: 60);
 
   test('object outside FOV is hidden', () {
-    final markers =
-        mapper.project(warnings: [_warning(95)], userHeadingDegrees: 0);
+    final markers = mapper.project(
+      warnings: [_warning(95)],
+      userHeadingDegrees: 0,
+    );
     expect(markers, isEmpty);
   });
 
   test('object inside FOV is visible', () {
-    final markers =
-        mapper.project(warnings: [_warning(20)], userHeadingDegrees: 0);
+    final markers = mapper.project(
+      warnings: [_warning(20)],
+      userHeadingDegrees: 0,
+    );
     expect(markers, hasLength(1));
   });
 
@@ -29,10 +33,10 @@ void main() {
 }
 
 HudWarningItem _warning(int bearing) => HudWarningItem(
-      type: WarningType.speedCamera,
-      title: 'A3 Suben',
-      detail: 'Keep distance',
-      distanceMeters: 1200,
-      bearingDegrees: bearing,
-      severity: 3,
-    );
+  type: WarningType.speedCamera,
+  title: 'A3 Suben',
+  detail: 'Keep distance',
+  distanceMeters: 1200,
+  bearingDegrees: bearing,
+  severity: 3,
+);

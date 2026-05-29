@@ -42,6 +42,5 @@ final class SupabaseConfig {
 
   static Future<bool> initializeSafely({
     SupabaseConfig config = defaultConfig,
-  }) =>
-      initializeIfConfigured(config: config);
+  }) => initializeIfConfigured(config: config);
 }

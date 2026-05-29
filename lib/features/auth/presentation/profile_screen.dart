@@ -80,7 +80,7 @@ final class ProfileScreen extends StatelessWidget {
                       onPressed: user?.email == null || controller.isBusy
                           ? null
                           : () =>
-                              controller.sendPasswordResetEmail(user!.email!),
+                                controller.sendPasswordResetEmail(user!.email!),
                       child: const Text('Passwort zurücksetzen'),
                     ),
                   ],

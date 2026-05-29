@@ -6,8 +6,8 @@ import '../domain/user_settings.dart';
 
 final class GuestAuthRepository implements AuthRepository {
   GuestAuthRepository({AppUser? initialUser})
-      : _currentUser = initialUser,
-        _settings = UserSettings(userId: initialUser?.id ?? 'guest');
+    : _currentUser = initialUser,
+      _settings = UserSettings(userId: initialUser?.id ?? 'guest');
 
   final StreamController<AppUser?> _controller =
       StreamController<AppUser?>.broadcast();
@@ -42,8 +42,7 @@ final class GuestAuthRepository implements AuthRepository {
   Future<AppUser> signInWithEmailPassword({
     required String email,
     required String password,
-  }) async =>
-      continueAsGuest();
+  }) async => continueAsGuest();
 
   @override
   Future<void> signOut() async {
@@ -61,8 +60,7 @@ final class GuestAuthRepository implements AuthRepository {
   Future<AppUser> signUpWithEmailPassword({
     required String email,
     required String password,
-  }) =>
-      continueAsGuest();
+  }) => continueAsGuest();
 
   Future<void> dispose() => _controller.close();
 

@@ -37,7 +37,7 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
     this.getMotionStream = _defaultGetMotionStream,
     this.loadCameraDescriptions = availableCameras,
   }) : _mockLocationRepository =
-            mockLocationRepository ?? MockLocationRepository() {
+           mockLocationRepository ?? MockLocationRepository() {
     _initialize();
   }
 
@@ -94,7 +94,9 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
     final serviceEnabled = await _safeLocationServiceEnabled();
     if (!serviceEnabled) {
       _setLocationFallback(
-          GpsFixStatus.unavailable, SensorPermissionState.unavailable);
+        GpsFixStatus.unavailable,
+        SensorPermissionState.unavailable,
+      );
       return;
     }
 
@@ -148,14 +150,16 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
     _permissionStatus.value = _permissionStatus.value.copyWith(
       location: permission,
     );
-    _locationStatus.value =
-        _mockLocationRepository.locationStatusListenable.value.copyWith(
-      gpsFixStatus: gpsFixStatus,
-      isMock: true,
-      isSpeedEstimatedFromGps: false,
-      isHeadingFromCompass: false,
-      isHeadingFromGps: false,
-    );
+    _locationStatus.value = _mockLocationRepository
+        .locationStatusListenable
+        .value
+        .copyWith(
+          gpsFixStatus: gpsFixStatus,
+          isMock: true,
+          isSpeedEstimatedFromGps: false,
+          isHeadingFromCompass: false,
+          isHeadingFromGps: false,
+        );
   }
 
   Future<void> _loadCurrentPosition() async {
@@ -164,7 +168,9 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
       _applyPosition(current);
     } catch (_) {
       _setLocationFallback(
-          GpsFixStatus.unavailable, SensorPermissionState.granted);
+        GpsFixStatus.unavailable,
+        SensorPermissionState.granted,
+      );
     }
   }
 
@@ -179,7 +185,9 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
       );
     } catch (_) {
       _setLocationFallback(
-          GpsFixStatus.unavailable, SensorPermissionState.granted);
+        GpsFixStatus.unavailable,
+        SensorPermissionState.granted,
+      );
     }
   }
 
@@ -187,17 +195,20 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
     try {
       final stream = getCompassStream();
       if (stream == null) return;
-      _compassSubscription = stream.listen((event) {
-        _lastCompassHeading = HeadingUtils.normalizeHeading(
-          event.headingForCameraMode ?? event.heading,
-        );
-        final position = _lastPosition;
-        if (position != null) _applyPosition(position);
-      }, onError: (_) {
-        _lastCompassHeading = null;
-        final position = _lastPosition;
-        if (position != null) _applyPosition(position);
-      });
+      _compassSubscription = stream.listen(
+        (event) {
+          _lastCompassHeading = HeadingUtils.normalizeHeading(
+            event.headingForCameraMode ?? event.heading,
+          );
+          final position = _lastPosition;
+          if (position != null) _applyPosition(position);
+        },
+        onError: (_) {
+          _lastCompassHeading = null;
+          final position = _lastPosition;
+          if (position != null) _applyPosition(position);
+        },
+      );
     } catch (_) {
       _lastCompassHeading = null;
     }
@@ -205,26 +216,31 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
 
   void _subscribeToMotion() {
     try {
-      _motionSubscription = getMotionStream().listen((event) {
-        _motionStatus.value = MotionRuntimeState(
-          availability: MotionRuntimeAvailability.available,
-          pitchDegrees: _radiansToDegrees(math.atan2(
-            event.y,
-            math.sqrt(event.x * event.x + event.z * event.z),
-          )),
-          rollDegrees: _radiansToDegrees(math.atan2(-event.x, event.z)),
-        );
-        _permissionStatus.value = _permissionStatus.value.copyWith(
-          motion: SensorPermissionState.granted,
-        );
-      }, onError: (_) {
-        _motionStatus.value = const MotionRuntimeState(
-          availability: MotionRuntimeAvailability.unavailable,
-        );
-        _permissionStatus.value = _permissionStatus.value.copyWith(
-          motion: SensorPermissionState.unavailable,
-        );
-      });
+      _motionSubscription = getMotionStream().listen(
+        (event) {
+          _motionStatus.value = MotionRuntimeState(
+            availability: MotionRuntimeAvailability.available,
+            pitchDegrees: _radiansToDegrees(
+              math.atan2(
+                event.y,
+                math.sqrt(event.x * event.x + event.z * event.z),
+              ),
+            ),
+            rollDegrees: _radiansToDegrees(math.atan2(-event.x, event.z)),
+          );
+          _permissionStatus.value = _permissionStatus.value.copyWith(
+            motion: SensorPermissionState.granted,
+          );
+        },
+        onError: (_) {
+          _motionStatus.value = const MotionRuntimeState(
+            availability: MotionRuntimeAvailability.unavailable,
+          );
+          _permissionStatus.value = _permissionStatus.value.copyWith(
+            motion: SensorPermissionState.unavailable,
+          );
+        },
+      );
     } catch (_) {
       _motionStatus.value = const MotionRuntimeState(
         availability: MotionRuntimeAvailability.unavailable,
@@ -248,11 +264,11 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
 
   @visibleForTesting
   static SensorPermissionState mapLocationPermission(
-      LocationPermission permission) {
+    LocationPermission permission,
+  ) {
     return switch (permission) {
       LocationPermission.always ||
-      LocationPermission.whileInUse =>
-        SensorPermissionState.granted,
+      LocationPermission.whileInUse => SensorPermissionState.granted,
       LocationPermission.denied => SensorPermissionState.denied,
       LocationPermission.deniedForever =>
         SensorPermissionState.permanentlyDenied,
@@ -281,8 +297,7 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
       return switch (error.code) {
         'CameraAccessDenied' => SensorPermissionState.denied,
         'CameraAccessDeniedWithoutPrompt' ||
-        'CameraAccessRestricted' =>
-          SensorPermissionState.permanentlyDenied,
+        'CameraAccessRestricted' => SensorPermissionState.permanentlyDenied,
         _ => SensorPermissionState.unavailable,
       };
     } catch (_) {
@@ -371,9 +386,7 @@ Stream<Position> _defaultGetPositionStream() {
 Stream<CompassEvent>? _defaultGetCompassStream() => FlutterCompass.events;
 
 Stream<AccelerometerEvent> _defaultGetMotionStream() =>
-    accelerometerEventStream(
-      samplingPeriod: SensorInterval.uiInterval,
-    );
+    accelerometerEventStream(samplingPeriod: SensorInterval.uiInterval);
 
 extension on SensorPermissionStatus {
   SensorPermissionStatus copyWith({

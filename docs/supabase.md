@@ -40,7 +40,7 @@ If either value is omitted, DriveBot starts in guest mode and the HUD remains av
 The migration `supabase/migrations/20260528000000_create_profiles_and_user_settings.sql` creates:
 
 - `public.profiles`
-  - `user_id uuid primary key references auth.users(id)`
+  - `id uuid primary key references auth.users(id)`
   - `email text`
   - `display_name text`
   - `created_at timestamptz`
@@ -55,8 +55,8 @@ The migration `supabase/migrations/20260528000000_create_profiles_and_user_setti
   - `updated_at timestamptz`
 
 Row Level Security is enabled on both tables. Authenticated users can select,
-insert, and update only rows where `auth.uid()` matches `user_id`; there are no
-public read policies.
+insert, and update only profile rows where `auth.uid()` matches `id` and
+settings rows where `auth.uid()` matches `user_id`; there are no public read policies.
 
 ## Applying migrations safely
 

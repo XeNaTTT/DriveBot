@@ -63,18 +63,17 @@ class _DriveAssistantAppState extends State<DriveAssistantApp> {
   @override
   Widget build(BuildContext context) {
     final useRealSensors = defaultTargetPlatform == TargetPlatform.iOS;
-    final locationRepository =
-        useRealSensors ? IosLocationRuntime() : MockLocationRepository();
+    final locationRepository = useRealSensors
+        ? IosLocationRuntime()
+        : MockLocationRepository();
     final permissionRepository = useRealSensors
         ? locationRepository as PermissionRepository
         : MockPermissionRepository();
     final warningRepository = CompositeWarningRepository(
-      primary: MergedWarningRepository(
-        [
-          OpenMeteoWarningRepository.live(cache: InMemoryWarningCache()),
-          AutobahnWarningRepository.live(cache: InMemoryWarningCache()),
-        ],
-      ),
+      primary: MergedWarningRepository([
+        OpenMeteoWarningRepository.live(cache: InMemoryWarningCache()),
+        AutobahnWarningRepository.live(cache: InMemoryWarningCache()),
+      ]),
     );
 
     return MaterialApp(

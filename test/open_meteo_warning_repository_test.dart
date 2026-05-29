@@ -56,28 +56,30 @@ void main() {
     expect(repository.dataSourceLabel, 'Fallback-Daten');
   });
 
-  test('empty Open-Meteo response falls back through composite repository',
-      () async {
-    final repository = CompositeWarningRepository(
-      primary: OpenMeteoWarningRepository(
-        fetchWeather: (_) async => const OpenMeteoDrivingWeather(
-          precipitationMm: 0,
-          rainMm: 0,
-          showersMm: 0,
-          weatherCode: 0,
-          windSpeedKmh: 8,
-          windGustsKmh: 12,
-          visibilityMeters: 10000,
+  test(
+    'empty Open-Meteo response falls back through composite repository',
+    () async {
+      final repository = CompositeWarningRepository(
+        primary: OpenMeteoWarningRepository(
+          fetchWeather: (_) async => const OpenMeteoDrivingWeather(
+            precipitationMm: 0,
+            rainMm: 0,
+            showersMm: 0,
+            weatherCode: 0,
+            windSpeedKmh: 8,
+            windGustsKmh: 12,
+            visibilityMeters: 10000,
+          ),
         ),
-      ),
-      fallback: MockWarningRepository(warnings: _fallbackWarnings),
-    );
+        fallback: MockWarningRepository(warnings: _fallbackWarnings),
+      );
 
-    final result = await repository.getWarnings(request);
+      final result = await repository.getWarnings(request);
 
-    expect(result.source, WarningDataSource.fallback);
-    expect(result.warnings, _fallbackWarnings);
-  });
+      expect(result.source, WarningDataSource.fallback);
+      expect(result.warnings, _fallbackWarnings);
+    },
+  );
 
   test('Open-Meteo result uses in-memory cache', () async {
     var calls = 0;

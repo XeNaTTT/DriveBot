@@ -6,9 +6,8 @@ import '../domain/warning_request.dart';
 import 'warning_cache.dart';
 import 'warning_mapper.dart';
 
-typedef WarningApiClient = Future<List<ApiWarningPayload>> Function(
-  WarningRequest request,
-);
+typedef WarningApiClient =
+    Future<List<ApiWarningPayload>> Function(WarningRequest request);
 
 class ApiWarningRepository implements WarningRepository {
   ApiWarningRepository({

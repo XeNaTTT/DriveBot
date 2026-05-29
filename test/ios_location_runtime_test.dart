@@ -61,10 +61,14 @@ void main() {
 
     await _settleAsync();
 
-    expect(runtime.permissionStatusListenable.value.location,
-        SensorPermissionState.denied);
-    expect(runtime.locationStatusListenable.value.gpsFixStatus,
-        GpsFixStatus.denied);
+    expect(
+      runtime.permissionStatusListenable.value.location,
+      SensorPermissionState.denied,
+    );
+    expect(
+      runtime.locationStatusListenable.value.gpsFixStatus,
+      GpsFixStatus.denied,
+    );
     expect(runtime.locationStatusListenable.value.isMock, isTrue);
     runtime.dispose();
   });
@@ -84,10 +88,14 @@ void main() {
 
     await _settleAsync();
 
-    expect(runtime.permissionStatusListenable.value.location,
-        SensorPermissionState.permanentlyDenied);
-    expect(runtime.locationStatusListenable.value.gpsFixStatus,
-        GpsFixStatus.denied);
+    expect(
+      runtime.permissionStatusListenable.value.location,
+      SensorPermissionState.permanentlyDenied,
+    );
+    expect(
+      runtime.locationStatusListenable.value.gpsFixStatus,
+      GpsFixStatus.denied,
+    );
     expect(runtime.locationStatusListenable.value.isMock, isTrue);
     runtime.dispose();
   });
@@ -107,10 +115,14 @@ void main() {
 
     await _settleAsync();
 
-    expect(runtime.permissionStatusListenable.value.location,
-        SensorPermissionState.unavailable);
-    expect(runtime.locationStatusListenable.value.gpsFixStatus,
-        GpsFixStatus.unavailable);
+    expect(
+      runtime.permissionStatusListenable.value.location,
+      SensorPermissionState.unavailable,
+    );
+    expect(
+      runtime.locationStatusListenable.value.gpsFixStatus,
+      GpsFixStatus.unavailable,
+    );
     expect(runtime.locationStatusListenable.value.isMock, isTrue);
     runtime.dispose();
   });
@@ -130,10 +142,14 @@ void main() {
 
     await _settleAsync();
 
-    expect(runtime.permissionStatusListenable.value.location,
-        SensorPermissionState.granted);
-    expect(runtime.locationStatusListenable.value.gpsFixStatus,
-        GpsFixStatus.unavailable);
+    expect(
+      runtime.permissionStatusListenable.value.location,
+      SensorPermissionState.granted,
+    );
+    expect(
+      runtime.locationStatusListenable.value.gpsFixStatus,
+      GpsFixStatus.unavailable,
+    );
     expect(runtime.locationStatusListenable.value.isMock, isTrue);
     runtime.dispose();
   });

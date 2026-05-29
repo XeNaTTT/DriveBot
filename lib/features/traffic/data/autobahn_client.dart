@@ -15,7 +15,7 @@ class AutobahnTrafficItem {
 
 class AutobahnClient {
   AutobahnClient({HttpClient? httpClient})
-      : _httpClient = httpClient ?? HttpClient();
+    : _httpClient = httpClient ?? HttpClient();
 
   final HttpClient _httpClient;
 
@@ -43,8 +43,10 @@ class AutobahnClient {
     final json = jsonDecode(body);
     if (json is! Map<String, Object?>) return const [];
 
-    return AutobahnTrafficParser.parse(json,
-        isRoadwork: service == 'roadworks');
+    return AutobahnTrafficParser.parse(
+      json,
+      isRoadwork: service == 'roadworks',
+    );
   }
 
   void close() => _httpClient.close(force: true);
