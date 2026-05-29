@@ -331,6 +331,7 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
       isHeadingFromGps: compassHeading == null && gpsHeading != null,
       latitude: position.latitude,
       longitude: position.longitude,
+      accuracyMeters: position.accuracy,
     );
   }
 

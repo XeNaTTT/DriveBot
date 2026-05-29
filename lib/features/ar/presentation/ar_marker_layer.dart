@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../domain/ar_marker_model.dart';
+import '../../hud/domain/hud_warning_item.dart';
+import '../../reports/presentation/speed_camera_ar_marker.dart';
 import 'ar_marker_widget.dart';
 
 class ArMarkerLayer extends StatelessWidget {
@@ -36,7 +38,9 @@ class ArMarkerLayer extends StatelessWidget {
                       width: markerWidth,
                       child: KeyedSubtree(
                         key: Key('ar-marker-${marker.warning.type.name}'),
-                        child: ArMarkerWidget(warning: marker.warning),
+                        child: marker.warning.type == WarningType.speedCamera
+                            ? SpeedCameraArMarker(warning: marker.warning)
+                            : ArMarkerWidget(warning: marker.warning),
                       ),
                     );
                   })

@@ -14,6 +14,11 @@ import '../features/location/data/ios_location_runtime.dart';
 import '../features/location/data/mock_location_repository.dart';
 import '../features/location/data/mock_permission_repository.dart';
 import '../features/location/domain/permission_repository.dart';
+import '../features/reports/application/speed_camera_report_controller.dart';
+import '../features/reports/data/community_speed_camera_warning_repository.dart';
+import '../features/reports/data/composite_speed_camera_report_repository.dart';
+import '../features/reports/data/local_speed_camera_report_repository.dart';
+import '../features/reports/data/supabase_speed_camera_report_repository.dart';
 import '../features/traffic/data/autobahn_warning_repository.dart';
 import '../features/warnings/data/composite_warning_repository.dart';
 import '../features/warnings/data/merged_warning_repository.dart';
@@ -37,6 +42,8 @@ class DriveAssistantApp extends StatefulWidget {
 
 class _DriveAssistantAppState extends State<DriveAssistantApp> {
   late final AuthController _authController;
+  late final CompositeSpeedCameraReportRepository _reportRepository;
+  late final SpeedCameraReportController _reportController;
 
   @override
   void initState() {
@@ -44,6 +51,20 @@ class _DriveAssistantAppState extends State<DriveAssistantApp> {
     _authController = AuthController(
       repository: widget.authRepository ?? _buildAuthRepository(),
       isSupabaseConfigured: widget.supabaseConfigured,
+    );
+    final localReports = LocalSpeedCameraReportRepository();
+    _reportRepository = CompositeSpeedCameraReportRepository(
+      localReports,
+      remoteRepository: widget.supabaseConfigured
+          ? SupabaseSpeedCameraReportRepository(Supabase.instance.client)
+          : null,
+    );
+    _reportController = SpeedCameraReportController(
+      _reportRepository,
+      isLoggedIn: () => _authController.user?.isAuthenticated ?? false,
+      currentUserId: () => _authController.user?.isAuthenticated ?? false
+          ? _authController.user?.id
+          : null,
     );
   }
 
@@ -56,6 +77,7 @@ class _DriveAssistantAppState extends State<DriveAssistantApp> {
 
   @override
   void dispose() {
+    _reportController.dispose();
     _authController.dispose();
     super.dispose();
   }
@@ -73,6 +95,7 @@ class _DriveAssistantAppState extends State<DriveAssistantApp> {
       primary: MergedWarningRepository([
         OpenMeteoWarningRepository.live(cache: InMemoryWarningCache()),
         AutobahnWarningRepository.live(cache: InMemoryWarningCache()),
+        CommunitySpeedCameraWarningRepository(_reportRepository),
       ]),
     );
 
@@ -88,6 +111,7 @@ class _DriveAssistantAppState extends State<DriveAssistantApp> {
           dataSourceRegistry: MockDataSourceRegistry(),
           permissionRepository: permissionRepository,
           accountEntryPoint: AccountEntryButton(controller: controller),
+          reportController: _reportController,
         ),
       ),
     );
