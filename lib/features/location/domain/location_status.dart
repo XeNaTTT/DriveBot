@@ -13,6 +13,7 @@ class LocationStatus {
     this.isHeadingFromGps = false,
     this.latitude,
     this.longitude,
+    this.accuracyMeters,
   });
 
   final int speedKph;
@@ -24,6 +25,7 @@ class LocationStatus {
   final bool isHeadingFromGps;
   final double? latitude;
   final double? longitude;
+  final double? accuracyMeters;
 
   bool get hasLiveLocation =>
       gpsFixStatus == GpsFixStatus.strong ||
@@ -52,6 +54,7 @@ class LocationStatus {
     bool? isHeadingFromGps,
     double? latitude,
     double? longitude,
+    double? accuracyMeters,
   }) {
     return LocationStatus(
       speedKph: speedKph ?? this.speedKph,
@@ -64,6 +67,7 @@ class LocationStatus {
       isHeadingFromGps: isHeadingFromGps ?? this.isHeadingFromGps,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
+      accuracyMeters: accuracyMeters ?? this.accuracyMeters,
     );
   }
 }

@@ -14,6 +14,7 @@ class MockLocationRepository implements LocationRepository {
           isSpeedEstimatedFromGps: false,
           latitude: 50.1109,
           longitude: 8.6821,
+          accuracyMeters: 18,
         ),
       );
 

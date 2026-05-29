@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -13,6 +15,8 @@ import '../../location/domain/location_repository.dart';
 import '../../location/domain/location_status.dart';
 import '../../location/domain/permission_repository.dart';
 import '../../location/domain/sensor_permission_status.dart';
+import '../../reports/application/speed_camera_report_controller.dart';
+import '../../reports/domain/speed_camera_report_type.dart';
 import '../../sensors/domain/sensor_runtime_state.dart';
 import '../../warnings/domain/warning_repository.dart';
 import '../../warnings/domain/warning_request.dart';
@@ -30,6 +34,7 @@ class HudScreen extends StatefulWidget {
     this.projectionMapper = const ArProjectionMapper(),
     this.cameraLayerBuilder,
     this.accountEntryPoint,
+    this.reportController,
     super.key,
   });
 
@@ -40,6 +45,7 @@ class HudScreen extends StatefulWidget {
   final ArProjectionMapper projectionMapper;
   final CameraLayerBuilder? cameraLayerBuilder;
   final Widget? accountEntryPoint;
+  final SpeedCameraReportController? reportController;
 
   @override
   State<HudScreen> createState() => _HudScreenState();
@@ -49,23 +55,39 @@ class _HudScreenState extends State<HudScreen> {
   final InformationCategoryController _categoryController =
       InformationCategoryController();
   CameraRuntimeState _cameraState = const CameraRuntimeState.initializing();
+  bool _showReportingChoices = false;
+  Timer? _messageTimer;
 
   @override
   void initState() {
     super.initState();
     _categoryController.addListener(_handleCategoryFilterChanged);
+    widget.reportController?.addListener(_handleReportControllerChanged);
     _loadWarnings();
   }
 
   @override
   void dispose() {
     _categoryController.removeListener(_handleCategoryFilterChanged);
+    widget.reportController?.removeListener(_handleReportControllerChanged);
+    _messageTimer?.cancel();
     _categoryController.dispose();
     super.dispose();
   }
 
   void _handleCategoryFilterChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _handleReportControllerChanged() {
+    if (!mounted) return;
+    setState(() {});
+    if (widget.reportController?.message != null) {
+      _messageTimer?.cancel();
+      _messageTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) widget.reportController?.clearMessage();
+      });
+    }
   }
 
   Future<void> _loadWarnings() async {
@@ -96,6 +118,23 @@ class _HudScreenState extends State<HudScreen> {
   void _handleCameraStateChanged(CameraRuntimeState state) {
     if (!mounted || _cameraState.availability == state.availability) return;
     setState(() => _cameraState = state);
+  }
+
+  Future<void> _reportSpeedCamera({
+    required SpeedCameraReportType type,
+    required LocationStatus location,
+    required SensorRuntimeState runtime,
+  }) async {
+    final controller = widget.reportController;
+    if (controller == null) return;
+    setState(() => _showReportingChoices = false);
+    await controller.report(
+      type: type,
+      location: location,
+      cameraState: _cameraState,
+      runtime: runtime,
+    );
+    await _loadWarnings();
   }
 
   Widget _buildCameraLayer(SensorPermissionStatus permissions) {
@@ -148,6 +187,27 @@ class _HudScreenState extends State<HudScreen> {
               children: [
                 _buildCameraLayer(permissions),
                 ArMarkerLayer(markers: markers),
+                if (widget.reportController != null)
+                  _ReportOverlay(
+                    showChoices: _showReportingChoices,
+                    message: widget.reportController?.message,
+                    isReporting: widget.reportController?.isReporting ?? false,
+                    onOpenChoices: () => setState(
+                      () => _showReportingChoices = !_showReportingChoices,
+                    ),
+                    onCancel: () =>
+                        setState(() => _showReportingChoices = false),
+                    onMobile: () => _reportSpeedCamera(
+                      type: SpeedCameraReportType.mobile,
+                      location: location,
+                      runtime: runtime,
+                    ),
+                    onFixed: () => _reportSpeedCamera(
+                      type: SpeedCameraReportType.fixed,
+                      location: location,
+                      runtime: runtime,
+                    ),
+                  ),
                 SafeArea(
                   child: Padding(
                     key: const Key('hud-root'),
@@ -287,6 +347,142 @@ class _DebugSourceIndicator extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ReportOverlay extends StatelessWidget {
+  const _ReportOverlay({
+    required this.showChoices,
+    required this.message,
+    required this.isReporting,
+    required this.onOpenChoices,
+    required this.onCancel,
+    required this.onMobile,
+    required this.onFixed,
+  });
+
+  final bool showChoices;
+  final String? message;
+  final bool isReporting;
+  final VoidCallback onOpenChoices;
+  final VoidCallback onCancel;
+  final VoidCallback onMobile;
+  final VoidCallback onFixed;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(12, 92, 12, 12),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (message != null)
+              _ReportMessage(message!)
+            else if (showChoices)
+              _ReportChoices(
+                onMobile: isReporting ? null : onMobile,
+                onFixed: isReporting ? null : onFixed,
+                onCancel: onCancel,
+              )
+            else
+              _ReportButton(enabled: !isReporting, onPressed: onOpenChoices),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _ReportButton extends StatelessWidget {
+  const _ReportButton({required this.enabled, required this.onPressed});
+
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    key: const Key('speed-camera-report-button'),
+    height: 52,
+    child: FilledButton.icon(
+      onPressed: enabled ? onPressed : null,
+      icon: const Icon(Icons.add_alert_outlined),
+      label: const Text('Blitzer melden'),
+    ),
+  );
+}
+
+class _ReportChoices extends StatelessWidget {
+  const _ReportChoices({
+    required this.onMobile,
+    required this.onFixed,
+    required this.onCancel,
+  });
+
+  final VoidCallback? onMobile;
+  final VoidCallback? onFixed;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('speed-camera-report-choices'),
+    constraints: const BoxConstraints(maxWidth: 230),
+    padding: const EdgeInsets.all(8),
+    decoration: BoxDecoration(
+      color: Colors.black.withValues(alpha: 0.68),
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: const Color(0x8857E3FF)),
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _ChoiceButton(label: 'Mobiler Blitzer', onPressed: onMobile),
+        const SizedBox(height: 8),
+        _ChoiceButton(label: 'Fester Blitzer', onPressed: onFixed),
+        const SizedBox(height: 8),
+        _ChoiceButton(label: 'Abbrechen', onPressed: onCancel),
+      ],
+    ),
+  );
+}
+
+class _ChoiceButton extends StatelessWidget {
+  const _ChoiceButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 48,
+    child: OutlinedButton(onPressed: onPressed, child: Text(label)),
+  );
+}
+
+class _ReportMessage extends StatelessWidget {
+  const _ReportMessage(this.message);
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('speed-camera-report-message'),
+    constraints: const BoxConstraints(maxWidth: 310, minHeight: 44),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    decoration: BoxDecoration(
+      color: Colors.black.withValues(alpha: 0.72),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: const Color(0xFF63E6BE)),
+    ),
+    child: Text(
+      message,
+      maxLines: 3,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(fontWeight: FontWeight.w800),
+    ),
+  );
 }
 
 class _DebugSourcePill extends StatelessWidget {
