@@ -4,6 +4,7 @@ import 'package:driveassistant_ar/core/config/supabase_config.dart';
 import 'package:driveassistant_ar/features/auth/application/auth_controller.dart';
 import 'package:driveassistant_ar/features/auth/domain/app_user.dart';
 import 'package:driveassistant_ar/features/auth/domain/auth_repository.dart';
+import 'package:driveassistant_ar/features/auth/domain/user_settings.dart';
 import 'package:driveassistant_ar/features/auth/presentation/auth_gate.dart';
 import 'package:driveassistant_ar/features/auth/presentation/login_screen.dart';
 import 'package:driveassistant_ar/features/auth/presentation/profile_screen.dart';
@@ -150,11 +151,14 @@ final class _FakeAuthRepository implements AuthRepository {
   final StreamController<AppUser?> _controller =
       StreamController<AppUser?>.broadcast();
   AppUser? _currentUser;
+  UserSettings _settings = const UserSettings.guest();
   int signOutCount = 0;
 
   @override
   AppUser? get currentUser => _currentUser;
 
+  @override
+  UserSettings get currentSettings => _settings;
   @override
   Stream<AppUser?> get authStateChanges => _controller.stream;
 
@@ -170,6 +174,12 @@ final class _FakeAuthRepository implements AuthRepository {
 
   @override
   Future<void> sendPasswordResetEmail(String email) async {}
+
+  @override
+  Future<UserSettings> updateSettings(UserSettings settings) async {
+    _settings = settings;
+    return _settings;
+  }
 
   @override
   Future<AppUser> signInWithEmailPassword({

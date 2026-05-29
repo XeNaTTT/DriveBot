@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../domain/app_user.dart';
 import '../domain/auth_repository.dart';
+import '../domain/user_settings.dart';
 
 enum AuthStatus { guest, loggedOut, loggedIn }
 
@@ -37,6 +38,7 @@ final class AuthController extends ChangeNotifier {
   String? _errorMessage;
   String? _infoMessage;
   String? _profileWarning;
+  late UserSettings _settings = _repository.currentSettings;
 
   AuthStatus get status => _status;
   AppUser? get user => _user;
@@ -45,11 +47,13 @@ final class AuthController extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   String? get infoMessage => _infoMessage;
   String? get profileWarning => _profileWarning;
+  UserSettings get settings => _settings;
 
   Future<void> continueAsGuest() async {
     await _runBusy(() async {
       final guestUser = await _repository.continueAsGuest();
       _user = guestUser;
+      _settings = UserSettings(userId: guestUser.id);
       _status = AuthStatus.guest;
     }, failureMessage: 'Gastmodus konnte nicht gestartet werden.');
   }
@@ -75,6 +79,13 @@ final class AuthController extends ChangeNotifier {
   }
 
   Future<void> sendPasswordResetEmail(String email) async {
+    final trimmedEmail = email.trim();
+    if (!_looksLikeEmail(trimmedEmail)) {
+      _errorMessage = 'Ungültige E-Mail-Adresse.';
+      notifyListeners();
+      return;
+    }
+
     await _runBusy(() async {
       await _repository.sendPasswordResetEmail(email);
       _infoMessage = 'Passwort zurücksetzen';
@@ -85,17 +96,36 @@ final class AuthController extends ChangeNotifier {
     await _runBusy(() async {
       await _repository.signOut();
       _user = null;
+      _settings = const UserSettings.guest();
       _status = _isSupabaseConfigured ? AuthStatus.loggedOut : AuthStatus.guest;
     }, failureMessage: 'Netzwerkfehler. Bitte versuche es erneut.');
+  }
+
+  Future<void> setShowDebugSourceLabels(bool value) async {
+    await _runBusy(() async {
+      final currentUser = _user ?? const AppUser.guest();
+      final updated = _settings.copyWith(
+        userId: currentUser.id,
+        showDebugSourceLabels: value,
+      );
+      _settings = await _repository.updateSettings(updated);
+    }, failureMessage: 'Einstellung konnte nicht gespeichert werden.');
   }
 
   Future<void> _runAuthAction({
     required String failureMessage,
     required Future<AppUser> Function() action,
   }) async {
+    if (!_isSupabaseConfigured) {
+      _errorMessage = 'Supabase ist nicht konfiguriert.';
+      notifyListeners();
+      return;
+    }
+
     await _runBusy(() async {
       final authenticatedUser = await action();
       _user = authenticatedUser;
+      _settings = UserSettings(userId: authenticatedUser.id);
       _status =
           authenticatedUser.isGuest ? AuthStatus.guest : AuthStatus.loggedIn;
       await _ensureProfileGracefully(authenticatedUser);
@@ -122,8 +152,8 @@ final class AuthController extends ChangeNotifier {
     notifyListeners();
     try {
       await action();
-    } on Object {
-      _errorMessage = failureMessage;
+    } on Object catch (error) {
+      _errorMessage = _mapAuthError(error, fallback: failureMessage);
     } finally {
       _isBusy = false;
       notifyListeners();
@@ -139,10 +169,30 @@ final class AuthController extends ChangeNotifier {
       }
     } else {
       _user = changedUser;
+      _settings = UserSettings(userId: changedUser.id);
       _status = changedUser.isGuest ? AuthStatus.guest : AuthStatus.loggedIn;
     }
     notifyListeners();
   }
+
+  String _mapAuthError(Object error, {required String fallback}) {
+    final message = error.toString().toLowerCase();
+    if (message.contains('invalid') && message.contains('email')) {
+      return 'Ungültige E-Mail-Adresse.';
+    }
+    if (message.contains('password') || message.contains('credential')) {
+      return 'Falsches Passwort oder unbekanntes Konto.';
+    }
+    if (message.contains('network') ||
+        message.contains('socket') ||
+        message.contains('timeout')) {
+      return 'Netzwerkfehler. Bitte versuche es erneut.';
+    }
+    return fallback.isEmpty ? 'Unbekannter Fehler.' : fallback;
+  }
+
+  bool _looksLikeEmail(String email) =>
+      email.contains('@') && email.contains('.') && !email.contains(' ');
 
   void _clearMessages() {
     _errorMessage = null;

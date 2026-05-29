@@ -35,13 +35,14 @@ Supabase service role key and relies on backend RLS policies for
 - `Passwort vergessen?` / `Passwort zurücksetzen` email flow.
 - `Ohne Konto fortfahren` guest flow.
 - `Abmelden` from the profile screen.
+- Compact profile settings with a `Datenquellen anzeigen` debug-source toggle.
 - Auth state listener through the repository/controller boundary.
 
 ## Architecture
 
 Auth is feature-scoped under `lib/features/auth`:
 
-- `domain/` contains UI-agnostic user and repository contracts.
+- `domain/` contains UI-agnostic user, profile/settings models, and repository contracts.
 - `data/` contains guest and Supabase repository implementations.
 - `application/` owns `AuthController` state transitions.
 - `presentation/` owns the auth gate, login screen, profile entry point, and
