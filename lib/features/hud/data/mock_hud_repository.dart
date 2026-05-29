@@ -45,6 +45,14 @@ class MockHudRepository implements HudRepository {
         bearingDegrees: 330,
         severity: 1,
       ),
+      HudWarningItem(
+        type: WarningType.notice,
+        title: 'Hinweis',
+        detail: 'Rastplatz in 5 km',
+        distanceMeters: 5000,
+        bearingDegrees: 15,
+        severity: 1,
+      ),
     ];
   }
 }

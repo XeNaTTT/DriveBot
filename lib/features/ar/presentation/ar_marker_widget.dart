@@ -15,6 +15,7 @@ class ArMarkerWidget extends StatelessWidget {
       WarningType.roadwork => const Color(0xFFFFA94D),
       WarningType.weather => const Color(0xFF74C0FC),
       WarningType.chargingStation => const Color(0xFF63E6BE),
+      WarningType.notice => const Color(0xFFD0BFFF),
     };
 
     return Column(
