@@ -11,7 +11,7 @@ final class SupabaseAuthRepository implements AuthRepository {
   static const UserSettings _fallbackSettings = UserSettings.guest();
 
   @override
-  AppUser? get currentUser => _mapUser(_client.auth.currentUser);
+  AppUser? get currentUser => _mapUser(_client.auth.currentSession?.user);
 
   @override
   UserSettings get currentSettings {
@@ -21,8 +21,9 @@ final class SupabaseAuthRepository implements AuthRepository {
   }
 
   @override
-  Stream<AppUser?> get authStateChanges => _client.auth.onAuthStateChange
-      .map((event) => _mapUser(event.session?.user));
+  Stream<AppUser?> get authStateChanges => _client.auth.onAuthStateChange.map(
+    (event) => _mapUser(event.session?.user),
+  );
 
   @override
   Future<AppUser> continueAsGuest() async => const AppUser.guest();
@@ -36,7 +37,7 @@ final class SupabaseAuthRepository implements AuthRepository {
       email: email.trim(),
       password: password,
     );
-    return _requireUser(response.user);
+    return _requireAuthenticatedSession(response.session);
   }
 
   @override
@@ -48,7 +49,7 @@ final class SupabaseAuthRepository implements AuthRepository {
       email: email.trim(),
       password: password,
     );
-    return _requireUser(response.user);
+    return _requireAuthenticatedSession(response.session);
   }
 
   @override
@@ -86,10 +87,12 @@ final class SupabaseAuthRepository implements AuthRepository {
     return settings;
   }
 
-  AppUser _requireUser(User? user) {
-    final mapped = _mapUser(user);
+  AppUser _requireAuthenticatedSession(Session? session) {
+    final mapped = _mapUser(session?.user);
     if (mapped == null) {
-      throw const AuthException('Anmeldung fehlgeschlagen');
+      throw const AuthException(
+        'Bitte bestätige deine E-Mail-Adresse, bevor du dich anmeldest.',
+      );
     }
     return mapped;
   }
