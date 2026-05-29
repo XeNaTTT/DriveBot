@@ -1,0 +1,1 @@
+-- Intentionally empty for the MVP. Do not store secrets or production data here.

@@ -23,3 +23,8 @@ android/app/src/main/java/io/flutter/plugins/
 *.xcarchive
 *.app
 *.dSYM
+
+# Local environment files
+.env
+.env.*
+!.env.example
