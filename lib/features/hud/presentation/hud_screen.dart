@@ -3,8 +3,11 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../ar/data/ar_runtime_service.dart';
 import '../../ar/domain/ar_projection_mapper.dart';
+import '../../ar/domain/ar_runtime_state.dart';
 import '../../ar/presentation/ar_marker_layer.dart';
+import '../../ar/presentation/arkit_camera_background.dart';
 import '../../camera/domain/camera_runtime_state.dart';
 import '../../camera/presentation/camera_hud_background.dart';
 import '../../data_sources/domain/data_source_registry.dart';
@@ -33,6 +36,7 @@ class HudScreen extends StatefulWidget {
     required this.permissionRepository,
     this.projectionMapper = const ArProjectionMapper(),
     this.cameraLayerBuilder,
+    this.arRuntimeService,
     this.accountEntryPoint,
     this.reportController,
     super.key,
@@ -44,6 +48,7 @@ class HudScreen extends StatefulWidget {
   final PermissionRepository permissionRepository;
   final ArProjectionMapper projectionMapper;
   final CameraLayerBuilder? cameraLayerBuilder;
+  final ArRuntimeService? arRuntimeService;
   final Widget? accountEntryPoint;
   final SpeedCameraReportController? reportController;
 
@@ -55,6 +60,7 @@ class _HudScreenState extends State<HudScreen> {
   final InformationCategoryController _categoryController =
       InformationCategoryController();
   CameraRuntimeState _cameraState = const CameraRuntimeState.initializing();
+  ArRuntimeState _arState = const ArRuntimeState.initial();
   bool _showReportingChoices = false;
   Timer? _messageTimer;
 
@@ -120,6 +126,15 @@ class _HudScreenState extends State<HudScreen> {
     setState(() => _cameraState = state);
   }
 
+  void _handleArStateChanged(ArRuntimeState state) {
+    if (!mounted ||
+        (_arState.germanStatusLabel == state.germanStatusLabel &&
+            _arState.isRunning == state.isRunning)) {
+      return;
+    }
+    setState(() => _arState = state);
+  }
+
   Future<void> _reportSpeedCamera({
     required SpeedCameraReportType type,
     required LocationStatus location,
@@ -141,9 +156,15 @@ class _HudScreenState extends State<HudScreen> {
     final customBuilder = widget.cameraLayerBuilder;
     if (customBuilder != null) return customBuilder(permissions);
 
-    return CameraHudBackground(
+    return ArKitCameraBackground(
       permissionStatus: permissions,
-      onStateChanged: _handleCameraStateChanged,
+      runtimeService: widget.arRuntimeService,
+      onArStateChanged: _handleArStateChanged,
+      onCameraStateChanged: _handleCameraStateChanged,
+      fallbackBuilder: () => CameraHudBackground(
+        permissionStatus: permissions,
+        onStateChanged: _handleCameraStateChanged,
+      ),
     );
   }
 
@@ -242,6 +263,8 @@ class _HudScreenState extends State<HudScreen> {
                           ),
                         ],
                         const SizedBox(height: 8),
+                        _ArRuntimePill(state: _arState),
+                        const SizedBox(height: 6),
                         _RuntimePills(runtime: runtime),
                         if (runtime.isFallbackMode) ...[
                           const SizedBox(height: 8),
@@ -501,6 +524,23 @@ class _DebugSourcePill extends StatelessWidget {
     child: Text(
       label,
       style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+    ),
+  );
+}
+
+class _ArRuntimePill extends StatelessWidget {
+  const _ArRuntimePill({required this.state});
+
+  final ArRuntimeState state;
+
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.centerLeft,
+    child: Wrap(
+      key: const Key('ar-runtime-status'),
+      spacing: 6,
+      runSpacing: 6,
+      children: [_StatusPill(state.germanStatusLabel)],
     ),
   );
 }
