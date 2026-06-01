@@ -38,15 +38,19 @@ class ArInfoObject {
   final String? description;
   final List<ArInfoAction> actionButtons;
 
-  String get typeLabel => switch (type) {
-    WarningType.speedCamera => _speedCameraTypeLabel,
-    WarningType.speedLimit => 'Verkehrsmeldung',
-    WarningType.roadwork =>
-      warning.title.toLowerCase().contains('sperr') ? 'Sperrung' : 'Baustelle',
-    WarningType.weather => 'Wetterwarnung',
-    WarningType.chargingStation => 'Ladestation',
-    WarningType.notice => 'Verkehrsmeldung',
-  };
+  String get typeLabel =>
+      warning.typeLabel ??
+      switch (type) {
+        WarningType.speedCamera => _speedCameraTypeLabel,
+        WarningType.speedLimit => 'Verkehrsmeldung',
+        WarningType.roadwork =>
+          warning.title.toLowerCase().contains('sperr')
+              ? 'Sperrung'
+              : 'Baustelle',
+        WarningType.weather => 'Wetterwarnung',
+        WarningType.chargingStation => 'Ladestation',
+        WarningType.notice => 'Verkehrsmeldung',
+      };
 
   String get _speedCameraTypeLabel {
     final text = '${warning.title} ${warning.detail}'.toLowerCase();
