@@ -19,9 +19,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('Blitzer melden button renders', (tester) async {
+  testWidgets('Blitzer melden button renders inside bottom info card', (
+    tester,
+  ) async {
     await tester.pumpWidget(_buildHud(loggedIn: false));
+
+    final card = find.byKey(const Key('primary-warning-card'));
+    final button = find.byKey(const Key('speed-camera-report-button'));
+
     expect(find.text('Blitzer melden'), findsOneWidget);
+    expect(find.descendant(of: card, matching: button), findsOneWidget);
+  });
+
+  testWidgets('Blitzer melden button is no longer floating above the card', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_buildHud(loggedIn: false));
+
+    final cardRect = tester.getRect(
+      find.byKey(const Key('primary-warning-card')),
+    );
+    final buttonRect = tester.getRect(
+      find.byKey(const Key('speed-camera-report-button')),
+    );
+
+    expect(cardRect.contains(buttonRect.topLeft), isTrue);
+    expect(cardRect.contains(buttonRect.bottomRight), isTrue);
   });
 
   testWidgets('First tap opens type choices', (tester) async {
