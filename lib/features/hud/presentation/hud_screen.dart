@@ -752,42 +752,31 @@ class _PrimaryCard extends StatelessWidget {
       );
     }
 
-    return Container(
+    return SizedBox(
       key: const Key('primary-warning-card'),
       width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 96),
       child: _PrimaryCardContainer(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final textScale = MediaQuery.textScalerOf(
-              context,
-            ).scale(1).clamp(1.0, 2.0);
-            final useStackedAction =
-                constraints.maxWidth < 360 || textScale >= 1.3;
             final action = _ReportButton(
               enabled: reportAction!.enabled,
               onPressed: reportAction!.onPressed,
               compact: constraints.maxWidth < 340,
             );
 
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                _PrimaryWarningText(
-                  warning: warning,
-                  source: source,
-                  hasActiveCategories: hasActiveCategories,
-                ),
-                const SizedBox(height: 10),
-                if (useStackedAction)
-                  Align(alignment: Alignment.centerRight, child: action)
-                else
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [Flexible(child: action)],
+                Expanded(
+                  child: _PrimaryWarningText(
+                    warning: warning,
+                    source: source,
+                    hasActiveCategories: hasActiveCategories,
                   ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(flex: 0, child: action),
               ],
             );
           },
@@ -835,7 +824,7 @@ class _PrimaryWarningText extends StatelessWidget {
             ? warning?.title ?? 'Keine aktiven Warnungen'
             : 'Keine Kategorien aktiv',
         key: const Key('primary-warning-title'),
-        maxLines: 2,
+        maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(fontWeight: FontWeight.w800),
       ),
@@ -843,7 +832,7 @@ class _PrimaryWarningText extends StatelessWidget {
         warning == null
             ? (hasActiveCategories ? 'Keine Anweisung' : 'Filter anpassen')
             : '${warning!.formattedDistance} · ${warning!.subtitle} · S${warning!.warning.severity}',
-        maxLines: 2,
+        maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
       Text(
