@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:driveassistant_ar/features/camera/data/camera_runtime_service.dart';
 import 'package:driveassistant_ar/features/camera/presentation/camera_hud_background.dart';
 import 'package:driveassistant_ar/features/data_sources/domain/data_source_registry.dart';
@@ -9,6 +11,9 @@ import 'package:driveassistant_ar/features/location/domain/location_repository.d
 import 'package:driveassistant_ar/features/location/domain/location_status.dart';
 import 'package:driveassistant_ar/features/location/domain/permission_repository.dart';
 import 'package:driveassistant_ar/features/location/domain/sensor_permission_status.dart';
+import 'package:driveassistant_ar/features/warnings/domain/warning_repository.dart';
+import 'package:driveassistant_ar/features/warnings/domain/warning_repository_result.dart';
+import 'package:driveassistant_ar/features/warnings/domain/warning_request.dart';
 import 'package:driveassistant_ar/shared/theme/app_theme.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -19,6 +24,7 @@ void main() {
     required List<HudWarningItem> warnings,
     Size size = const Size(390, 844),
     double textScaleFactor = 1,
+    CameraLayerBuilder? cameraLayerBuilder,
   }) => MediaQuery(
     data: MediaQueryData(
       size: size,
@@ -37,6 +43,7 @@ void main() {
             motion: SensorPermissionState.denied,
           ),
         ),
+        cameraLayerBuilder: cameraLayerBuilder,
       ),
     ),
   );
@@ -193,10 +200,73 @@ void main() {
     await tester.pumpWidget(buildHud(warnings: _sampleWarnings));
 
     expect(find.byKey(const Key('debug-source-indicator')), findsOneWidget);
-    expect(find.text('Kamera: Fallback'), findsOneWidget);
+    expect(find.text('Kamera: lädt'), findsOneWidget);
     expect(find.text('Standort: Fallback'), findsOneWidget);
     expect(find.text('Warnungen: Mock'), findsOneWidget);
     expect(find.text('Quelle: Fallback-Daten'), findsOneWidget);
+  });
+
+  testWidgets(
+    'camera background renders before warning data finishes loading',
+    (tester) async {
+      final repository = _AsyncWarningHudRepository();
+      await tester.pumpWidget(
+        _buildHudWithRepository(
+          repository: repository,
+          cameraLayerBuilder: (_) => const ColoredBox(
+            key: Key('early-camera-layer'),
+            color: Colors.black,
+          ),
+        ),
+      );
+
+      expect(find.byKey(const Key('early-camera-layer')), findsOneWidget);
+      expect(find.text('Blitzer spät'), findsNothing);
+
+      repository.complete(_lateWarnings);
+      await tester.pump();
+
+      expect(find.byKey(const Key('early-camera-layer')), findsOneWidget);
+      expect(find.text('Blitzer spät'), findsOneWidget);
+    },
+  );
+
+  testWidgets('warning fetch does not recreate camera layer', (tester) async {
+    final repository = _AsyncWarningHudRepository();
+    var cameraBuilds = 0;
+    await tester.pumpWidget(
+      _buildHudWithRepository(
+        repository: repository,
+        cameraLayerBuilder: (_) {
+          cameraBuilds++;
+          return const ColoredBox(
+            key: Key('stable-camera-layer'),
+            color: Colors.black,
+          );
+        },
+      ),
+    );
+    expect(cameraBuilds, 1);
+
+    repository.complete(_lateWarnings);
+    await tester.pump();
+
+    expect(find.byKey(const Key('stable-camera-layer')), findsOneWidget);
+    expect(cameraBuilds, 2);
+  });
+
+  testWidgets('ARKit unavailable falls back to camera quickly', (tester) async {
+    await tester.pumpWidget(
+      buildHud(
+        warnings: _sampleWarnings,
+        cameraLayerBuilder: (_) => const KeyedSubtree(
+          key: Key('mock-background-layer'),
+          child: CameraFallbackHudBackground(),
+        ),
+      ),
+    );
+
+    expect(find.byKey(const Key('mock-background-layer')), findsOneWidget);
   });
 
   testWidgets('camera unavailable falls back to mock background', (
@@ -271,6 +341,57 @@ const _sampleWarnings = [
     distanceMeters: 1400,
     bearingDegrees: 68,
     severity: 1,
+  ),
+];
+
+Widget _buildHudWithRepository({
+  required HudRepository repository,
+  CameraLayerBuilder? cameraLayerBuilder,
+}) => MaterialApp(
+  theme: buildAppTheme(),
+  home: HudScreen(
+    hudRepository: repository,
+    locationRepository: const _FakeLocationRepository(),
+    dataSourceRegistry: const _FakeDataSourceRegistry(),
+    permissionRepository: _FakePermissionRepository(
+      const SensorPermissionStatus(
+        camera: SensorPermissionState.granted,
+        location: SensorPermissionState.denied,
+        motion: SensorPermissionState.denied,
+      ),
+    ),
+    cameraLayerBuilder: cameraLayerBuilder,
+  ),
+);
+
+class _AsyncWarningHudRepository implements HudRepository, WarningRepository {
+  final Completer<WarningRepositoryResult> _completer =
+      Completer<WarningRepositoryResult>();
+  List<HudWarningItem> _warnings = const [];
+
+  @override
+  List<HudWarningItem> getNearbyWarnings() => _warnings;
+
+  @override
+  Future<WarningRepositoryResult> getWarnings(WarningRequest request) async {
+    final result = await _completer.future;
+    _warnings = result.warnings;
+    return result;
+  }
+
+  void complete(List<HudWarningItem> warnings) {
+    _completer.complete(WarningRepositoryResult.fallback(warnings));
+  }
+}
+
+const _lateWarnings = [
+  HudWarningItem(
+    type: WarningType.speedCamera,
+    title: 'Blitzer spät',
+    detail: 'nachgeladen',
+    distanceMeters: 180,
+    bearingDegrees: 58,
+    severity: 4,
   ),
 ];
 

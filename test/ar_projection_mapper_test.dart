@@ -24,6 +24,59 @@ void main() {
     expect(markers, hasLength(1));
   });
 
+  test('marker y position is stable without altitude', () {
+    final markers = mapper.project(
+      objects: [_object(_warning(0, distanceMeters: 1600))],
+      userHeadingDegrees: 0,
+    );
+    expect(markers.single.top, closeTo(0.38, 0.02));
+  });
+
+  test('pitch changes produce smoothed y changes through previous markers', () {
+    final object = _object(_warning(0, distanceMeters: 700));
+    final first = mapper
+        .project(
+          objects: [object],
+          userHeadingDegrees: 0,
+          devicePitchDegrees: 0,
+        )
+        .single;
+    final pitched = mapper
+        .project(
+          objects: [object],
+          userHeadingDegrees: 0,
+          devicePitchDegrees: 18,
+        )
+        .single;
+    expect((pitched.top - first.top).abs(), lessThan(0.08));
+  });
+
+  test('distant markers stay near horizon', () {
+    final marker = mapper
+        .project(
+          objects: [_object(_warning(0, distanceMeters: 2500))],
+          userHeadingDegrees: 0,
+        )
+        .single;
+    expect(marker.top, closeTo(0.38, 0.03));
+  });
+
+  test('nearby markers can render lower than distant markers', () {
+    final near = mapper
+        .project(
+          objects: [_object(_warning(0, distanceMeters: 120))],
+          userHeadingDegrees: 0,
+        )
+        .single;
+    final far = mapper
+        .project(
+          objects: [_object(_warning(0, distanceMeters: 2500))],
+          userHeadingDegrees: 0,
+        )
+        .single;
+    expect(near.top, greaterThan(far.top));
+  });
+
   test('maps left center right x positions', () {
     final markers = mapper.project(
       objects: [
@@ -50,11 +103,12 @@ const _location = LocationStatus(
   isSpeedEstimatedFromGps: false,
 );
 
-HudWarningItem _warning(int bearing) => HudWarningItem(
-  type: WarningType.speedCamera,
-  title: 'A3 Suben',
-  detail: 'Abstand halten',
-  distanceMeters: 1200,
-  bearingDegrees: bearing,
-  severity: 3,
-);
+HudWarningItem _warning(int bearing, {int distanceMeters = 1200}) =>
+    HudWarningItem(
+      type: WarningType.speedCamera,
+      title: 'A3 Suben',
+      detail: 'Abstand halten',
+      distanceMeters: distanceMeters,
+      bearingDegrees: bearing,
+      severity: 3,
+    );

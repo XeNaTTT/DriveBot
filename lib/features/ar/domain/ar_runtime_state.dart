@@ -11,6 +11,7 @@ final class ArRuntimeState {
     required this.trackingQuality,
     this.errorMessage,
     this.fallbackReason,
+    this.devicePitchDegrees,
   });
 
   const ArRuntimeState.initial()
@@ -51,6 +52,7 @@ final class ArRuntimeState {
   final ArTrackingQuality trackingQuality;
   final String? errorMessage;
   final String? fallbackReason;
+  final double? devicePitchDegrees;
 
   bool get shouldUseArKit => isSupported && isAvailable && !hasError;
   bool get hasError => errorMessage != null && errorMessage!.isNotEmpty;
@@ -74,6 +76,7 @@ final class ArRuntimeState {
     ArTrackingQuality? trackingQuality,
     String? errorMessage,
     String? fallbackReason,
+    double? devicePitchDegrees,
   }) => ArRuntimeState(
     isSupported: isSupported ?? this.isSupported,
     isAvailable: isAvailable ?? this.isAvailable,
@@ -82,6 +85,7 @@ final class ArRuntimeState {
     trackingQuality: trackingQuality ?? this.trackingQuality,
     errorMessage: errorMessage ?? this.errorMessage,
     fallbackReason: fallbackReason ?? this.fallbackReason,
+    devicePitchDegrees: devicePitchDegrees ?? this.devicePitchDegrees,
   );
 
   static ArRuntimeState fromNativeMap(Map<Object?, Object?> map) {
@@ -95,6 +99,8 @@ final class ArRuntimeState {
     };
     final error = map['errorMessage'] as String?;
     final fallback = map['fallbackReason'] as String?;
+    final pitchValue = map['devicePitchDegrees'];
+    final pitch = pitchValue is num ? pitchValue.toDouble() : null;
     return ArRuntimeState(
       isSupported: supported,
       isAvailable: supported && error == null,
@@ -105,6 +111,7 @@ final class ArRuntimeState {
       trackingQuality: quality,
       errorMessage: error,
       fallbackReason: fallback,
+      devicePitchDegrees: pitch,
     );
   }
 }

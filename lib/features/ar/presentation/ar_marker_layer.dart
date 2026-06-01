@@ -26,11 +26,7 @@ class ArMarkerLayer extends StatelessWidget {
           const edgePadding = 8.0;
           return Stack(
             children: markers
-                .asMap()
-                .entries
-                .map((entry) {
-                  final index = entry.key;
-                  final marker = entry.value;
+                .map((marker) {
                   final object = marker.infoObject;
                   final rawLeft =
                       (marker.normalizedX * constraints.maxWidth) -
@@ -39,9 +35,7 @@ class ArMarkerLayer extends StatelessWidget {
                     edgePadding,
                     constraints.maxWidth - markerWidth - edgePadding,
                   );
-                  final staggeredTop =
-                      (marker.top * constraints.maxHeight) + ((index % 3) * 54);
-                  final top = staggeredTop.clamp(
+                  final top = (marker.top * constraints.maxHeight).clamp(
                     24.0,
                     constraints.maxHeight - 72.0,
                   );
