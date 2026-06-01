@@ -22,6 +22,7 @@ class HudWarningItem {
     this.validFrom,
     this.validTo,
     this.id,
+    this.typeLabel,
   });
 
   final WarningType type;
@@ -37,6 +38,7 @@ class HudWarningItem {
   final DateTime? validFrom;
   final DateTime? validTo;
   final String? id;
+  final String? typeLabel;
 
   bool get hasCoordinates => latitude != null && longitude != null;
 

@@ -156,14 +156,14 @@ class ArInfoDetailCard extends StatelessWidget {
           rows.add(_DetailRow('Autobahn / Straße', object.warning.roadId!));
         }
         if (object.validityLabel != null) {
-          rows.add(_DetailRow('Gültigkeit', object.validityLabel!));
+          rows.add(_DetailRow('Gültig bis', object.validityLabel!));
         }
       case WarningType.chargingStation:
         rows.add(_DetailRow('Verfügbarkeit', 'unbekannt'));
       case WarningType.weather:
         rows.add(_DetailRow('Risiko', 'Stufe ${object.warning.severity}'));
         if (object.validityLabel != null) {
-          rows.add(_DetailRow('Gültigkeit', object.validityLabel!));
+          rows.add(_DetailRow('Gültig bis', object.validityLabel!));
         }
     }
     return rows;

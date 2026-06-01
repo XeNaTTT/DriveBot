@@ -20,6 +20,7 @@ import '../features/reports/data/composite_speed_camera_report_repository.dart';
 import '../features/reports/data/local_speed_camera_report_repository.dart';
 import '../features/reports/data/supabase_speed_camera_report_repository.dart';
 import '../features/traffic/data/autobahn_warning_repository.dart';
+import '../features/warnings/data/berlin_traffic_warning_source.dart';
 import '../features/warnings/data/composite_warning_repository.dart';
 import '../features/warnings/data/merged_warning_repository.dart';
 import '../features/warnings/data/warning_cache.dart';
@@ -94,6 +95,7 @@ class _DriveAssistantAppState extends State<DriveAssistantApp> {
     final warningRepository = CompositeWarningRepository(
       primary: MergedWarningRepository([
         OpenMeteoWarningRepository.live(cache: InMemoryWarningCache()),
+        BerlinTrafficWarningSource.live(cache: InMemoryWarningCache()),
         AutobahnWarningRepository.live(cache: InMemoryWarningCache()),
         CommunitySpeedCameraWarningRepository(_reportRepository),
       ]),
