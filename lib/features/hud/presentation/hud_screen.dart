@@ -3,9 +3,13 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../ar/application/ar_info_object_factory.dart';
+import '../../ar/application/ar_selection_controller.dart';
 import '../../ar/data/ar_runtime_service.dart';
+import '../../ar/domain/ar_info_object.dart';
 import '../../ar/domain/ar_projection_mapper.dart';
 import '../../ar/domain/ar_runtime_state.dart';
+import '../../ar/presentation/ar_info_detail_card.dart';
 import '../../ar/presentation/ar_marker_layer.dart';
 import '../../ar/presentation/arkit_camera_background.dart';
 import '../../camera/domain/camera_runtime_state.dart';
@@ -24,7 +28,6 @@ import '../../sensors/domain/sensor_runtime_state.dart';
 import '../../warnings/domain/warning_repository.dart';
 import '../../warnings/domain/warning_request.dart';
 import '../domain/hud_repository.dart';
-import '../domain/hud_warning_item.dart';
 
 typedef CameraLayerBuilder = Widget Function(SensorPermissionStatus status);
 
@@ -63,6 +66,8 @@ class _HudScreenState extends State<HudScreen> {
   ArRuntimeState _arState = const ArRuntimeState.initial();
   bool _showReportingChoices = false;
   Timer? _messageTimer;
+  final ArSelectionController _selectionController = ArSelectionController();
+  final ArInfoObjectFactory _infoObjectFactory = const ArInfoObjectFactory();
 
   @override
   void initState() {
@@ -77,6 +82,7 @@ class _HudScreenState extends State<HudScreen> {
     _categoryController.removeListener(_handleCategoryFilterChanged);
     widget.reportController?.removeListener(_handleReportControllerChanged);
     _messageTimer?.cancel();
+    _selectionController.dispose();
     _categoryController.dispose();
     super.dispose();
   }
@@ -170,27 +176,37 @@ class _HudScreenState extends State<HudScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final allWarnings = [...widget.hudRepository.getNearbyWarnings()]
-      ..sort((a, b) => a.distanceMeters.compareTo(b.distanceMeters));
-    final warnings = allWarnings
-        .where(
-          (warning) =>
-              _categoryController.isActive(warning.informationCategory),
-        )
-        .toList(growable: false);
+    final allWarnings = [...widget.hudRepository.getNearbyWarnings()];
 
     return ValueListenableBuilder(
       valueListenable: widget.locationRepository.locationStatusListenable,
       builder: (context, location, _) => ValueListenableBuilder(
         valueListenable: widget.permissionRepository.permissionStatusListenable,
         builder: (context, permissions, __) {
+          final warnings = allWarnings
+              .where(
+                (warning) =>
+                    _categoryController.isActive(warning.informationCategory),
+              )
+              .toList(growable: false);
+          final infoObjects =
+              _infoObjectFactory.createAll(
+                warnings: warnings,
+                location: location,
+              )..sort(
+                (a, b) => (a.distanceMeters ?? double.infinity).compareTo(
+                  b.distanceMeters ?? double.infinity,
+                ),
+              );
           final markers = widget.projectionMapper.project(
-            warnings: warnings,
+            objects: infoObjects,
             userHeadingDegrees: location.headingDegrees,
           );
+          _collapseMissingSelection(markers.map((m) => m.infoObject.id));
           final primary = markers.isNotEmpty
-              ? markers.first.warning
-              : (warnings.isEmpty ? null : warnings.first);
+              ? markers.first.infoObject
+              : (infoObjects.isEmpty ? null : infoObjects.first);
+          final selectedObject = _selectedObject(infoObjects);
           final moreCount = markers.length > 1 ? markers.length - 1 : 0;
           final runtime = SensorRuntimeState(
             cameraAvailable: _cameraState.cameraAvailable,
@@ -207,15 +223,19 @@ class _HudScreenState extends State<HudScreen> {
             body: Stack(
               children: [
                 _buildCameraLayer(permissions),
-                ArMarkerLayer(markers: markers),
+                if (selectedObject != null)
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: () => setState(_selectionController.collapse),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
                 if (widget.reportController != null)
-                  _ReportOverlay(
+                  _ReportChoicesOverlay(
                     showChoices: _showReportingChoices,
                     message: widget.reportController?.message,
                     isReporting: widget.reportController?.isReporting ?? false,
-                    onOpenChoices: () => setState(
-                      () => _showReportingChoices = !_showReportingChoices,
-                    ),
                     onCancel: () =>
                         setState(() => _showReportingChoices = false),
                     onMobile: () => _reportSpeedCamera(
@@ -293,11 +313,34 @@ class _HudScreenState extends State<HudScreen> {
                           source: source,
                           hasActiveCategories:
                               _categoryController.hasActiveCategories,
+                          reportAction: widget.reportController == null
+                              ? null
+                              : _ReportButton(
+                                  enabled:
+                                      !(widget.reportController?.isReporting ??
+                                          false),
+                                  onPressed: () => setState(
+                                    () => _showReportingChoices =
+                                        !_showReportingChoices,
+                                  ),
+                                ),
                         ),
                         const SizedBox(height: 8),
                       ],
                     ),
                   ),
+                ),
+                if (selectedObject != null)
+                  ArInfoDetailCard(
+                    infoObject: selectedObject,
+                    onClose: () => setState(_selectionController.collapse),
+                  ),
+                ArMarkerLayer(
+                  markers: markers,
+                  selectedInfoObjectId:
+                      _selectionController.selectedInfoObjectId,
+                  onMarkerTap: (id) =>
+                      setState(() => _selectionController.select(id)),
                 ),
               ],
             ),
@@ -305,6 +348,23 @@ class _HudScreenState extends State<HudScreen> {
         },
       ),
     );
+  }
+
+  ArInfoObject? _selectedObject(List<ArInfoObject> objects) {
+    final selectedId = _selectionController.selectedInfoObjectId;
+    if (selectedId == null) return null;
+    for (final object in objects) {
+      if (object.id == selectedId) return object;
+    }
+    return null;
+  }
+
+  void _collapseMissingSelection(Iterable<String> visibleIds) {
+    final selectedId = _selectionController.selectedInfoObjectId;
+    if (selectedId == null || visibleIds.contains(selectedId)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() => _selectionController.collapse());
+    });
   }
 }
 
@@ -372,12 +432,11 @@ class _DebugSourceIndicator extends StatelessWidget {
   }
 }
 
-class _ReportOverlay extends StatelessWidget {
-  const _ReportOverlay({
+class _ReportChoicesOverlay extends StatelessWidget {
+  const _ReportChoicesOverlay({
     required this.showChoices,
     required this.message,
     required this.isReporting,
-    required this.onOpenChoices,
     required this.onCancel,
     required this.onMobile,
     required this.onFixed,
@@ -386,52 +445,59 @@ class _ReportOverlay extends StatelessWidget {
   final bool showChoices;
   final String? message;
   final bool isReporting;
-  final VoidCallback onOpenChoices;
   final VoidCallback onCancel;
   final VoidCallback onMobile;
   final VoidCallback onFixed;
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(12, 92, 12, 12),
-      child: Align(
-        alignment: Alignment.centerRight,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            if (message != null)
-              _ReportMessage(message!)
-            else if (showChoices)
-              _ReportChoices(
-                onMobile: isReporting ? null : onMobile,
-                onFixed: isReporting ? null : onFixed,
-                onCancel: onCancel,
-              )
-            else
-              _ReportButton(enabled: !isReporting, onPressed: onOpenChoices),
-          ],
-        ),
+  Widget build(BuildContext context) {
+    final child = message != null
+        ? _ReportMessage(message!)
+        : showChoices
+        ? _ReportChoices(
+            onMobile: isReporting ? null : onMobile,
+            onFixed: isReporting ? null : onFixed,
+            onCancel: onCancel,
+          )
+        : null;
+    if (child == null) return const SizedBox.shrink();
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 116),
+        child: Align(alignment: Alignment.bottomRight, child: child),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _ReportButton extends StatelessWidget {
-  const _ReportButton({required this.enabled, required this.onPressed});
+  const _ReportButton({
+    required this.enabled,
+    required this.onPressed,
+    this.compact = false,
+  });
 
   final bool enabled;
   final VoidCallback onPressed;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) => SizedBox(
     key: const Key('speed-camera-report-button'),
-    height: 52,
-    child: FilledButton.icon(
+    height: 44,
+    child: OutlinedButton.icon(
       onPressed: enabled ? onPressed : null,
-      icon: const Icon(Icons.add_alert_outlined),
-      label: const Text('Blitzer melden'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: const Color(0xFF57E3FF),
+        backgroundColor: const Color(0x2257E3FF),
+        side: const BorderSide(color: Color(0x8857E3FF)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      icon: const Icon(Icons.add_alert_outlined, size: 18),
+      label: Text(compact ? 'Melden' : 'Blitzer melden'),
     ),
   );
 }
@@ -614,48 +680,136 @@ class _PrimaryCard extends StatelessWidget {
     required this.warning,
     required this.source,
     required this.hasActiveCategories,
+    this.reportAction,
   });
-  final HudWarningItem? warning;
+
+  final ArInfoObject? warning;
   final String source;
   final bool hasActiveCategories;
+  final _ReportButton? reportAction;
+
   @override
-  Widget build(BuildContext context) => SizedBox(
-    key: const Key('primary-warning-card'),
-    width: double.infinity,
-    height: 84,
-    child: Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0x6657E3FF)),
-      ),
-      child: FittedBox(
-        alignment: Alignment.centerLeft,
-        fit: BoxFit.scaleDown,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              hasActiveCategories
-                  ? warning?.title ?? 'Keine aktiven Warnungen'
-                  : 'Keine Kategorien aktiv',
-              key: const Key('primary-warning-title'),
+  Widget build(BuildContext context) {
+    if (reportAction == null) {
+      return SizedBox(
+        key: const Key('primary-warning-card'),
+        width: double.infinity,
+        height: 84,
+        child: _PrimaryCardContainer(
+          padding: const EdgeInsets.all(10),
+          child: FittedBox(
+            alignment: Alignment.centerLeft,
+            fit: BoxFit.scaleDown,
+            child: _PrimaryWarningText(
+              warning: warning,
+              source: source,
+              hasActiveCategories: hasActiveCategories,
             ),
-            Text(
-              warning == null
-                  ? (hasActiveCategories
-                        ? 'Keine Anweisung'
-                        : 'Filter anpassen')
-                  : '${warning!.distanceMeters} m · ${warning!.detail} · S${warning!.severity}',
-            ),
-            Text(
-              'Quelle: $source',
-              key: const Key('warning-data-source-label'),
-            ),
-          ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      key: const Key('primary-warning-card'),
+      width: double.infinity,
+      constraints: const BoxConstraints(minHeight: 96),
+      child: _PrimaryCardContainer(
+        padding: const EdgeInsets.all(12),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final textScale = MediaQuery.textScalerOf(
+              context,
+            ).scale(1).clamp(1.0, 2.0);
+            final useStackedAction =
+                constraints.maxWidth < 360 || textScale >= 1.3;
+            final action = _ReportButton(
+              enabled: reportAction!.enabled,
+              onPressed: reportAction!.onPressed,
+              compact: constraints.maxWidth < 340,
+            );
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _PrimaryWarningText(
+                  warning: warning,
+                  source: source,
+                  hasActiveCategories: hasActiveCategories,
+                ),
+                const SizedBox(height: 10),
+                if (useStackedAction)
+                  Align(alignment: Alignment.centerRight, child: action)
+                else
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [Flexible(child: action)],
+                  ),
+              ],
+            );
+          },
         ),
       ),
+    );
+  }
+}
+
+class _PrimaryCardContainer extends StatelessWidget {
+  const _PrimaryCardContainer({required this.child, required this.padding});
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: padding,
+    decoration: BoxDecoration(
+      color: Colors.black.withValues(alpha: 0.6),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: const Color(0x6657E3FF)),
     ),
+    child: child,
+  );
+}
+
+class _PrimaryWarningText extends StatelessWidget {
+  const _PrimaryWarningText({
+    required this.warning,
+    required this.source,
+    required this.hasActiveCategories,
+  });
+
+  final ArInfoObject? warning;
+  final String source;
+  final bool hasActiveCategories;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        hasActiveCategories
+            ? warning?.title ?? 'Keine aktiven Warnungen'
+            : 'Keine Kategorien aktiv',
+        key: const Key('primary-warning-title'),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+      Text(
+        warning == null
+            ? (hasActiveCategories ? 'Keine Anweisung' : 'Filter anpassen')
+            : '${warning!.formattedDistance} · ${warning!.subtitle} · S${warning!.warning.severity}',
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      Text(
+        'Quelle: $source',
+        key: const Key('warning-data-source-label'),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    ],
   );
 }

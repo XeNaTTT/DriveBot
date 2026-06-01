@@ -1,9 +1,11 @@
+import 'package:driveassistant_ar/features/ar/application/ar_info_object_factory.dart';
 import 'package:driveassistant_ar/features/ar/data/ar_runtime_service.dart';
 import 'package:driveassistant_ar/features/ar/domain/ar_anchor_candidate_mapper.dart';
 import 'package:driveassistant_ar/features/ar/domain/ar_anchor_model.dart';
 import 'package:driveassistant_ar/features/ar/domain/ar_runtime_state.dart';
 import 'package:driveassistant_ar/features/ar/domain/ar_projection_mapper.dart';
 import 'package:driveassistant_ar/features/hud/domain/hud_warning_item.dart';
+import 'package:driveassistant_ar/features/location/domain/location_status.dart';
 import 'package:driveassistant_ar/features/reports/domain/speed_camera_report.dart';
 import 'package:driveassistant_ar/features/reports/domain/speed_camera_report_confidence.dart';
 import 'package:driveassistant_ar/features/reports/domain/speed_camera_report_type.dart';
@@ -31,7 +33,7 @@ void main() {
   });
 
   test('warning markers map to AR anchor candidates', () {
-    final markers = const ArProjectionMapper().project(
+    final objects = const ArInfoObjectFactory().createAll(
       warnings: const [
         HudWarningItem(
           type: WarningType.speedCamera,
@@ -42,6 +44,10 @@ void main() {
           severity: 4,
         ),
       ],
+      location: _location,
+    );
+    final markers = const ArProjectionMapper().project(
+      objects: objects,
       userHeadingDegrees: 0,
     );
 
@@ -82,3 +88,11 @@ void main() {
     expect(anchor.type, ArAnchorType.chargingStation);
   });
 }
+
+const _location = LocationStatus(
+  speedKph: 0,
+  headingDegrees: 0,
+  gpsFixStatus: GpsFixStatus.unavailable,
+  isMock: true,
+  isSpeedEstimatedFromGps: false,
+);

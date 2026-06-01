@@ -8,7 +8,7 @@ final class ArAnchorCandidateMapper {
   List<ArAnchorModel> fromMarkers(List<ArMarkerModel> markers) => markers
       .map(
         (marker) => ArAnchorModel.fromWarning(
-          marker.warning,
+          marker.infoObject.warning,
           relativeBearing: marker.relativeBearing,
         ),
       )

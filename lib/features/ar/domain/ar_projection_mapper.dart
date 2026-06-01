@@ -1,4 +1,4 @@
-import '../../hud/domain/hud_warning_item.dart';
+import 'ar_info_object.dart';
 import 'ar_marker_model.dart';
 
 class ArProjectionMapper {
@@ -13,23 +13,25 @@ class ArProjectionMapper {
   final double maxTop;
 
   List<ArMarkerModel> project({
-    required List<HudWarningItem> warnings,
+    required List<ArInfoObject> objects,
     required int userHeadingDegrees,
   }) {
     final halfFov = horizontalFovDegrees / 2;
-    return warnings
-        .where((w) => w.bearingDegrees >= 0)
-        .map((warning) {
+    return objects
+        .where((object) => object.warning.bearingDegrees >= 0)
+        .map((object) {
+          final warning = object.warning;
           final relative = _normalizeAngle(
             warning.bearingDegrees.toDouble() - userHeadingDegrees,
           );
           if (relative.abs() > halfFov) return null;
           final normalizedX = ((relative / halfFov) + 1) / 2;
-          final clampedDistance = warning.distanceMeters.clamp(75, 3000);
+          final clampedDistance =
+              (object.distanceMeters ?? warning.distanceMeters).clamp(75, 3000);
           final depth = 1 - ((clampedDistance - 75) / (3000 - 75));
           final top = minTop + ((maxTop - minTop) * depth);
           return ArMarkerModel(
-            warning: warning,
+            infoObject: object,
             relativeBearing: relative,
             normalizedX: normalizedX.clamp(0, 1),
             top: top.clamp(minTop, maxTop),
