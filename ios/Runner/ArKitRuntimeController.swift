@@ -15,7 +15,7 @@ final class ArKitRuntimeController: NSObject {
     return false
   }
 
-  func register(channel messenger: FlutterBinaryMessenger) {
+  func register(messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(
       name: "drivebot/arkit_runtime",
       binaryMessenger: messenger

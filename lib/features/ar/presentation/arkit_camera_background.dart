@@ -1,6 +1,6 @@
-import 'dart:io' show Platform;
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../../camera/domain/camera_runtime_state.dart';
@@ -36,6 +36,8 @@ class _ArKitCameraBackgroundState extends State<ArKitCameraBackground>
   late ArRuntimeService _runtimeService;
   ArRuntimeState _state = const ArRuntimeState.initial();
   bool _isChecking = true;
+
+  bool get _isIOS => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
   @override
   void initState() {
@@ -82,7 +84,7 @@ class _ArKitCameraBackgroundState extends State<ArKitCameraBackground>
       if (mounted) setState(() => _isChecking = false);
       return;
     }
-    if (!Platform.isIOS) {
+    if (!_isIOS) {
       _publish(const ArRuntimeState.fallback('Kamera-Fallback'));
       if (mounted) setState(() => _isChecking = false);
       return;
@@ -140,10 +142,11 @@ class _ArKitCameraBackgroundState extends State<ArKitCameraBackground>
         key: Key('arkit-camera-background'),
         viewType: IosArKitRuntimeService.viewType,
         creationParamsCodec: StandardMessageCodec(),
+        hitTestBehavior: PlatformViewHitTestBehavior.transparent,
       );
     }
 
-    if (_isChecking && Platform.isIOS) {
+    if (_isChecking && _isIOS) {
       return Stack(
         fit: StackFit.expand,
         children: [

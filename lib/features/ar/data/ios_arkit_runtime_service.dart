@@ -1,5 +1,4 @@
-import 'dart:io' show Platform;
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../domain/ar_runtime_state.dart';
@@ -14,9 +13,11 @@ final class IosArKitRuntimeService implements ArRuntimeService {
 
   final MethodChannel _channel;
 
+  bool get _isIOS => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
   @override
   Future<ArRuntimeState> getState() async {
-    if (!Platform.isIOS) {
+    if (!_isIOS) {
       return const ArRuntimeState.fallback('Kamera-Fallback');
     }
     try {
@@ -38,7 +39,7 @@ final class IosArKitRuntimeService implements ArRuntimeService {
 
   @override
   Future<bool> isSupported() async {
-    if (!Platform.isIOS) return false;
+    if (!_isIOS) return false;
     try {
       return await _channel.invokeMethod<bool>('isSupported') ?? false;
     } on PlatformException {
@@ -50,7 +51,7 @@ final class IosArKitRuntimeService implements ArRuntimeService {
 
   @override
   Future<void> start() async {
-    if (!Platform.isIOS) return;
+    if (!_isIOS) return;
     try {
       await _channel.invokeMethod<void>('start');
     } on PlatformException {
@@ -62,7 +63,7 @@ final class IosArKitRuntimeService implements ArRuntimeService {
 
   @override
   Future<void> stop() async {
-    if (!Platform.isIOS) return;
+    if (!_isIOS) return;
     try {
       await _channel.invokeMethod<void>('stop');
     } on PlatformException {
