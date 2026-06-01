@@ -14,6 +14,7 @@ final class ArAnchorModel {
     required this.source,
     this.latitude,
     this.longitude,
+    this.altitude,
     this.distanceMeters,
     this.bearingDegrees,
     this.relativeBearing,
@@ -25,6 +26,7 @@ final class ArAnchorModel {
   final ArAnchorType type;
   final double? latitude;
   final double? longitude;
+  final double? altitude;
   final int? distanceMeters;
   final int? bearingDegrees;
   final double? relativeBearing;

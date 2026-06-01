@@ -39,6 +39,12 @@ final class ArKitRuntimeController: NSObject {
         result(nil)
       case "currentState":
         result(self.currentState())
+      case "syncAnchors":
+        guard let anchors = call.arguments as? [[String: Any]] else {
+          result(FlutterError(code: "invalid_anchors", message: "AR-Anker ungültig", details: nil))
+          return
+        }
+        result(self.activeView?.syncAnchors(anchors) ?? [])
       default:
         result(FlutterMethodNotImplemented)
       }
