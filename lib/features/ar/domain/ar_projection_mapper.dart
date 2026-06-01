@@ -1,20 +1,25 @@
 import 'ar_info_object.dart';
 import 'ar_marker_model.dart';
+import 'ar_vertical_placement.dart';
 
 class ArProjectionMapper {
   const ArProjectionMapper({
     this.horizontalFovDegrees = 60,
     this.minTop = 0.22,
     this.maxTop = 0.62,
+    this.verticalPlacement = const ArVerticalPlacement(),
   });
 
   final double horizontalFovDegrees;
   final double minTop;
   final double maxTop;
+  final ArVerticalPlacement verticalPlacement;
 
   List<ArMarkerModel> project({
     required List<ArInfoObject> objects,
     required int userHeadingDegrees,
+    double? devicePitchDegrees,
+    bool trackingLimited = false,
   }) {
     final halfFov = horizontalFovDegrees / 2;
     return objects
@@ -26,10 +31,11 @@ class ArProjectionMapper {
           );
           if (relative.abs() > halfFov) return null;
           final normalizedX = ((relative / halfFov) + 1) / 2;
-          final clampedDistance =
-              (object.distanceMeters ?? warning.distanceMeters).clamp(75, 3000);
-          final depth = 1 - ((clampedDistance - 75) / (3000 - 75));
-          final top = minTop + ((maxTop - minTop) * depth);
+          final top = verticalPlacement.topFor(
+            object: object,
+            devicePitchDegrees: devicePitchDegrees,
+            trackingLimited: trackingLimited,
+          );
           return ArMarkerModel(
             infoObject: object,
             relativeBearing: relative,

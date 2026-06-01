@@ -74,6 +74,9 @@ class _HudScreenState extends State<HudScreen> {
   Map<String, ArMarkerModel> _previousMarkersById = const {};
   String? _arOverlayStatusLabel;
   late ArRuntimeService _arRuntimeService;
+  bool _isWarningDataLoading = true;
+  int _hiddenMarkersByOverlap = 0;
+  int _hiddenMarkersByFov = 0;
 
   @override
   void initState() {
@@ -81,7 +84,7 @@ class _HudScreenState extends State<HudScreen> {
     _arRuntimeService = widget.arRuntimeService ?? IosArKitRuntimeService();
     _categoryController.addListener(_handleCategoryFilterChanged);
     widget.reportController?.addListener(_handleReportControllerChanged);
-    _loadWarnings();
+    Future<void>.microtask(_loadWarnings);
   }
 
   @override
@@ -111,13 +114,17 @@ class _HudScreenState extends State<HudScreen> {
 
   Future<void> _loadWarnings() async {
     final repository = widget.hudRepository;
-    if (repository is! WarningRepository) return;
+    if (repository is! WarningRepository) {
+      if (mounted) setState(() => _isWarningDataLoading = false);
+      return;
+    }
 
+    if (mounted) setState(() => _isWarningDataLoading = true);
     final location = widget.locationRepository.locationStatusListenable.value;
     await (repository as WarningRepository).getWarnings(
       _warningRequestFor(location),
     );
-    if (mounted) setState(() {});
+    if (mounted) setState(() => _isWarningDataLoading = false);
   }
 
   WarningRequest _warningRequestFor(LocationStatus location) {
@@ -146,6 +153,20 @@ class _HudScreenState extends State<HudScreen> {
       return;
     }
     setState(() => _arState = state);
+  }
+
+  String get _statusLabel {
+    if (_cameraState.availability == CameraRuntimeAvailability.initializing) {
+      return 'Kamera wird gestartet';
+    }
+    if (!_cameraState.cameraAvailable && !_arState.shouldUseArKit) {
+      return 'Kamera-Fallback';
+    }
+    if (_arState.shouldUseArKit && !_arState.isRunning) {
+      return 'AR wird vorbereitet';
+    }
+    if (_isWarningDataLoading) return 'Hinweise werden geladen';
+    return _arOverlayStatusLabel ?? _arState.germanStatusLabel;
   }
 
   Future<void> _reportSpeedCamera({
@@ -213,18 +234,21 @@ class _HudScreenState extends State<HudScreen> {
                 location: location,
                 runtimeState: _arState,
                 previousMarkers: _previousMarkersById,
+                selectedInfoObjectId: _selectionController.selectedInfoObjectId,
               );
           final markers = projectionResult.markers;
+          _hiddenMarkersByOverlap = projectionResult.hiddenByOverlap;
+          _hiddenMarkersByFov = projectionResult.hiddenByFov;
           _previousMarkersById = {
             for (final marker in markers) marker.infoObject.id: marker,
           };
           _syncWorldAnchors(projectionResult);
           _collapseMissingSelection(markers.map((m) => m.infoObject.id));
-          final primary = markers.isNotEmpty
-              ? markers.first.infoObject
-              : (infoObjects.isEmpty ? null : infoObjects.first);
           final selectedObject = _selectedObject(infoObjects);
-          final moreCount = markers.length > 1 ? markers.length - 1 : 0;
+          final primary =
+              selectedObject ??
+              (infoObjects.isEmpty ? null : infoObjects.first);
+          final moreCount = projectionResult.hiddenByOverlap;
           final runtime = SensorRuntimeState(
             cameraAvailable: _cameraState.cameraAvailable,
             locationStatus: location,
@@ -295,14 +319,19 @@ class _HudScreenState extends State<HudScreen> {
                           const SizedBox(height: 8),
                           _DebugSourceIndicator(
                             cameraState: _cameraState,
+                            arState: _arState,
                             location: location,
                             warningSource: warningSource,
+                            warningsLoaded: infoObjects.length,
+                            markersVisible: markers.length,
+                            hiddenByOverlap: _hiddenMarkersByOverlap,
+                            hiddenByFov: _hiddenMarkersByFov,
                           ),
                         ],
                         const SizedBox(height: 8),
                         _ArRuntimePill(
                           state: _arState,
-                          overrideLabel: _arOverlayStatusLabel,
+                          overrideLabel: _statusLabel,
                         ),
                         const SizedBox(height: 6),
                         _RuntimePills(runtime: runtime),
@@ -441,33 +470,58 @@ class _StatusBar extends StatelessWidget {
 class _DebugSourceIndicator extends StatelessWidget {
   const _DebugSourceIndicator({
     required this.cameraState,
+    required this.arState,
     required this.location,
     required this.warningSource,
+    required this.warningsLoaded,
+    required this.markersVisible,
+    required this.hiddenByOverlap,
+    required this.hiddenByFov,
   });
 
   final CameraRuntimeState cameraState;
+  final ArRuntimeState arState;
   final LocationStatus location;
   final WarningDataSourceStatus? warningSource;
+  final int warningsLoaded;
+  final int markersVisible;
+  final int hiddenByOverlap;
+  final int hiddenByFov;
 
   @override
   Widget build(BuildContext context) {
-    final cameraLabel = cameraState.cameraAvailable ? 'Live' : 'Fallback';
+    final cameraLabel = cameraState.cameraAvailable ? 'bereit' : 'lädt';
+    final arLabel = arState.shouldUseArKit ? 'aktiv' : 'Fallback';
+    final trackingLabel = arState.trackingQuality == ArTrackingQuality.stable
+        ? 'stabil'
+        : 'eingeschränkt';
     final locationLabel = location.hasLiveLocation && !location.isMock
         ? 'Live'
         : 'Fallback';
     final warningLabel = warningSource?.debugDataSourceLabel ?? 'Mock';
 
+    final pills = [
+      _DebugSourcePill('Kamera: $cameraLabel'),
+      _DebugSourcePill('ARKit: $arLabel'),
+      _DebugSourcePill('Tracking: $trackingLabel'),
+      _DebugSourcePill('Hinweise: $warningsLoaded geladen'),
+      _DebugSourcePill('Marker: $markersVisible sichtbar'),
+      _DebugSourcePill('Versteckt wegen Überlappung: $hiddenByOverlap'),
+      _DebugSourcePill('Versteckt wegen FOV: $hiddenByFov'),
+      _DebugSourcePill('Standort: $locationLabel'),
+      _DebugSourcePill('Warnungen: $warningLabel'),
+    ];
+
     return Align(
       alignment: Alignment.centerLeft,
-      child: Wrap(
+      child: SingleChildScrollView(
         key: const Key('debug-source-indicator'),
-        spacing: 6,
-        runSpacing: 6,
-        children: [
-          _DebugSourcePill('Kamera: $cameraLabel'),
-          _DebugSourcePill('Standort: $locationLabel'),
-          _DebugSourcePill('Warnungen: $warningLabel'),
-        ],
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            for (final pill in pills) ...[pill, const SizedBox(width: 6)],
+          ],
+        ),
       ),
     );
   }

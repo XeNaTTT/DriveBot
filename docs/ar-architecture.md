@@ -54,3 +54,14 @@ Output:
 Warnings are sorted by distance for the current HUD display. Autobahn warnings are additionally filtered to coordinated entries within 5 km and within the configured AR field of view, with ahead-of-user entries preferred before the HUD displays them. The first projected
 marker is used for the primary warning card; if no marker is inside the field of
 view, the nearest warning is shown in the card.
+
+## Startup and marker placement update
+
+The HUD keeps the native camera/AR background independent from warning loading so the camera can appear as soon as permissions and the runtime allow it. Warning repositories (community reports, Berlin traffic, Autobahn and other sources) refresh asynchronously after the HUD opens; marker layers consume the latest repository snapshot without recreating the camera or ARKit PlatformView.
+
+Floating marker projection uses a stable horizon-based vertical placement model. Altitude is only reserved for future native projections where a reliable altitude exists. Without reliable altitude, remote objects stay near the visual horizon, nearby objects can sit slightly lower, pitch adjusts the horizon gently, and tracking-limited states reduce vertical movement. A decluttering pass prioritizes selected objects, mobile/fixed speed cameras, charging targets, severe warnings and then lower-priority traffic hints, stacking or hiding overlapping cards and surfacing the hidden count as “+X weitere”.
+
+The fallback hierarchy is:
+1. ARKit anchored/projection result when native AR and stable tracking are available.
+2. Bearing/FOV projection with stable horizon placement when heading/location data is available.
+3. Bottom warning card only when floating placement is not safe.

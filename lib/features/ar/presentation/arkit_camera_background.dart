@@ -94,7 +94,7 @@ class _ArKitCameraBackgroundState extends State<ArKitCameraBackground>
     final supported = await _runtimeService.isSupported();
     if (!mounted) return;
     if (!supported) {
-      _publish(const ArRuntimeState.fallback('AR nicht verfügbar'));
+      _publish(const ArRuntimeState.fallback('Kamera-Fallback'));
       setState(() => _isChecking = false);
       return;
     }

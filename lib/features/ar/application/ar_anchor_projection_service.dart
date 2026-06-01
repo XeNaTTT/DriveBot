@@ -5,6 +5,7 @@ import '../domain/ar_anchor_candidate_mapper.dart';
 import '../domain/ar_anchor_projection.dart';
 import '../domain/ar_geo_anchor_candidate.dart';
 import '../domain/ar_info_object.dart';
+import '../domain/ar_marker_declutter.dart';
 import '../domain/ar_marker_model.dart';
 import '../domain/ar_projection_mapper.dart';
 import '../domain/ar_runtime_state.dart';
@@ -16,12 +17,16 @@ final class ArAnchorProjectionResult {
     required this.candidates,
     required this.projections,
     required this.statusLabel,
+    required this.hiddenByOverlap,
+    required this.hiddenByFov,
   });
 
   final List<ArMarkerModel> markers;
   final List<ArGeoAnchorCandidate> candidates;
   final List<ArAnchorProjection> projections;
   final String statusLabel;
+  final int hiddenByOverlap;
+  final int hiddenByFov;
 }
 
 final class ArAnchorProjectionService {
@@ -29,33 +34,46 @@ final class ArAnchorProjectionService {
     this.projectionMapper = const ArProjectionMapper(),
     this.candidateMapper = const ArAnchorCandidateMapper(),
     this.coordinateMapper = const GeoArCoordinateMapper(),
+    this.declutter = const ArMarkerDeclutter(),
   });
 
   final ArProjectionMapper projectionMapper;
   final ArAnchorCandidateMapper candidateMapper;
   final GeoArCoordinateMapper coordinateMapper;
+  final ArMarkerDeclutter declutter;
 
   ArAnchorProjectionResult project({
     required List<ArInfoObject> objects,
     required LocationStatus location,
     required ArRuntimeState runtimeState,
     Map<String, ArMarkerModel> previousMarkers = const {},
+    String? selectedInfoObjectId,
   }) {
+    final trackingLimited =
+        runtimeState.trackingQuality == ArTrackingQuality.limited ||
+        runtimeState.trackingQuality == ArTrackingQuality.unavailable;
     final fallbackMarkers = projectionMapper.project(
       objects: objects,
       userHeadingDegrees: location.headingDegrees,
+      devicePitchDegrees: runtimeState.devicePitchDegrees,
+      trackingLimited: trackingLimited,
     );
+    final hiddenByFov = objects.length - fallbackMarkers.length;
+
     if (!location.hasLiveLocation) {
       final markers = fallbackMarkers
           .where((marker) => !marker.infoObject.warning.hasCoordinates)
           .toList(growable: false);
-      return ArAnchorProjectionResult(
-        markers: _smooth(markers, previousMarkers),
+      return _result(
+        markers: markers,
+        previousMarkers: previousMarkers,
+        selectedInfoObjectId: selectedInfoObjectId,
         candidates: const [],
         projections: const [],
         statusLabel: objects.any((object) => object.warning.hasCoordinates)
             ? 'Standort erforderlich'
             : runtimeState.germanStatusLabel,
+        hiddenByFov: hiddenByFov,
       );
     }
 
@@ -66,30 +84,39 @@ final class ArAnchorProjectionService {
     final geospatialIds = candidates.map((candidate) => candidate.id).toSet();
 
     if (candidates.isEmpty || !runtimeState.shouldUseArKit) {
-      return ArAnchorProjectionResult(
-        markers: _smooth(fallbackMarkers, previousMarkers),
+      return _result(
+        markers: fallbackMarkers,
+        previousMarkers: previousMarkers,
+        selectedInfoObjectId: selectedInfoObjectId,
         candidates: candidates,
         projections: const [],
         statusLabel: runtimeState.germanStatusLabel,
+        hiddenByFov: hiddenByFov,
       );
     }
 
     if (runtimeState.trackingQuality == ArTrackingQuality.limited) {
-      return ArAnchorProjectionResult(
-        markers: _smooth(
-          fallbackMarkers
-              .where((marker) => !geospatialIds.contains(marker.infoObject.id))
-              .toList(growable: false),
-          previousMarkers,
-        ),
+      return _result(
+        markers: fallbackMarkers
+            .where((marker) => !geospatialIds.contains(marker.infoObject.id))
+            .toList(growable: false),
+        previousMarkers: previousMarkers,
+        selectedInfoObjectId: selectedInfoObjectId,
         candidates: candidates,
         projections: const [],
         statusLabel: 'Tracking eingeschränkt',
+        hiddenByFov: hiddenByFov,
       );
     }
 
+    final objectById = {for (final object in objects) object.id: object};
     final projections = candidates
-        .map((candidate) => _projectionFor(candidate, runtimeState))
+        .map((candidate) {
+          final object = objectById[candidate.id];
+          if (object == null) return null;
+          return _projectionFor(candidate, object, runtimeState);
+        })
+        .whereType<ArAnchorProjection>()
         .toList(growable: false);
     final candidateById = {
       for (final candidate in candidates) candidate.id: candidate,
@@ -111,18 +138,46 @@ final class ArAnchorProjectionService {
     );
     final markers = [...anchoredMarkers, ...retainedFallback];
 
-    return ArAnchorProjectionResult(
-      markers: _smooth(markers, previousMarkers),
+    return _result(
+      markers: markers,
+      previousMarkers: previousMarkers,
+      selectedInfoObjectId: selectedInfoObjectId,
       candidates: candidates,
       projections: projections,
       statusLabel: projections.any((projection) => projection.usesWorldAnchor)
           ? 'AR verankert'
           : runtimeState.germanStatusLabel,
+      hiddenByFov: hiddenByFov,
+    );
+  }
+
+  ArAnchorProjectionResult _result({
+    required List<ArMarkerModel> markers,
+    required Map<String, ArMarkerModel> previousMarkers,
+    required String? selectedInfoObjectId,
+    required List<ArGeoAnchorCandidate> candidates,
+    required List<ArAnchorProjection> projections,
+    required String statusLabel,
+    required int hiddenByFov,
+  }) {
+    final smoothed = _smooth(markers, previousMarkers);
+    final decluttered = declutter.apply(
+      markers: smoothed,
+      selectedInfoObjectId: selectedInfoObjectId,
+    );
+    return ArAnchorProjectionResult(
+      markers: decluttered.visibleMarkers,
+      candidates: candidates,
+      projections: projections,
+      statusLabel: statusLabel,
+      hiddenByOverlap: decluttered.hiddenByOverlap,
+      hiddenByFov: hiddenByFov,
     );
   }
 
   ArAnchorProjection _projectionFor(
     ArGeoAnchorCandidate candidate,
+    ArInfoObject object,
     ArRuntimeState runtimeState,
   ) {
     final local = ArLocalCoordinate(
@@ -132,11 +187,12 @@ final class ArAnchorProjectionService {
     final arkit = coordinateMapper.arKitCoordinateFor(local);
     final halfFov = projectionMapper.horizontalFovDegrees / 2;
     final normalizedX = ((candidate.relativeBearing / halfFov) + 1) / 2;
-    final clampedDistance = candidate.distanceMeters.clamp(75, 3000);
-    final depth = 1 - ((clampedDistance - 75) / (3000 - 75));
-    final top =
-        projectionMapper.minTop +
-        ((projectionMapper.maxTop - projectionMapper.minTop) * depth);
+    final top = projectionMapper.verticalPlacement.topFor(
+      object: object,
+      devicePitchDegrees: runtimeState.devicePitchDegrees,
+      trackingLimited:
+          runtimeState.trackingQuality == ArTrackingQuality.limited,
+    );
     return ArAnchorProjection(
       candidate: candidate,
       localCoordinate: local,
