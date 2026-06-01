@@ -29,13 +29,13 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSCameraUsageDescription</key>
-	<string>DriveAssistant AR uses the camera to display augmented driving assistance overlays.</string>
+	<string>DriveBot nutzt die Kamera, um kameraunterstützte AR-Hinweise im HUD einzublenden.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>DriveAssistant AR uses your location to estimate nearby road and safety information.</string>
+	<string>DriveBot nutzt deinen Standort während der App-Nutzung, um nahe Straßen- und Sicherheitshinweise auszurichten.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>DriveBot uses location while the app is open to align driving assistance information with your current route and direction. Background location is not used.</string>
+	<string>DriveBot nutzt den Standort während der App-Nutzung für Fahrhinweise. Hintergrundortung wird nicht verwendet.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>DriveAssistant AR uses motion and heading data to align assistance information with your direction of travel.</string>
+	<string>DriveBot nutzt Bewegungs- und Richtungsdaten, um Hinweise an deiner Fahrtrichtung auszurichten.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
