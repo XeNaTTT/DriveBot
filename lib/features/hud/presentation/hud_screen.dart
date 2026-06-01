@@ -3,10 +3,13 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../ar/application/ar_anchor_projection_service.dart';
 import '../../ar/application/ar_info_object_factory.dart';
 import '../../ar/application/ar_selection_controller.dart';
 import '../../ar/data/ar_runtime_service.dart';
+import '../../ar/data/ios_arkit_runtime_service.dart';
 import '../../ar/domain/ar_info_object.dart';
+import '../../ar/domain/ar_marker_model.dart';
 import '../../ar/domain/ar_projection_mapper.dart';
 import '../../ar/domain/ar_runtime_state.dart';
 import '../../ar/presentation/ar_info_detail_card.dart';
@@ -68,10 +71,14 @@ class _HudScreenState extends State<HudScreen> {
   Timer? _messageTimer;
   final ArSelectionController _selectionController = ArSelectionController();
   final ArInfoObjectFactory _infoObjectFactory = const ArInfoObjectFactory();
+  Map<String, ArMarkerModel> _previousMarkersById = const {};
+  String? _arOverlayStatusLabel;
+  late ArRuntimeService _arRuntimeService;
 
   @override
   void initState() {
     super.initState();
+    _arRuntimeService = widget.arRuntimeService ?? IosArKitRuntimeService();
     _categoryController.addListener(_handleCategoryFilterChanged);
     widget.reportController?.addListener(_handleReportControllerChanged);
     _loadWarnings();
@@ -164,7 +171,7 @@ class _HudScreenState extends State<HudScreen> {
 
     return ArKitCameraBackground(
       permissionStatus: permissions,
-      runtimeService: widget.arRuntimeService,
+      runtimeService: _arRuntimeService,
       onArStateChanged: _handleArStateChanged,
       onCameraStateChanged: _handleCameraStateChanged,
       fallbackBuilder: () => CameraHudBackground(
@@ -198,10 +205,20 @@ class _HudScreenState extends State<HudScreen> {
                   b.distanceMeters ?? double.infinity,
                 ),
               );
-          final markers = widget.projectionMapper.project(
-            objects: infoObjects,
-            userHeadingDegrees: location.headingDegrees,
-          );
+          final projectionResult =
+              ArAnchorProjectionService(
+                projectionMapper: widget.projectionMapper,
+              ).project(
+                objects: infoObjects,
+                location: location,
+                runtimeState: _arState,
+                previousMarkers: _previousMarkersById,
+              );
+          final markers = projectionResult.markers;
+          _previousMarkersById = {
+            for (final marker in markers) marker.infoObject.id: marker,
+          };
+          _syncWorldAnchors(projectionResult);
           _collapseMissingSelection(markers.map((m) => m.infoObject.id));
           final primary = markers.isNotEmpty
               ? markers.first.infoObject
@@ -283,7 +300,10 @@ class _HudScreenState extends State<HudScreen> {
                           ),
                         ],
                         const SizedBox(height: 8),
-                        _ArRuntimePill(state: _arState),
+                        _ArRuntimePill(
+                          state: _arState,
+                          overrideLabel: _arOverlayStatusLabel,
+                        ),
                         const SizedBox(height: 6),
                         _RuntimePills(runtime: runtime),
                         if (runtime.isFallbackMode) ...[
@@ -357,6 +377,27 @@ class _HudScreenState extends State<HudScreen> {
       if (object.id == selectedId) return object;
     }
     return null;
+  }
+
+  void _syncWorldAnchors(ArAnchorProjectionResult result) {
+    final service = _arRuntimeService;
+    if (result.projections.isEmpty) {
+      if (_arOverlayStatusLabel != result.statusLabel) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() => _arOverlayStatusLabel = result.statusLabel);
+          }
+        });
+      }
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await service.syncAnchors(result.projections);
+      if (!mounted) return;
+      if (_arOverlayStatusLabel != result.statusLabel) {
+        setState(() => _arOverlayStatusLabel = result.statusLabel);
+      }
+    });
   }
 
   void _collapseMissingSelection(Iterable<String> visibleIds) {
@@ -595,9 +636,10 @@ class _DebugSourcePill extends StatelessWidget {
 }
 
 class _ArRuntimePill extends StatelessWidget {
-  const _ArRuntimePill({required this.state});
+  const _ArRuntimePill({required this.state, this.overrideLabel});
 
   final ArRuntimeState state;
+  final String? overrideLabel;
 
   @override
   Widget build(BuildContext context) => Align(
@@ -606,7 +648,7 @@ class _ArRuntimePill extends StatelessWidget {
       key: const Key('ar-runtime-status'),
       spacing: 6,
       runSpacing: 6,
-      children: [_StatusPill(state.germanStatusLabel)],
+      children: [_StatusPill(overrideLabel ?? state.germanStatusLabel)],
     ),
   );
 }
@@ -710,42 +752,31 @@ class _PrimaryCard extends StatelessWidget {
       );
     }
 
-    return Container(
+    return SizedBox(
       key: const Key('primary-warning-card'),
       width: double.infinity,
-      constraints: const BoxConstraints(minHeight: 96),
       child: _PrimaryCardContainer(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final textScale = MediaQuery.textScalerOf(
-              context,
-            ).scale(1).clamp(1.0, 2.0);
-            final useStackedAction =
-                constraints.maxWidth < 360 || textScale >= 1.3;
             final action = _ReportButton(
               enabled: reportAction!.enabled,
               onPressed: reportAction!.onPressed,
               compact: constraints.maxWidth < 340,
             );
 
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                _PrimaryWarningText(
-                  warning: warning,
-                  source: source,
-                  hasActiveCategories: hasActiveCategories,
-                ),
-                const SizedBox(height: 10),
-                if (useStackedAction)
-                  Align(alignment: Alignment.centerRight, child: action)
-                else
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [Flexible(child: action)],
+                Expanded(
+                  child: _PrimaryWarningText(
+                    warning: warning,
+                    source: source,
+                    hasActiveCategories: hasActiveCategories,
                   ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(flex: 0, child: action),
               ],
             );
           },
@@ -793,7 +824,7 @@ class _PrimaryWarningText extends StatelessWidget {
             ? warning?.title ?? 'Keine aktiven Warnungen'
             : 'Keine Kategorien aktiv',
         key: const Key('primary-warning-title'),
-        maxLines: 2,
+        maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(fontWeight: FontWeight.w800),
       ),
@@ -801,7 +832,7 @@ class _PrimaryWarningText extends StatelessWidget {
         warning == null
             ? (hasActiveCategories ? 'Keine Anweisung' : 'Filter anpassen')
             : '${warning!.formattedDistance} · ${warning!.subtitle} · S${warning!.warning.severity}',
-        maxLines: 2,
+        maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
       Text(

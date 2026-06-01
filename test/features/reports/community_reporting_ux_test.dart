@@ -31,6 +31,18 @@ void main() {
     expect(find.descendant(of: card, matching: button), findsOneWidget);
   });
 
+  testWidgets('bottom info card stays near three text lines tall', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_buildHud(loggedIn: false));
+
+    final cardSize = tester.getSize(
+      find.byKey(const Key('primary-warning-card')),
+    );
+
+    expect(cardSize.height, lessThanOrEqualTo(88));
+  });
+
   testWidgets('Blitzer melden button is no longer floating above the card', (
     tester,
   ) async {

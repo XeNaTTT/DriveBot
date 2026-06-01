@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../domain/ar_anchor_projection.dart';
+import '../domain/ar_world_anchor_state.dart';
 import '../domain/ar_runtime_state.dart';
 import 'ar_runtime_service.dart';
 
@@ -60,6 +62,36 @@ final class IosArKitRuntimeService implements ArRuntimeService {
       // Flutter keeps the camera fallback when the native bridge is absent.
     }
   }
+
+  @override
+  Future<List<ArWorldAnchorState>> syncAnchors(
+    List<ArAnchorProjection> projections,
+  ) async {
+    if (!_isIOS || projections.isEmpty) return const [];
+    try {
+      final response = await _channel.invokeListMethod<Object?>(
+        'syncAnchors',
+        projections.map(_projectionPayload).toList(growable: false),
+      );
+      if (response == null) return const [];
+      return response
+          .whereType<Map<Object?, Object?>>()
+          .map(ArWorldAnchorState.fromNativeMap)
+          .toList(growable: false);
+    } on PlatformException {
+      return const [];
+    } on MissingPluginException {
+      return const [];
+    }
+  }
+
+  Map<String, Object?> _projectionPayload(ArAnchorProjection projection) => {
+    'id': projection.candidate.id,
+    'x': projection.arkitCoordinate.x,
+    'y': projection.arkitCoordinate.y,
+    'z': projection.arkitCoordinate.z,
+    'distanceMeters': projection.candidate.distanceMeters,
+  };
 
   @override
   Future<void> stop() async {
