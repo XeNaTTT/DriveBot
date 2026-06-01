@@ -9,8 +9,6 @@ import '../../ar/data/ar_runtime_service.dart';
 import '../../ar/domain/ar_info_object.dart';
 import '../../ar/domain/ar_projection_mapper.dart';
 import '../../ar/domain/ar_runtime_state.dart';
-import '../../ar/domain/ar_info_object.dart';
-import '../../ar/domain/ar_projection_mapper.dart';
 import '../../ar/presentation/ar_info_detail_card.dart';
 import '../../ar/presentation/ar_marker_layer.dart';
 import '../../ar/presentation/arkit_camera_background.dart';
