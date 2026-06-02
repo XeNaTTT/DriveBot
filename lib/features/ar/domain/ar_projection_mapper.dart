@@ -19,6 +19,7 @@ class ArProjectionMapper {
     required List<ArInfoObject> objects,
     required int userHeadingDegrees,
     double? devicePitchDegrees,
+    double? deviceRollDegrees,
     bool trackingLimited = false,
   }) {
     final halfFov = horizontalFovDegrees / 2;
@@ -34,6 +35,7 @@ class ArProjectionMapper {
           final top = verticalPlacement.topFor(
             object: object,
             devicePitchDegrees: devicePitchDegrees,
+            deviceRollDegrees: deviceRollDegrees,
             trackingLimited: trackingLimited,
           );
           return ArMarkerModel(

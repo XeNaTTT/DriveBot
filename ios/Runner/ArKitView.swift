@@ -10,6 +10,21 @@ final class ArKitView: NSObject, FlutterPlatformView, ARSessionDelegate {
 
   var isRunning: Bool { sessionStarted }
   var trackingQuality: String = "stable"
+  var devicePitchDegrees: Double? {
+    currentCameraEulerDegrees?.pitch
+  }
+  var deviceRollDegrees: Double? {
+    currentCameraEulerDegrees?.roll
+  }
+
+  private var currentCameraEulerDegrees: (pitch: Double, roll: Double)? {
+    guard let frame = sceneView.session.currentFrame else { return nil }
+    let euler = frame.camera.eulerAngles
+    return (
+      pitch: Double(euler.x) * 180.0 / Double.pi,
+      roll: Double(euler.z) * 180.0 / Double.pi
+    )
+  }
 
   init(frame: CGRect, viewIdentifier viewId: Int64, messenger: FlutterBinaryMessenger) {
     sceneView = ARSCNView(frame: frame)

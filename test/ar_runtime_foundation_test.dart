@@ -22,7 +22,7 @@ void main() {
   test('supported AR runtime exposes German active and tracking labels', () {
     expect(
       const ArRuntimeState.available(isRunning: true).germanStatusLabel,
-      'AR aktiv',
+      'AR verankert',
     );
     expect(
       const ArRuntimeState.available()

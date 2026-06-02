@@ -24,15 +24,35 @@ class CompositeWarningRepository
   Future<WarningRepositoryResult> getWarnings(WarningRequest request) async {
     final primaryResult = await primary.getWarnings(request);
     if (primaryResult.hasWarnings) {
-      _latestWarnings = primaryResult.warnings;
-      _latestResult = primaryResult;
+      _applyResultIfMeaningful(primaryResult);
       return primaryResult;
     }
 
     final fallbackResult = await _fallback.getWarnings(request);
-    _latestWarnings = fallbackResult.warnings;
-    _latestResult = fallbackResult;
+    _applyResultIfMeaningful(fallbackResult);
     return fallbackResult;
+  }
+
+  void _applyResultIfMeaningful(WarningRepositoryResult result) {
+    if (_hasMeaningfulWarningChange(_latestWarnings, result.warnings) ||
+        _latestResult.source != result.source) {
+      _latestWarnings = List.unmodifiable(result.warnings);
+      _latestResult = result;
+    }
+  }
+
+  bool _hasMeaningfulWarningChange(
+    List<HudWarningItem> previous,
+    List<HudWarningItem> next,
+  ) {
+    if (previous.length != next.length) return true;
+    final previousIds = previous.map((warning) => warning.stableId).toList()
+      ..sort();
+    final nextIds = next.map((warning) => warning.stableId).toList()..sort();
+    for (var i = 0; i < previousIds.length; i++) {
+      if (previousIds[i] != nextIds[i]) return true;
+    }
+    return false;
   }
 
   @override

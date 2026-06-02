@@ -45,14 +45,16 @@ class ArMarkerLayer extends StatelessWidget {
                     top: top,
                     width: markerWidth,
                     child: KeyedSubtree(
-                      key: Key('ar-marker-${object.type.name}'),
+                      key: Key('ar-marker-${object.id}'),
                       child: object.type == WarningType.speedCamera
                           ? SpeedCameraArMarker(
+                              key: Key('ar-marker-${object.type.name}'),
                               infoObject: object,
                               selected: selected,
                               onTap: () => onMarkerTap?.call(object.id),
                             )
                           : ArMarkerWidget(
+                              key: Key('ar-marker-${object.type.name}'),
                               infoObject: object,
                               selected: selected,
                               onTap: () => onMarkerTap?.call(object.id),

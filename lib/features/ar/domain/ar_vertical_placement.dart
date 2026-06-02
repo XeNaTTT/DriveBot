@@ -1,28 +1,44 @@
-import '../../hud/domain/hud_warning_item.dart';
 import 'ar_info_object.dart';
+import 'ar_runtime_state.dart';
+import 'horizon_projection_model.dart';
 
 final class ArVerticalPlacement {
   const ArVerticalPlacement({
-    this.minTop = 0.22,
-    this.maxTop = 0.62,
-    this.horizonTop = 0.38,
+    this.minTop = 0.20,
+    this.maxTop = 0.68,
+    this.horizonModel = const HorizonProjectionModel(),
   });
 
   final double minTop;
   final double maxTop;
-  final double horizonTop;
+  final HorizonProjectionModel horizonModel;
 
   double topFor({
     required ArInfoObject object,
     double? devicePitchDegrees,
     bool trackingLimited = false,
+    double? deviceRollDegrees,
     double? targetAltitudeMeters,
     double? userAltitudeMeters,
+    double screenHeight = 1000,
+    double safeAreaTop = 0,
+    double safeAreaBottom = 0,
   }) {
     final distance =
         object.distanceMeters ?? object.warning.distanceMeters.toDouble();
-    final pitchOffset = _pitchOffset(devicePitchDegrees, trackingLimited);
-    final baseY = (horizonTop + pitchOffset).clamp(minTop, maxTop).toDouble();
+    final trackingQuality = trackingLimited
+        ? ArTrackingQuality.limited
+        : ArTrackingQuality.stable;
+    final baseY = horizonModel.markerTopFraction(
+      screenHeight: screenHeight,
+      safeAreaTop: safeAreaTop,
+      safeAreaBottom: safeAreaBottom,
+      distanceMeters: distance,
+      type: object.type,
+      devicePitchDegrees: devicePitchDegrees,
+      deviceRollDegrees: deviceRollDegrees,
+      trackingQuality: trackingQuality,
+    );
     final altitudeOffset = _reliableAltitudeOffset(
       distanceMeters: distance,
       targetAltitudeMeters: targetAltitudeMeters,
@@ -33,18 +49,7 @@ final class ArVerticalPlacement {
       return (baseY + altitudeOffset).clamp(minTop, maxTop).toDouble();
     }
 
-    final distanceOffset = _distanceOffset(distance, object.type);
-    final movementScale = trackingLimited ? 0.45 : 1.0;
-    return (baseY + (distanceOffset * movementScale))
-        .clamp(minTop, maxTop)
-        .toDouble();
-  }
-
-  double _pitchOffset(double? pitchDegrees, bool trackingLimited) {
-    if (pitchDegrees == null || !pitchDegrees.isFinite) return 0;
-    final clampedPitch = pitchDegrees.clamp(-18, 18).toDouble();
-    final scale = trackingLimited ? 0.0018 : 0.0032;
-    return clampedPitch * scale;
+    return baseY.clamp(minTop, maxTop).toDouble();
   }
 
   double? _reliableAltitudeOffset({
@@ -69,19 +74,5 @@ final class ArVerticalPlacement {
     // smaller normalized top value. Missing altitude deliberately returns null
     // so remote geo objects stay close to the visual horizon.
     return -perspective * movementScale;
-  }
-
-  double _distanceOffset(double distanceMeters, WarningType type) {
-    final distance = distanceMeters.clamp(0, 3000).toDouble();
-    if (distance >= 1200) return 0;
-    final nearbyFactor = (1200 - distance) / 1200;
-    final typeBias = switch (type) {
-      WarningType.speedCamera => 0.055,
-      WarningType.chargingStation => 0.04,
-      WarningType.speedLimit => 0.035,
-      WarningType.roadwork => 0.03,
-      WarningType.weather || WarningType.notice => 0.02,
-    };
-    return nearbyFactor * typeBias;
   }
 }

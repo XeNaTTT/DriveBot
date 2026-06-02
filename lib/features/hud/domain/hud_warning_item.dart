@@ -42,12 +42,18 @@ class HudWarningItem {
 
   bool get hasCoordinates => latitude != null && longitude != null;
 
-  String get stableId =>
-      id ??
-      [
-        type.name,
-        title,
-        latitude?.toStringAsFixed(6) ?? bearingDegrees.toString(),
-        longitude?.toStringAsFixed(6) ?? distanceMeters.toString(),
-      ].join('|');
+  String get stableId {
+    if (id != null && id!.isNotEmpty) return id!;
+    final locationPart = hasCoordinates
+        ? '${latitude!.toStringAsFixed(6)}|${longitude!.toStringAsFixed(6)}'
+        : 'bearing:${bearingDegrees.toString()}';
+    return [
+      type.name,
+      source ?? 'lokal',
+      roadId ?? 'ohne-strasse',
+      title,
+      detail,
+      locationPart,
+    ].join('|');
+  }
 }
