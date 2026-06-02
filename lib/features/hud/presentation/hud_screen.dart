@@ -12,6 +12,7 @@ import '../../ar/domain/ar_info_object.dart';
 import '../../ar/domain/ar_marker_model.dart';
 import '../../ar/domain/ar_projection_mapper.dart';
 import '../../ar/domain/ar_runtime_state.dart';
+import '../../ar/domain/ar_world_anchor_state.dart';
 import '../../ar/presentation/ar_info_detail_card.dart';
 import '../../ar/presentation/ar_marker_layer.dart';
 import '../../ar/presentation/arkit_camera_background.dart';
@@ -77,6 +78,11 @@ class _HudScreenState extends State<HudScreen> {
   bool _isWarningDataLoading = true;
   int _hiddenMarkersByOverlap = 0;
   int _hiddenMarkersByFov = 0;
+  int _hiddenMarkersByTracking = 0;
+  String _arProjectionSourceLabel = 'fallback';
+  double? _lastRecalibrationAgeSeconds;
+  Map<String, ArWorldAnchorState> _nativeAnchorStatesById = const {};
+  bool _isSyncingWorldAnchors = false;
 
   @override
   void initState() {
@@ -237,11 +243,16 @@ class _HudScreenState extends State<HudScreen> {
                 location: location,
                 runtimeState: _arState,
                 previousMarkers: _previousMarkersById,
+                nativeAnchorStates: _nativeAnchorStatesById,
                 selectedInfoObjectId: _selectionController.selectedInfoObjectId,
               );
           final markers = projectionResult.markers;
           _hiddenMarkersByOverlap = projectionResult.hiddenByOverlap;
           _hiddenMarkersByFov = projectionResult.hiddenByFov;
+          _hiddenMarkersByTracking = projectionResult.hiddenByTracking;
+          _arProjectionSourceLabel = projectionResult.projectionSourceLabel;
+          _lastRecalibrationAgeSeconds =
+              projectionResult.lastRecalibrationAgeSeconds;
           _previousMarkersById = {
             for (final marker in markers) marker.infoObject.id: marker,
           };
@@ -329,6 +340,10 @@ class _HudScreenState extends State<HudScreen> {
                             markersVisible: markers.length,
                             hiddenByOverlap: _hiddenMarkersByOverlap,
                             hiddenByFov: _hiddenMarkersByFov,
+                            hiddenByTracking: _hiddenMarkersByTracking,
+                            projectionSourceLabel: _arProjectionSourceLabel,
+                            lastRecalibrationAgeSeconds:
+                                _lastRecalibrationAgeSeconds,
                             horizonY: widget
                                 .projectionMapper
                                 .verticalPlacement
@@ -434,22 +449,64 @@ class _HudScreenState extends State<HudScreen> {
   void _syncWorldAnchors(ArAnchorProjectionResult result) {
     final service = _arRuntimeService;
     if (result.projections.isEmpty) {
-      if (_arOverlayStatusLabel != result.statusLabel) {
+      if (_arOverlayStatusLabel != result.statusLabel ||
+          _nativeAnchorStatesById.isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            setState(() => _arOverlayStatusLabel = result.statusLabel);
-          }
+          if (!mounted) return;
+          setState(() {
+            _nativeAnchorStatesById = const {};
+            _arOverlayStatusLabel = result.statusLabel;
+          });
         });
       }
       return;
     }
+    if (_isSyncingWorldAnchors) return;
+    _isSyncingWorldAnchors = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await service.syncAnchors(result.projections);
-      if (!mounted) return;
-      if (_arOverlayStatusLabel != result.statusLabel) {
-        setState(() => _arOverlayStatusLabel = result.statusLabel);
+      final nativeStates = {
+        for (final state in await service.syncAnchors(result.projections))
+          state.id: state,
+      };
+      if (!mounted) {
+        _isSyncingWorldAnchors = false;
+        return;
       }
+      final shouldUpdateHud =
+          _arOverlayStatusLabel != result.statusLabel ||
+          _hasNativeStateChanges(nativeStates);
+      _isSyncingWorldAnchors = false;
+      if (!shouldUpdateHud) return;
+      setState(() {
+        _nativeAnchorStatesById = nativeStates;
+        _arOverlayStatusLabel = result.statusLabel;
+      });
     });
+  }
+
+  bool _hasNativeStateChanges(Map<String, ArWorldAnchorState> next) {
+    if (_nativeAnchorStatesById.length != next.length) return true;
+    for (final entry in next.entries) {
+      final previous = _nativeAnchorStatesById[entry.key];
+      if (previous == null) return true;
+      final current = entry.value;
+      if (previous.isVisible != current.isVisible ||
+          previous.hiddenReason != current.hiddenReason ||
+          previous.projectionSource != current.projectionSource ||
+          previous.trackingQuality != current.trackingQuality) {
+        return true;
+      }
+      if (_changed(previous.normalizedX, current.normalizedX) ||
+          _changed(previous.top, current.top)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _changed(double? previous, double? current) {
+    if (previous == null || current == null) return previous != current;
+    return (previous - current).abs() > 0.002;
   }
 
   void _collapseMissingSelection(Iterable<String> visibleIds) {
@@ -500,8 +557,11 @@ class _DebugSourceIndicator extends StatelessWidget {
     required this.markersVisible,
     required this.hiddenByOverlap,
     required this.hiddenByFov,
+    required this.hiddenByTracking,
+    required this.projectionSourceLabel,
     required this.horizonY,
     required this.flickerGuardActive,
+    this.lastRecalibrationAgeSeconds,
   });
 
   final CameraRuntimeState cameraState;
@@ -512,8 +572,11 @@ class _DebugSourceIndicator extends StatelessWidget {
   final int markersVisible;
   final int hiddenByOverlap;
   final int hiddenByFov;
+  final int hiddenByTracking;
+  final String projectionSourceLabel;
   final double horizonY;
   final bool flickerGuardActive;
+  final double? lastRecalibrationAgeSeconds;
 
   @override
   Widget build(BuildContext context) {
@@ -526,10 +589,14 @@ class _DebugSourceIndicator extends StatelessWidget {
         ? 'Live'
         : 'Fallback';
     final warningLabel = warningSource?.debugDataSourceLabel ?? 'Mock';
+    final recalibrationAge = lastRecalibrationAgeSeconds == null
+        ? '–'
+        : '${lastRecalibrationAgeSeconds!.toStringAsFixed(1)}s';
 
     final pills = [
       _DebugSourcePill('Kamera: $cameraLabel'),
       _DebugSourcePill('ARKit: $arLabel'),
+      _DebugSourcePill('AR-Projektion: $projectionSourceLabel'),
       _DebugSourcePill('Tracking: $trackingLabel'),
       _DebugSourcePill(
         'Pitch verfügbar: ${arState.devicePitchDegrees == null ? 'nein' : 'ja'}',
@@ -541,12 +608,15 @@ class _DebugSourceIndicator extends StatelessWidget {
       _DebugSourcePill(
         'Heading raw/smoothed: ${location.headingDegrees}°/${location.headingDegrees}°',
       ),
-      _DebugSourcePill('Hinweise: $warningsLoaded geladen'),
+      _DebugSourcePill('Ziele: $warningsLoaded'),
+      _DebugSourcePill('Projizierte Marker: $markersVisible'),
       _DebugSourcePill(
-        'Marker: $markersVisible sichtbar/${hiddenByOverlap + hiddenByFov} versteckt',
+        'Marker versteckt: ${hiddenByOverlap + hiddenByFov + hiddenByTracking}',
       ),
       _DebugSourcePill('Versteckt wegen Überlappung: $hiddenByOverlap'),
       _DebugSourcePill('Versteckt wegen FOV: $hiddenByFov'),
+      _DebugSourcePill('Versteckt wegen Tracking: $hiddenByTracking'),
+      _DebugSourcePill('Letzte Rekalibrierung: $recalibrationAge'),
       _DebugSourcePill(
         'Flicker Guard aktiv: ${flickerGuardActive ? 'ja' : 'nein'}',
       ),

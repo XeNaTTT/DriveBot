@@ -91,6 +91,14 @@ final class IosArKitRuntimeService implements ArRuntimeService {
     'y': projection.arkitCoordinate.y,
     'z': projection.arkitCoordinate.z,
     'distanceMeters': projection.candidate.distanceMeters,
+    'targetLatitude': projection.candidate.latitude,
+    'targetLongitude': projection.candidate.longitude,
+    'targetAltitude': projection.candidate.altitude,
+    'currentLatitude': projection.currentLatitude,
+    'currentLongitude': projection.currentLongitude,
+    'currentAltitude': projection.currentAltitude,
+    'currentHeadingDegrees': projection.currentHeadingDegrees,
+    'type': projection.candidate.type.name,
   };
 
   @override

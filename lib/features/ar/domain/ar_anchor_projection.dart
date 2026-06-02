@@ -28,6 +28,10 @@ final class ArAnchorProjection {
     required this.normalizedX,
     required this.top,
     required this.usesWorldAnchor,
+    required this.currentLatitude,
+    required this.currentLongitude,
+    required this.currentHeadingDegrees,
+    this.currentAltitude,
   });
 
   final ArGeoAnchorCandidate candidate;
@@ -36,4 +40,8 @@ final class ArAnchorProjection {
   final double normalizedX;
   final double top;
   final bool usesWorldAnchor;
+  final double currentLatitude;
+  final double currentLongitude;
+  final double currentHeadingDegrees;
+  final double? currentAltitude;
 }

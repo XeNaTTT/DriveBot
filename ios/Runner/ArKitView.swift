@@ -2,11 +2,49 @@ import ARKit
 import Flutter
 import UIKit
 
+private struct GeoSessionOrigin {
+  let latitude: Double
+  let longitude: Double
+  let altitude: Double
+  let headingDegrees: Double
+  let recalibratedAt: Date
+}
+
+private struct GeoAnchorPayload {
+  let id: String
+  let x: Float
+  let y: Float
+  let z: Float
+  let distanceMeters: Double
+  let currentLatitude: Double?
+  let currentLongitude: Double?
+  let currentAltitude: Double?
+  let currentHeadingDegrees: Double?
+  let targetLatitude: Double?
+  let targetLongitude: Double?
+  let targetAltitude: Double?
+  let type: String?
+}
+
+private struct GeoAnchorRecord {
+  var anchor: ARAnchor
+  var position: SIMD3<Float>
+  var lastProjectedPoint: CGPoint?
+  var lastRecalibratedAt: Date
+}
+
 final class ArKitView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private let sceneView: ARSCNView
   private var sessionStarted = false
-  private var anchorsById: [String: ARAnchor] = [:]
-  private var lastAnchorPositions: [String: SCNVector3] = [:]
+  private var anchorsById: [String: GeoAnchorRecord] = [:]
+  private var sessionOrigin: GeoSessionOrigin?
+  private var lastTrackingQuality = "stable"
+
+  private let movementRecalibrationThresholdMeters = 5.0
+  private let headingRecalibrationThresholdDegrees = 8.0
+  private let anchorUpdateThresholdMeters: Float = 2.0
+  private let smoothingFactor: CGFloat = 0.32
+  private let horizonHeightMeters: Float = 0.0
 
   var isRunning: Bool { sessionStarted }
   var trackingQuality: String = "stable"
@@ -55,80 +93,308 @@ final class ArKitView: NSObject, FlutterPlatformView, ARSessionDelegate {
     configuration.planeDetection = []
     sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
     anchorsById.removeAll()
-    lastAnchorPositions.removeAll()
+    sessionOrigin = nil
     sessionStarted = true
     trackingQuality = "stable"
+    lastTrackingQuality = trackingQuality
   }
 
   func pauseSession() {
     sceneView.session.pause()
     anchorsById.removeAll()
-    lastAnchorPositions.removeAll()
+    sessionOrigin = nil
     sessionStarted = false
   }
 
   func syncAnchors(_ payloads: [[String: Any]]) -> [[String: Any]] {
+    let parsed = payloads.compactMap(Self.payload(from:))
     guard sessionStarted, trackingQuality != "unavailable" else {
-      return payloads.compactMap { payload in
-        guard let id = payload["id"] as? String else { return nil }
-        return [
-          "id": id,
-          "isAnchored": false,
-          "trackingQuality": trackingQuality,
-          "message": "AR nicht verfügbar"
-        ]
+      return parsed.map { payload in
+        statePayload(
+          id: payload.id,
+          isAnchored: false,
+          distanceMeters: payload.distanceMeters,
+          projectionSource: "fallback",
+          isVisible: false,
+          hiddenReason: "tracking",
+          trackingConfidence: 0,
+          message: "AR nicht verfügbar"
+        )
       }
     }
 
-    let incomingIds = Set(payloads.compactMap { $0["id"] as? String })
-    let staleIds = anchorsById.keys.filter { !incomingIds.contains($0) }
-    for id in staleIds {
-      if let anchor = anchorsById[id] {
-        sceneView.session.remove(anchor: anchor)
-      }
-      anchorsById.removeValue(forKey: id)
-      lastAnchorPositions.removeValue(forKey: id)
-    }
+    recalibrateIfNeeded(for: parsed)
+    removeStaleAnchors(keeping: Set(parsed.map(\.id)))
 
-    return payloads.compactMap { payload in
-      guard
-        let id = payload["id"] as? String,
-        let x = payload["x"] as? NSNumber,
-        let y = payload["y"] as? NSNumber,
-        let z = payload["z"] as? NSNumber
-      else { return nil }
-
-      let position = SCNVector3(x.floatValue, y.floatValue, z.floatValue)
-      if shouldUpdateAnchor(id: id, position: position) {
-        if let existing = anchorsById[id] {
-          sceneView.session.remove(anchor: existing)
-        }
-        var transform = matrix_identity_float4x4
-        transform.columns.3.x = position.x
-        transform.columns.3.y = position.y
-        transform.columns.3.z = position.z
-        let anchor = ARAnchor(name: id, transform: transform)
-        sceneView.session.add(anchor: anchor)
-        anchorsById[id] = anchor
-        lastAnchorPositions[id] = position
-      }
-
-      return [
-        "id": id,
-        "isAnchored": anchorsById[id] != nil && trackingQuality == "stable",
-        "trackingQuality": trackingQuality,
-        "distanceMeters": payload["distanceMeters"] ?? 0
-      ]
+    return parsed.map { payload in
+      let position = worldPosition(for: payload)
+      upsertAnchor(id: payload.id, position: position)
+      return projectedState(for: payload, position: position)
     }
   }
 
-  private func shouldUpdateAnchor(id: String, position: SCNVector3) -> Bool {
-    guard let previous = lastAnchorPositions[id] else { return true }
-    let dx = position.x - previous.x
-    let dy = position.y - previous.y
-    let dz = position.z - previous.z
-    let delta = sqrt(dx * dx + dy * dy + dz * dz)
-    return delta > 5.0
+  private static func payload(from payload: [String: Any]) -> GeoAnchorPayload? {
+    guard
+      let id = payload["id"] as? String,
+      let x = payload["x"] as? NSNumber,
+      let y = payload["y"] as? NSNumber,
+      let z = payload["z"] as? NSNumber
+    else { return nil }
+
+    return GeoAnchorPayload(
+      id: id,
+      x: x.floatValue,
+      y: y.floatValue,
+      z: z.floatValue,
+      distanceMeters: (payload["distanceMeters"] as? NSNumber)?.doubleValue ?? 0,
+      currentLatitude: (payload["currentLatitude"] as? NSNumber)?.doubleValue,
+      currentLongitude: (payload["currentLongitude"] as? NSNumber)?.doubleValue,
+      currentAltitude: (payload["currentAltitude"] as? NSNumber)?.doubleValue,
+      currentHeadingDegrees: (payload["currentHeadingDegrees"] as? NSNumber)?.doubleValue,
+      targetLatitude: (payload["targetLatitude"] as? NSNumber)?.doubleValue,
+      targetLongitude: (payload["targetLongitude"] as? NSNumber)?.doubleValue,
+      targetAltitude: (payload["targetAltitude"] as? NSNumber)?.doubleValue,
+      type: payload["type"] as? String
+    )
+  }
+
+  private func recalibrateIfNeeded(for payloads: [GeoAnchorPayload]) {
+    guard let first = payloads.first,
+      let latitude = first.currentLatitude,
+      let longitude = first.currentLongitude
+    else { return }
+
+    let altitude = first.currentAltitude ?? 0
+    let heading = first.currentHeadingDegrees ?? 0
+    let shouldReset: Bool
+    if let origin = sessionOrigin {
+      let moved = Self.distanceMeters(
+        fromLatitude: origin.latitude,
+        fromLongitude: origin.longitude,
+        toLatitude: latitude,
+        toLongitude: longitude
+      )
+      let headingDelta = abs(Self.normalizedAngle(heading - origin.headingDegrees))
+      shouldReset = moved > movementRecalibrationThresholdMeters ||
+        headingDelta > headingRecalibrationThresholdDegrees ||
+        lastTrackingQuality != trackingQuality
+    } else {
+      shouldReset = true
+    }
+
+    guard shouldReset else { return }
+    sessionOrigin = GeoSessionOrigin(
+      latitude: latitude,
+      longitude: longitude,
+      altitude: altitude,
+      headingDegrees: heading,
+      recalibratedAt: Date()
+    )
+    lastTrackingQuality = trackingQuality
+  }
+
+  private func removeStaleAnchors(keeping incomingIds: Set<String>) {
+    for id in anchorsById.keys.filter({ !incomingIds.contains($0) }) {
+      sceneView.session.remove(anchor: anchorsById[id]!.anchor)
+      anchorsById.removeValue(forKey: id)
+    }
+  }
+
+  private func worldPosition(for payload: GeoAnchorPayload) -> SIMD3<Float> {
+    guard let origin = sessionOrigin,
+      let targetLatitude = payload.targetLatitude,
+      let targetLongitude = payload.targetLongitude
+    else {
+      return SIMD3<Float>(payload.x, payload.y, payload.z)
+    }
+
+    let enu = Self.eastNorthMeters(
+      originLatitude: origin.latitude,
+      originLongitude: origin.longitude,
+      targetLatitude: targetLatitude,
+      targetLongitude: targetLongitude
+    )
+    let up: Float
+    if let targetAltitude = payload.targetAltitude {
+      up = Float(targetAltitude - origin.altitude)
+    } else {
+      up = horizonHeightMeters
+    }
+    return SIMD3<Float>(Float(enu.east), up, -Float(enu.north))
+  }
+
+  private func upsertAnchor(id: String, position: SIMD3<Float>) {
+    if let record = anchorsById[id], simd_distance(record.position, position) <= anchorUpdateThresholdMeters {
+      return
+    }
+
+    if let existing = anchorsById[id] {
+      sceneView.session.remove(anchor: existing.anchor)
+    }
+
+    var transform = matrix_identity_float4x4
+    transform.columns.3.x = position.x
+    transform.columns.3.y = position.y
+    transform.columns.3.z = position.z
+    let anchor = ARAnchor(name: id, transform: transform)
+    sceneView.session.add(anchor: anchor)
+    anchorsById[id] = GeoAnchorRecord(
+      anchor: anchor,
+      position: position,
+      lastProjectedPoint: anchorsById[id]?.lastProjectedPoint,
+      lastRecalibratedAt: Date()
+    )
+  }
+
+  private func projectedState(for payload: GeoAnchorPayload, position: SIMD3<Float>) -> [String: Any] {
+    guard trackingQuality == "stable" else {
+      return statePayload(
+        id: payload.id,
+        isAnchored: anchorsById[payload.id] != nil,
+        distanceMeters: payload.distanceMeters,
+        projectionSource: "native",
+        isVisible: false,
+        hiddenReason: "tracking",
+        trackingConfidence: trackingConfidence,
+        message: "Tracking eingeschränkt"
+      )
+    }
+
+    guard let frame = sceneView.session.currentFrame else {
+      return statePayload(
+        id: payload.id,
+        isAnchored: anchorsById[payload.id] != nil,
+        distanceMeters: payload.distanceMeters,
+        projectionSource: "fallback",
+        isVisible: false,
+        hiddenReason: "tracking",
+        trackingConfidence: trackingConfidence,
+        message: "ARFrame nicht verfügbar"
+      )
+    }
+
+    let cameraSpace = simd_inverse(frame.camera.transform) * SIMD4<Float>(position.x, position.y, position.z, 1)
+    guard cameraSpace.z < 0 else {
+      return statePayload(
+        id: payload.id,
+        isAnchored: anchorsById[payload.id] != nil,
+        distanceMeters: payload.distanceMeters,
+        projectionSource: "native",
+        isVisible: false,
+        hiddenReason: "fov",
+        trackingConfidence: trackingConfidence
+      )
+    }
+
+    let viewportSize = sceneView.bounds.size
+    let projected = frame.camera.projectPoint(
+      position,
+      orientation: interfaceOrientation,
+      viewportSize: viewportSize
+    )
+    guard projected.x.isFinite, projected.y.isFinite else {
+      return statePayload(
+        id: payload.id,
+        isAnchored: anchorsById[payload.id] != nil,
+        distanceMeters: payload.distanceMeters,
+        projectionSource: "native",
+        isVisible: false,
+        hiddenReason: "fov",
+        trackingConfidence: trackingConfidence
+      )
+    }
+
+    let margin: CGFloat = 80
+    guard projected.x >= -margin,
+      projected.x <= viewportSize.width + margin,
+      projected.y >= -margin,
+      projected.y <= viewportSize.height + margin,
+      viewportSize.width > 0,
+      viewportSize.height > 0
+    else {
+      return statePayload(
+        id: payload.id,
+        isAnchored: anchorsById[payload.id] != nil,
+        distanceMeters: payload.distanceMeters,
+        projectionSource: "native",
+        isVisible: false,
+        hiddenReason: "fov",
+        trackingConfidence: trackingConfidence
+      )
+    }
+
+    let smoothed = smoothProjectedPoint(projected, id: payload.id)
+    return statePayload(
+      id: payload.id,
+      isAnchored: anchorsById[payload.id] != nil,
+      distanceMeters: payload.distanceMeters,
+      projectionSource: "native",
+      normalizedX: Double((smoothed.x / viewportSize.width).clamped(to: 0...1)),
+      top: Double((smoothed.y / viewportSize.height).clamped(to: 0...1)),
+      isVisible: true,
+      trackingConfidence: trackingConfidence
+    )
+  }
+
+  private var interfaceOrientation: UIInterfaceOrientation {
+    if let orientation = sceneView.window?.windowScene?.interfaceOrientation {
+      return orientation
+    }
+    return .portrait
+  }
+
+  private var trackingConfidence: Double {
+    switch trackingQuality {
+    case "stable": return 1.0
+    case "limited": return 0.35
+    default: return 0.0
+    }
+  }
+
+  private func smoothProjectedPoint(_ point: CGPoint, id: String) -> CGPoint {
+    guard var record = anchorsById[id] else { return point }
+    let previous = record.lastProjectedPoint ?? point
+    let smoothed = CGPoint(
+      x: previous.x + (point.x - previous.x) * smoothingFactor,
+      y: previous.y + (point.y - previous.y) * smoothingFactor
+    )
+    record.lastProjectedPoint = smoothed
+    anchorsById[id] = record
+    return smoothed
+  }
+
+  private func statePayload(
+    id: String,
+    isAnchored: Bool,
+    distanceMeters: Double,
+    projectionSource: String,
+    normalizedX: Double? = nil,
+    top: Double? = nil,
+    isVisible: Bool,
+    hiddenReason: String? = nil,
+    trackingConfidence: Double,
+    message: String? = nil
+  ) -> [String: Any] {
+    var result: [String: Any] = [
+      "id": id,
+      "isAnchored": isAnchored,
+      "trackingQuality": trackingQuality,
+      "distanceMeters": distanceMeters,
+      "projectionSource": projectionSource,
+      "isVisible": isVisible,
+      "trackingConfidence": trackingConfidence,
+      "lastRecalibrationAgeSeconds": lastRecalibrationAgeSeconds(for: id)
+    ]
+    if let normalizedX { result["normalizedX"] = normalizedX }
+    if let top { result["top"] = top }
+    if let hiddenReason { result["hiddenReason"] = hiddenReason }
+    if let message { result["message"] = message }
+    return result
+  }
+
+  private func lastRecalibrationAgeSeconds(for id: String) -> Double {
+    let date = sessionOrigin?.recalibratedAt ?? anchorsById[id]?.lastRecalibratedAt ?? Date()
+    return Date().timeIntervalSince(date)
   }
 
   func session(_ session: ARSession, cameraDidChangeTrackingState camera: ARCamera) {
@@ -145,5 +411,52 @@ final class ArKitView: NSObject, FlutterPlatformView, ARSessionDelegate {
   func session(_ session: ARSession, didFailWithError error: Error) {
     trackingQuality = "limited"
     sessionStarted = false
+  }
+
+  private static func eastNorthMeters(
+    originLatitude: Double,
+    originLongitude: Double,
+    targetLatitude: Double,
+    targetLongitude: Double
+  ) -> (east: Double, north: Double) {
+    let earthRadius = 6371000.0
+    let originLat = degreesToRadians(originLatitude)
+    let deltaLat = degreesToRadians(targetLatitude - originLatitude)
+    let deltaLon = degreesToRadians(targetLongitude - originLongitude)
+    let east = deltaLon * cos(originLat) * earthRadius
+    let north = deltaLat * earthRadius
+    return (east, north)
+  }
+
+  private static func distanceMeters(
+    fromLatitude: Double,
+    fromLongitude: Double,
+    toLatitude: Double,
+    toLongitude: Double
+  ) -> Double {
+    let enu = eastNorthMeters(
+      originLatitude: fromLatitude,
+      originLongitude: fromLongitude,
+      targetLatitude: toLatitude,
+      targetLongitude: toLongitude
+    )
+    return sqrt(enu.east * enu.east + enu.north * enu.north)
+  }
+
+  private static func normalizedAngle(_ degrees: Double) -> Double {
+    var normalized = degrees.truncatingRemainder(dividingBy: 360)
+    if normalized > 180 { normalized -= 360 }
+    if normalized < -180 { normalized += 360 }
+    return normalized
+  }
+
+  private static func degreesToRadians(_ degrees: Double) -> Double {
+    degrees * Double.pi / 180
+  }
+}
+
+private extension Comparable {
+  func clamped(to limits: ClosedRange<Self>) -> Self {
+    min(max(self, limits.lowerBound), limits.upperBound)
   }
 }
