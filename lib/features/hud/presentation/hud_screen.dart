@@ -147,13 +147,15 @@ class _HudScreenState extends State<HudScreen> {
   }
 
   void _handleArStateChanged(ArRuntimeState state) {
-    if (!mounted ||
-        (_arState.germanStatusLabel == state.germanStatusLabel &&
-            _arState.isRunning == state.isRunning)) {
-      return;
-    }
+    if (!mounted || _isSameArRuntimeStateForHud(state)) return;
     setState(() => _arState = state);
   }
+
+  bool _isSameArRuntimeStateForHud(ArRuntimeState state) =>
+      _arState.germanStatusLabel == state.germanStatusLabel &&
+      _arState.isRunning == state.isRunning &&
+      _arState.trackingQuality == state.trackingQuality &&
+      _arState.devicePitchDegrees == state.devicePitchDegrees;
 
   String get _statusLabel {
     if (_cameraState.availability == CameraRuntimeAvailability.initializing) {

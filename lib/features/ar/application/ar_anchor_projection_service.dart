@@ -83,7 +83,9 @@ final class ArAnchorProjectionService {
     );
     final geospatialIds = candidates.map((candidate) => candidate.id).toSet();
 
-    if (candidates.isEmpty || !runtimeState.shouldUseArKit) {
+    if (candidates.isEmpty ||
+        !runtimeState.shouldUseArKit ||
+        !runtimeState.isRunning) {
       return _result(
         markers: fallbackMarkers,
         previousMarkers: previousMarkers,
@@ -160,7 +162,11 @@ final class ArAnchorProjectionService {
     required String statusLabel,
     required int hiddenByFov,
   }) {
-    final smoothed = _smooth(markers, previousMarkers);
+    final smoothed = _smooth(
+      markers,
+      previousMarkers,
+      trackingLimited: statusLabel == 'Tracking eingeschränkt',
+    );
     final decluttered = declutter.apply(
       markers: smoothed,
       selectedInfoObjectId: selectedInfoObjectId,
@@ -192,6 +198,7 @@ final class ArAnchorProjectionService {
       devicePitchDegrees: runtimeState.devicePitchDegrees,
       trackingLimited:
           runtimeState.trackingQuality == ArTrackingQuality.limited,
+      targetAltitudeMeters: candidate.altitude,
     );
     return ArAnchorProjection(
       candidate: candidate,
@@ -207,12 +214,13 @@ final class ArAnchorProjectionService {
 
   List<ArMarkerModel> _smooth(
     Iterable<ArMarkerModel> markers,
-    Map<String, ArMarkerModel> previousMarkers,
-  ) => markers
+    Map<String, ArMarkerModel> previousMarkers, {
+    required bool trackingLimited,
+  }) => markers
       .map((marker) {
         final previous = previousMarkers[marker.infoObject.id];
         if (previous == null) return marker;
-        const alpha = 0.35;
+        final alpha = trackingLimited ? 0.22 : 0.35;
         return marker.copyWith(
           normalizedX:
               previous.normalizedX +

@@ -16,11 +16,23 @@ final class ArVerticalPlacement {
     required ArInfoObject object,
     double? devicePitchDegrees,
     bool trackingLimited = false,
+    double? targetAltitudeMeters,
+    double? userAltitudeMeters,
   }) {
     final distance =
         object.distanceMeters ?? object.warning.distanceMeters.toDouble();
     final pitchOffset = _pitchOffset(devicePitchDegrees, trackingLimited);
     final baseY = (horizonTop + pitchOffset).clamp(minTop, maxTop).toDouble();
+    final altitudeOffset = _reliableAltitudeOffset(
+      distanceMeters: distance,
+      targetAltitudeMeters: targetAltitudeMeters,
+      userAltitudeMeters: userAltitudeMeters,
+      trackingLimited: trackingLimited,
+    );
+    if (altitudeOffset != null) {
+      return (baseY + altitudeOffset).clamp(minTop, maxTop).toDouble();
+    }
+
     final distanceOffset = _distanceOffset(distance, object.type);
     final movementScale = trackingLimited ? 0.45 : 1.0;
     return (baseY + (distanceOffset * movementScale))
@@ -33,6 +45,30 @@ final class ArVerticalPlacement {
     final clampedPitch = pitchDegrees.clamp(-18, 18).toDouble();
     final scale = trackingLimited ? 0.0018 : 0.0032;
     return clampedPitch * scale;
+  }
+
+  double? _reliableAltitudeOffset({
+    required double distanceMeters,
+    required double? targetAltitudeMeters,
+    required double? userAltitudeMeters,
+    required bool trackingLimited,
+  }) {
+    if (targetAltitudeMeters == null || userAltitudeMeters == null) return null;
+    if (!targetAltitudeMeters.isFinite || !userAltitudeMeters.isFinite) {
+      return null;
+    }
+
+    final distance = distanceMeters.clamp(25, 2500).toDouble();
+    final altitudeDelta = (targetAltitudeMeters - userAltitudeMeters).clamp(
+      -35,
+      35,
+    );
+    final perspective = (altitudeDelta / distance).clamp(-0.08, 0.08);
+    final movementScale = trackingLimited ? 0.35 : 0.75;
+    // A higher target should appear slightly higher on screen, which means a
+    // smaller normalized top value. Missing altitude deliberately returns null
+    // so remote geo objects stay close to the visual horizon.
+    return -perspective * movementScale;
   }
 
   double _distanceOffset(double distanceMeters, WarningType type) {
