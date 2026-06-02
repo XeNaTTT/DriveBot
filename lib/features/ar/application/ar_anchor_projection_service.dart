@@ -10,6 +10,7 @@ import '../domain/ar_marker_model.dart';
 import '../domain/ar_projection_mapper.dart';
 import '../domain/ar_projection_smoothing.dart';
 import '../domain/ar_runtime_state.dart';
+import '../domain/ar_world_anchor_state.dart';
 import 'geo_ar_coordinate_mapper.dart';
 
 final class ArAnchorProjectionResult {
@@ -20,6 +21,9 @@ final class ArAnchorProjectionResult {
     required this.statusLabel,
     required this.hiddenByOverlap,
     required this.hiddenByFov,
+    required this.hiddenByTracking,
+    required this.projectionSourceLabel,
+    this.lastRecalibrationAgeSeconds,
   });
 
   final List<ArMarkerModel> markers;
@@ -28,6 +32,9 @@ final class ArAnchorProjectionResult {
   final String statusLabel;
   final int hiddenByOverlap;
   final int hiddenByFov;
+  final int hiddenByTracking;
+  final String projectionSourceLabel;
+  final double? lastRecalibrationAgeSeconds;
 }
 
 final class ArAnchorProjectionService {
@@ -50,6 +57,7 @@ final class ArAnchorProjectionService {
     required LocationStatus location,
     required ArRuntimeState runtimeState,
     Map<String, ArMarkerModel> previousMarkers = const {},
+    Map<String, ArWorldAnchorState> nativeAnchorStates = const {},
     String? selectedInfoObjectId,
   }) {
     final trackingLimited =
@@ -78,6 +86,7 @@ final class ArAnchorProjectionService {
             ? 'Standort erforderlich'
             : runtimeState.germanStatusLabel,
         hiddenByFov: hiddenByFov,
+        projectionSourceLabel: 'fallback',
       );
     }
 
@@ -98,6 +107,7 @@ final class ArAnchorProjectionService {
         projections: const [],
         statusLabel: runtimeState.germanStatusLabel,
         hiddenByFov: hiddenByFov,
+        projectionSourceLabel: 'fallback',
       );
     }
 
@@ -112,6 +122,8 @@ final class ArAnchorProjectionService {
         projections: const [],
         statusLabel: 'Tracking eingeschränkt',
         hiddenByFov: hiddenByFov,
+        hiddenByTracking: geospatialIds.length,
+        projectionSourceLabel: 'fallback',
       );
     }
 
@@ -120,7 +132,7 @@ final class ArAnchorProjectionService {
         .map((candidate) {
           final object = objectById[candidate.id];
           if (object == null) return null;
-          return _projectionFor(candidate, object, runtimeState);
+          return _projectionFor(candidate, object, runtimeState, location);
         })
         .whereType<ArAnchorProjection>()
         .toList(growable: false);
@@ -130,9 +142,38 @@ final class ArAnchorProjectionService {
     final markerById = {
       for (final marker in fallbackMarkers) marker.infoObject.id: marker,
     };
+    var hiddenByNativeFov = 0;
+    var hiddenByTracking = 0;
     final anchoredMarkers = projections.map((projection) {
-      final marker = markerById[projection.candidate.id];
+      final object = objectById[projection.candidate.id];
+      final marker =
+          markerById[projection.candidate.id] ??
+          (object == null
+              ? null
+              : ArMarkerModel(
+                  infoObject: object,
+                  relativeBearing: projection.candidate.relativeBearing,
+                  normalizedX: projection.normalizedX,
+                  top: projection.top,
+                  isWorldAnchored: projection.usesWorldAnchor,
+                ));
       if (marker == null) return null;
+      final nativeState = nativeAnchorStates[projection.candidate.id];
+      if (nativeState != null && !nativeState.isVisible) {
+        if (nativeState.hiddenReason == 'tracking') {
+          hiddenByTracking++;
+        } else if (nativeState.hiddenReason == 'fov') {
+          hiddenByNativeFov++;
+        }
+        return null;
+      }
+      if (nativeState?.hasNativeScreenPosition == true) {
+        return marker.copyWith(
+          normalizedX: nativeState!.normalizedX,
+          top: nativeState.top,
+          isWorldAnchored: true,
+        );
+      }
       return marker.copyWith(
         normalizedX: projection.normalizedX,
         top: projection.top,
@@ -153,7 +194,15 @@ final class ArAnchorProjectionService {
       statusLabel: projections.any((projection) => projection.usesWorldAnchor)
           ? 'AR verankert'
           : runtimeState.germanStatusLabel,
-      hiddenByFov: hiddenByFov,
+      hiddenByFov: hiddenByFov + hiddenByNativeFov,
+      hiddenByTracking: hiddenByTracking,
+      projectionSourceLabel:
+          nativeAnchorStates.values.any(
+            (state) => state.hasNativeScreenPosition,
+          )
+          ? 'native'
+          : 'fallback',
+      lastRecalibrationAgeSeconds: _lastRecalibrationAge(nativeAnchorStates),
     );
   }
 
@@ -165,6 +214,9 @@ final class ArAnchorProjectionService {
     required List<ArAnchorProjection> projections,
     required String statusLabel,
     required int hiddenByFov,
+    int hiddenByTracking = 0,
+    String projectionSourceLabel = 'fallback',
+    double? lastRecalibrationAgeSeconds,
   }) {
     final smoothed = _smooth(
       markers,
@@ -182,13 +234,25 @@ final class ArAnchorProjectionService {
       statusLabel: statusLabel,
       hiddenByOverlap: decluttered.hiddenByOverlap,
       hiddenByFov: hiddenByFov,
+      hiddenByTracking: hiddenByTracking,
+      projectionSourceLabel: projectionSourceLabel,
+      lastRecalibrationAgeSeconds: lastRecalibrationAgeSeconds,
     );
+  }
+
+  double? _lastRecalibrationAge(Map<String, ArWorldAnchorState> states) {
+    final ages = states.values
+        .map((state) => state.lastRecalibrationAgeSeconds)
+        .whereType<double>();
+    if (ages.isEmpty) return null;
+    return ages.reduce(math.min);
   }
 
   ArAnchorProjection _projectionFor(
     ArGeoAnchorCandidate candidate,
     ArInfoObject object,
     ArRuntimeState runtimeState,
+    LocationStatus location,
   ) {
     final local = ArLocalCoordinate(
       eastMeters: candidate.distanceMeters * _sinDeg(candidate.bearingDegrees),
@@ -214,6 +278,9 @@ final class ArAnchorProjectionService {
           .clamp(projectionMapper.minTop, projectionMapper.maxTop)
           .toDouble(),
       usesWorldAnchor: runtimeState.trackingQuality == ArTrackingQuality.stable,
+      currentLatitude: location.latitude ?? 0,
+      currentLongitude: location.longitude ?? 0,
+      currentHeadingDegrees: location.headingDegrees.toDouble(),
     );
   }
 
