@@ -8,6 +8,7 @@ import '../domain/ar_info_object.dart';
 import '../domain/ar_marker_declutter.dart';
 import '../domain/ar_marker_model.dart';
 import '../domain/ar_projection_mapper.dart';
+import '../domain/ar_projection_smoothing.dart';
 import '../domain/ar_runtime_state.dart';
 import 'geo_ar_coordinate_mapper.dart';
 
@@ -35,12 +36,14 @@ final class ArAnchorProjectionService {
     this.candidateMapper = const ArAnchorCandidateMapper(),
     this.coordinateMapper = const GeoArCoordinateMapper(),
     this.declutter = const ArMarkerDeclutter(),
+    this.smoothingConfig = const ArProjectionSmoothingConfig(),
   });
 
   final ArProjectionMapper projectionMapper;
   final ArAnchorCandidateMapper candidateMapper;
   final GeoArCoordinateMapper coordinateMapper;
   final ArMarkerDeclutter declutter;
+  final ArProjectionSmoothingConfig smoothingConfig;
 
   ArAnchorProjectionResult project({
     required List<ArInfoObject> objects,
@@ -56,6 +59,7 @@ final class ArAnchorProjectionService {
       objects: objects,
       userHeadingDegrees: location.headingDegrees,
       devicePitchDegrees: runtimeState.devicePitchDegrees,
+      deviceRollDegrees: runtimeState.deviceRollDegrees,
       trackingLimited: trackingLimited,
     );
     final hiddenByFov = objects.length - fallbackMarkers.length;
@@ -196,6 +200,7 @@ final class ArAnchorProjectionService {
     final top = projectionMapper.verticalPlacement.topFor(
       object: object,
       devicePitchDegrees: runtimeState.devicePitchDegrees,
+      deviceRollDegrees: runtimeState.deviceRollDegrees,
       trackingLimited:
           runtimeState.trackingQuality == ArTrackingQuality.limited,
       targetAltitudeMeters: candidate.altitude,
@@ -220,12 +225,30 @@ final class ArAnchorProjectionService {
       .map((marker) {
         final previous = previousMarkers[marker.infoObject.id];
         if (previous == null) return marker;
-        final alpha = trackingLimited ? 0.22 : 0.35;
+        final alpha = trackingLimited
+            ? smoothingConfig.limitedTrackingMarkerSmoothingFactor
+            : smoothingConfig.markerSmoothingFactor;
+        final xThreshold = ArProjectionSmoothing.normalizedMovementThreshold(
+          pixelThreshold: smoothingConfig.minPixelMovementThreshold,
+          extentPixels: 390,
+        );
+        final yThreshold = ArProjectionSmoothing.normalizedMovementThreshold(
+          pixelThreshold: smoothingConfig.minPixelMovementThreshold,
+          extentPixels: 844,
+        );
         return marker.copyWith(
-          normalizedX:
-              previous.normalizedX +
-              ((marker.normalizedX - previous.normalizedX) * alpha),
-          top: previous.top + ((marker.top - previous.top) * alpha),
+          normalizedX: ArProjectionSmoothing.smoothLinear(
+            previous: previous.normalizedX,
+            current: marker.normalizedX,
+            factor: alpha,
+            minChange: xThreshold,
+          ),
+          top: ArProjectionSmoothing.smoothLinear(
+            previous: previous.top,
+            current: marker.top,
+            factor: alpha,
+            minChange: yThreshold,
+          ),
         );
       })
       .toList(growable: false);

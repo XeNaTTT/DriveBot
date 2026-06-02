@@ -155,7 +155,8 @@ class _HudScreenState extends State<HudScreen> {
       _arState.germanStatusLabel == state.germanStatusLabel &&
       _arState.isRunning == state.isRunning &&
       _arState.trackingQuality == state.trackingQuality &&
-      _arState.devicePitchDegrees == state.devicePitchDegrees;
+      _arState.devicePitchDegrees == state.devicePitchDegrees &&
+      _arState.deviceRollDegrees == state.deviceRollDegrees;
 
   String get _statusLabel {
     if (_cameraState.availability == CameraRuntimeAvailability.initializing) {
@@ -328,6 +329,26 @@ class _HudScreenState extends State<HudScreen> {
                             markersVisible: markers.length,
                             hiddenByOverlap: _hiddenMarkersByOverlap,
                             hiddenByFov: _hiddenMarkersByFov,
+                            horizonY: widget
+                                .projectionMapper
+                                .verticalPlacement
+                                .horizonModel
+                                .horizonY(
+                                  screenHeight: MediaQuery.sizeOf(
+                                    context,
+                                  ).height,
+                                  safeAreaTop: MediaQuery.paddingOf(
+                                    context,
+                                  ).top,
+                                  safeAreaBottom: MediaQuery.paddingOf(
+                                    context,
+                                  ).bottom,
+                                  devicePitchDegrees:
+                                      _arState.devicePitchDegrees,
+                                  deviceRollDegrees: _arState.deviceRollDegrees,
+                                  trackingQuality: _arState.trackingQuality,
+                                ),
+                            flickerGuardActive: _previousMarkersById.isNotEmpty,
                           ),
                         ],
                         const SizedBox(height: 8),
@@ -479,6 +500,8 @@ class _DebugSourceIndicator extends StatelessWidget {
     required this.markersVisible,
     required this.hiddenByOverlap,
     required this.hiddenByFov,
+    required this.horizonY,
+    required this.flickerGuardActive,
   });
 
   final CameraRuntimeState cameraState;
@@ -489,6 +512,8 @@ class _DebugSourceIndicator extends StatelessWidget {
   final int markersVisible;
   final int hiddenByOverlap;
   final int hiddenByFov;
+  final double horizonY;
+  final bool flickerGuardActive;
 
   @override
   Widget build(BuildContext context) {
@@ -506,10 +531,25 @@ class _DebugSourceIndicator extends StatelessWidget {
       _DebugSourcePill('Kamera: $cameraLabel'),
       _DebugSourcePill('ARKit: $arLabel'),
       _DebugSourcePill('Tracking: $trackingLabel'),
+      _DebugSourcePill(
+        'Pitch verfügbar: ${arState.devicePitchDegrees == null ? 'nein' : 'ja'}',
+      ),
+      _DebugSourcePill(
+        'Pitch geglättet: ${arState.devicePitchDegrees?.toStringAsFixed(1) ?? '–'}°',
+      ),
+      _DebugSourcePill('HorizonY: ${horizonY.toStringAsFixed(0)}'),
+      _DebugSourcePill(
+        'Heading raw/smoothed: ${location.headingDegrees}°/${location.headingDegrees}°',
+      ),
       _DebugSourcePill('Hinweise: $warningsLoaded geladen'),
-      _DebugSourcePill('Marker: $markersVisible sichtbar'),
+      _DebugSourcePill(
+        'Marker: $markersVisible sichtbar/${hiddenByOverlap + hiddenByFov} versteckt',
+      ),
       _DebugSourcePill('Versteckt wegen Überlappung: $hiddenByOverlap'),
       _DebugSourcePill('Versteckt wegen FOV: $hiddenByFov'),
+      _DebugSourcePill(
+        'Flicker Guard aktiv: ${flickerGuardActive ? 'ja' : 'nein'}',
+      ),
       _DebugSourcePill('Standort: $locationLabel'),
       _DebugSourcePill('Warnungen: $warningLabel'),
     ];

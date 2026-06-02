@@ -99,3 +99,11 @@ ARKit ist optional. Wenn ARKit, iOS, Kamera-Berechtigung, Location/Heading oder 
 ## Validierung
 
 Die Flutter-Schicht kann lokal per Analyzer und Tests geprüft werden. Die native ARKit-Kompilierung benötigt macOS/Xcode und muss in Codemagic/TestFlight final validiert werden, weil Linux keine iOS-Builds ausführen kann. Fahrtests auf einem echten iPhone müssen insbesondere Heading-Qualität, Drift, Anchor-Update-Schwellen und Lesbarkeit im Fahrzeug prüfen.
+
+## HUD-Horizont und Marker-Stabilität
+
+Die aktuelle HUD-Projektion nutzt zuerst native ARKit-Anker, wenn Tracking stabil läuft. Für alle übrigen Fälle verwendet DriveBot eine Bearing/FOV-Projektion mit `HorizonProjectionModel`: die x-Position kommt aus relativer Peilung und horizontalem Sichtfeld, die y-Position nicht mehr aus einem festen Wert, sondern aus einem stabilen Horizontmodell mit Pitch, optionalem Roll-Dämpfer, Tracking-Qualität, geschätztem vertikalem Sichtfeld, Entfernung und Warnungstyp.
+
+Vor dieser Stabilisierung lag die vertikale Platzierung im Fallback überwiegend bei einer festen Horizon-Top-Fraktion plus kleiner Distanz-/Pitch-Korrektur. ARKit-Projektionen übernahmen ebenfalls diese Top-Berechnung; Roll wurde nicht berücksichtigt und Marker-Keys nutzten nur den Typ, wodurch gleichartige Marker visuell flackern konnten. Distant Marker bleiben jetzt nahe am berechneten HorizonY, nahe Blitzer/Warnungen dürfen moderat darunter liegen, und die Position wird in der SafeArea geklemmt, damit Marker nicht an Ober-/Unterkante springen.
+
+Sensor- und Markerbewegungen werden mit konfigurierbaren Low-Pass-Konstanten geglättet: `headingSmoothingFactor`, `pitchSmoothingFactor`, `minPixelMovementThreshold`, `minHeadingChangeDegrees` und `minPitchChangeDegrees`. Heading-Glättung behandelt 0/360-Grad-Umbrüche kreisförmig. Marker behalten stabile IDs unabhängig von wechselnden Distanzwerten; Sortierung erfolgt deterministisch nach Priorität, Schwere, Entfernung, Quelle und ID. Datenquellen-Refreshes ersetzen die sichtbare Warnliste nur bei sinnvoll geänderten Warnungs-IDs, während Sensor-Ticks nur die Projektion aktualisieren.

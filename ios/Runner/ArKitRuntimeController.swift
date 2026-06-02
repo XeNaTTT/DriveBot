@@ -75,10 +75,17 @@ final class ArKitRuntimeController: NSObject {
     }
 
     let quality = activeView?.trackingQuality ?? "stable"
-    return [
+    var state: [String: Any] = [
       "isSupported": true,
       "isRunning": activeView?.isRunning ?? hasRequestedStart,
       "trackingQuality": quality
     ]
+    if let pitch = activeView?.devicePitchDegrees {
+      state["devicePitchDegrees"] = pitch
+    }
+    if let roll = activeView?.deviceRollDegrees {
+      state["deviceRollDegrees"] = roll
+    }
+    return state
   }
 }

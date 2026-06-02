@@ -1,3 +1,5 @@
+import '../../ar/domain/ar_projection_smoothing.dart';
+
 class HeadingUtils {
   const HeadingUtils._();
 
@@ -14,6 +16,20 @@ class HeadingUtils {
     final index = (normalized / 45).round() % dirs.length;
     return dirs[index];
   }
+
+  static int smoothHeading({
+    required int previousHeading,
+    required int currentHeading,
+    double smoothingFactor = 0.32,
+    double minHeadingChangeDegrees = 0.7,
+  }) =>
+      ArProjectionSmoothing.smoothCircularDegrees(
+        previous: previousHeading.toDouble(),
+        current: currentHeading.toDouble(),
+        factor: smoothingFactor,
+        minChangeDegrees: minHeadingChangeDegrees,
+      ).round() %
+      360;
 
   static int fallbackAwareHeading({
     required double? compassHeading,

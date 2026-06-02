@@ -13,10 +13,10 @@ final class ArMarkerDeclutterResult {
 
 final class ArMarkerDeclutter {
   const ArMarkerDeclutter({
-    this.maxVisibleMarkers = 5,
+    this.maxVisibleMarkers = 6,
     this.maxSpeedCameraMarkers = 3,
     this.maxTrafficHintMarkers = 2,
-    this.minHorizontalSpacing = 0.16,
+    this.minHorizontalSpacing = 0.12,
     this.minVerticalSpacing = 0.09,
     this.verticalStackStep = 0.055,
   });
@@ -40,12 +40,7 @@ final class ArMarkerDeclutter {
     }
 
     final ranked = [...markers]
-      ..sort(
-        (a, b) => _priorityScore(
-          b,
-          selectedInfoObjectId,
-        ).compareTo(_priorityScore(a, selectedInfoObjectId)),
-      );
+      ..sort((a, b) => _compareForVisibility(a, b, selectedInfoObjectId));
     final visible = <ArMarkerModel>[];
     var hidden = 0;
     var speedCameras = 0;
@@ -81,12 +76,7 @@ final class ArMarkerDeclutter {
       if (_isTrafficHint(type)) trafficHints++;
     }
 
-    visible.sort(
-      (a, b) => _priorityScore(
-        a,
-        selectedInfoObjectId,
-      ).compareTo(_priorityScore(b, selectedInfoObjectId)),
-    );
+    visible.sort(_compareForStablePaint);
 
     return ArMarkerDeclutterResult(
       visibleMarkers: visible,
@@ -101,7 +91,7 @@ final class ArMarkerDeclutter {
   }) {
     final candidates = <ArMarkerModel>[
       marker,
-      for (final offset in const [0.10, -0.10, 0.20, -0.16, 0.28])
+      for (final offset in const [0.10, -0.10, 0.20, -0.16, 0.28, -0.24, 0.34])
         marker.copyWith(top: (marker.top + offset).clamp(0.20, 0.68)),
     ];
     for (final candidate in candidates) {
@@ -117,6 +107,39 @@ final class ArMarkerDeclutter {
                 minHorizontalSpacing &&
             (marker.top - other.top).abs() < minVerticalSpacing,
       );
+
+  int _compareForVisibility(
+    ArMarkerModel a,
+    ArMarkerModel b,
+    String? selectedInfoObjectId,
+  ) {
+    final priority = _priorityScore(
+      b,
+      selectedInfoObjectId,
+    ).compareTo(_priorityScore(a, selectedInfoObjectId));
+    if (priority != 0) return priority;
+    return _compareDeterministic(a, b);
+  }
+
+  int _compareForStablePaint(ArMarkerModel a, ArMarkerModel b) {
+    final x = a.normalizedX.compareTo(b.normalizedX);
+    if (x != 0) return x;
+    return _compareDeterministic(a, b);
+  }
+
+  int _compareDeterministic(ArMarkerModel a, ArMarkerModel b) {
+    final severity = b.infoObject.warning.severity.compareTo(
+      a.infoObject.warning.severity,
+    );
+    if (severity != 0) return severity;
+    final distance = (a.infoObject.distanceMeters ?? double.infinity).compareTo(
+      b.infoObject.distanceMeters ?? double.infinity,
+    );
+    if (distance != 0) return distance;
+    final source = a.infoObject.sourceLabel.compareTo(b.infoObject.sourceLabel);
+    if (source != 0) return source;
+    return a.infoObject.id.compareTo(b.infoObject.id);
+  }
 
   int _priorityScore(ArMarkerModel marker, String? selectedInfoObjectId) {
     final object = marker.infoObject;

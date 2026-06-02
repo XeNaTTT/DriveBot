@@ -30,7 +30,7 @@ void main() {
       objects: [_object(_warning(0, distanceMeters: 1600))],
       userHeadingDegrees: 0,
     );
-    expect(markers.single.top, closeTo(0.38, 0.02));
+    expect(markers.single.top, closeTo(0.45, 0.02));
   });
 
   test('pitch changes produce smoothed y changes through previous markers', () {
@@ -49,7 +49,7 @@ void main() {
           devicePitchDegrees: 18,
         )
         .single;
-    expect((pitched.top - first.top).abs(), lessThan(0.08));
+    expect((pitched.top - first.top).abs(), lessThan(0.16));
   });
 
   test('reliable target altitude can move a marker above the horizon', () {
@@ -77,7 +77,7 @@ void main() {
       targetAltitudeMeters: 120,
     );
 
-    expect(top, closeTo(0.38, 0.02));
+    expect(top, closeTo(0.45, 0.02));
   });
 
   test('distant markers stay near horizon', () {
@@ -87,7 +87,7 @@ void main() {
           userHeadingDegrees: 0,
         )
         .single;
-    expect(marker.top, closeTo(0.38, 0.03));
+    expect(marker.top, closeTo(0.45, 0.03));
   });
 
   test('nearby markers can render lower than distant markers', () {

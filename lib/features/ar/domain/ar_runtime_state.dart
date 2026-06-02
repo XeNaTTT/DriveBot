@@ -12,6 +12,7 @@ final class ArRuntimeState {
     this.errorMessage,
     this.fallbackReason,
     this.devicePitchDegrees,
+    this.deviceRollDegrees,
   });
 
   const ArRuntimeState.initial()
@@ -53,6 +54,7 @@ final class ArRuntimeState {
   final String? errorMessage;
   final String? fallbackReason;
   final double? devicePitchDegrees;
+  final double? deviceRollDegrees;
 
   bool get shouldUseArKit => isSupported && isAvailable && !hasError;
   bool get hasError => errorMessage != null && errorMessage!.isNotEmpty;
@@ -64,7 +66,7 @@ final class ArRuntimeState {
     if (trackingQuality == ArTrackingQuality.limited) {
       return 'Tracking eingeschränkt';
     }
-    if (isRunning) return 'AR aktiv';
+    if (isRunning) return 'AR verankert';
     return 'Tracking stabil';
   }
 
@@ -77,6 +79,7 @@ final class ArRuntimeState {
     String? errorMessage,
     String? fallbackReason,
     double? devicePitchDegrees,
+    double? deviceRollDegrees,
   }) => ArRuntimeState(
     isSupported: isSupported ?? this.isSupported,
     isAvailable: isAvailable ?? this.isAvailable,
@@ -86,6 +89,7 @@ final class ArRuntimeState {
     errorMessage: errorMessage ?? this.errorMessage,
     fallbackReason: fallbackReason ?? this.fallbackReason,
     devicePitchDegrees: devicePitchDegrees ?? this.devicePitchDegrees,
+    deviceRollDegrees: deviceRollDegrees ?? this.deviceRollDegrees,
   );
 
   static ArRuntimeState fromNativeMap(Map<Object?, Object?> map) {
@@ -100,7 +104,9 @@ final class ArRuntimeState {
     final error = map['errorMessage'] as String?;
     final fallback = map['fallbackReason'] as String?;
     final pitchValue = map['devicePitchDegrees'];
+    final rollValue = map['deviceRollDegrees'];
     final pitch = pitchValue is num ? pitchValue.toDouble() : null;
+    final roll = rollValue is num ? rollValue.toDouble() : null;
     return ArRuntimeState(
       isSupported: supported,
       isAvailable: supported && error == null,
@@ -112,6 +118,7 @@ final class ArRuntimeState {
       errorMessage: error,
       fallbackReason: fallback,
       devicePitchDegrees: pitch,
+      deviceRollDegrees: roll,
     );
   }
 }

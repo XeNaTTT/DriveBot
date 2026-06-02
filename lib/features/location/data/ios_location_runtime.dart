@@ -7,6 +7,7 @@ import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
+import '../../ar/domain/ar_projection_smoothing.dart';
 import '../../sensors/domain/heading_utils.dart';
 import '../../sensors/domain/sensor_runtime_state.dart';
 import '../../sensors/domain/speed_utils.dart';
@@ -78,6 +79,9 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
   StreamSubscription<AccelerometerEvent>? _motionSubscription;
   Position? _lastPosition;
   int? _lastCompassHeading;
+  double? _smoothedPitchDegrees;
+  double? _smoothedRollDegrees;
+  static const _smoothingConfig = ArProjectionSmoothingConfig();
 
   @override
   ValueListenable<LocationStatus> get locationStatusListenable =>
@@ -199,9 +203,21 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
       if (stream == null) return;
       _compassSubscription = stream.listen(
         (event) {
-          _lastCompassHeading = HeadingUtils.normalizeHeading(
+          final rawHeading = HeadingUtils.normalizeHeading(
             event.headingForCameraMode ?? event.heading,
           );
+          if (rawHeading != null) {
+            final previous = _lastCompassHeading;
+            _lastCompassHeading = previous == null
+                ? rawHeading
+                : HeadingUtils.smoothHeading(
+                    previousHeading: previous,
+                    currentHeading: rawHeading,
+                    smoothingFactor: _smoothingConfig.headingSmoothingFactor,
+                    minHeadingChangeDegrees:
+                        _smoothingConfig.minHeadingChangeDegrees,
+                  );
+          }
           final position = _lastPosition;
           if (position != null) _applyPosition(position);
         },
@@ -220,15 +236,29 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
     try {
       _motionSubscription = getMotionStream().listen(
         (event) {
+          final rawPitch = _radiansToDegrees(
+            math.atan2(
+              event.y,
+              math.sqrt(event.x * event.x + event.z * event.z),
+            ),
+          );
+          final rawRoll = _radiansToDegrees(math.atan2(-event.x, event.z));
+          _smoothedPitchDegrees = _smoothMotionAxis(
+            previous: _smoothedPitchDegrees,
+            current: rawPitch,
+            factor: _smoothingConfig.pitchSmoothingFactor,
+            minChange: _smoothingConfig.minPitchChangeDegrees,
+          );
+          _smoothedRollDegrees = _smoothMotionAxis(
+            previous: _smoothedRollDegrees,
+            current: rawRoll,
+            factor: _smoothingConfig.rollSmoothingFactor,
+            minChange: _smoothingConfig.minPitchChangeDegrees,
+          );
           _motionStatus.value = MotionRuntimeState(
             availability: MotionRuntimeAvailability.available,
-            pitchDegrees: _radiansToDegrees(
-              math.atan2(
-                event.y,
-                math.sqrt(event.x * event.x + event.z * event.z),
-              ),
-            ),
-            rollDegrees: _radiansToDegrees(math.atan2(-event.x, event.z)),
+            pitchDegrees: _smoothedPitchDegrees,
+            rollDegrees: _smoothedRollDegrees,
           );
           _permissionStatus.value = _permissionStatus.value.copyWith(
             motion: SensorPermissionState.granted,
@@ -263,6 +293,20 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
   }
 
   static double _radiansToDegrees(double radians) => radians * 180 / math.pi;
+
+  static double _smoothMotionAxis({
+    required double? previous,
+    required double current,
+    required double factor,
+    required double minChange,
+  }) => previous == null
+      ? current
+      : ArProjectionSmoothing.smoothLinear(
+          previous: previous,
+          current: current,
+          factor: factor,
+          minChange: minChange,
+        );
 
   @visibleForTesting
   static SensorPermissionState mapLocationPermission(
