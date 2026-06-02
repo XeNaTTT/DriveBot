@@ -1,6 +1,7 @@
 import 'package:driveassistant_ar/features/ar/application/ar_info_object_factory.dart';
 import 'package:driveassistant_ar/features/ar/domain/ar_info_object.dart';
 import 'package:driveassistant_ar/features/ar/domain/ar_projection_mapper.dart';
+import 'package:driveassistant_ar/features/ar/domain/ar_vertical_placement.dart';
 import 'package:driveassistant_ar/features/hud/domain/hud_warning_item.dart';
 import 'package:driveassistant_ar/features/location/domain/location_status.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -49,6 +50,34 @@ void main() {
         )
         .single;
     expect((pitched.top - first.top).abs(), lessThan(0.08));
+  });
+
+  test('reliable target altitude can move a marker above the horizon', () {
+    const placement = ArVerticalPlacement();
+    final object = _object(_warning(0, distanceMeters: 200));
+
+    final noAltitude = placement.topFor(object: object, devicePitchDegrees: 0);
+    final elevated = placement.topFor(
+      object: object,
+      devicePitchDegrees: 0,
+      targetAltitudeMeters: 120,
+      userAltitudeMeters: 100,
+    );
+
+    expect(elevated, lessThan(noAltitude));
+  });
+
+  test('missing user altitude keeps remote markers horizon based', () {
+    const placement = ArVerticalPlacement();
+    final object = _object(_warning(0, distanceMeters: 1800));
+
+    final top = placement.topFor(
+      object: object,
+      devicePitchDegrees: 0,
+      targetAltitudeMeters: 120,
+    );
+
+    expect(top, closeTo(0.38, 0.02));
   });
 
   test('distant markers stay near horizon', () {

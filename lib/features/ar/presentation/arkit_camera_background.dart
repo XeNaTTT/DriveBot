@@ -44,7 +44,7 @@ class _ArKitCameraBackgroundState extends State<ArKitCameraBackground>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _runtimeService = widget.runtimeService ?? IosArKitRuntimeService();
-    _prepareRuntime();
+    _schedulePrepareRuntime();
   }
 
   @override
@@ -52,11 +52,11 @@ class _ArKitCameraBackgroundState extends State<ArKitCameraBackground>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.runtimeService != widget.runtimeService) {
       _runtimeService = widget.runtimeService ?? IosArKitRuntimeService();
-      _prepareRuntime();
+      _schedulePrepareRuntime();
       return;
     }
     if (oldWidget.permissionStatus.camera != widget.permissionStatus.camera) {
-      _prepareRuntime();
+      _schedulePrepareRuntime();
     }
   }
 
@@ -76,6 +76,12 @@ class _ArKitCameraBackgroundState extends State<ArKitCameraBackground>
     WidgetsBinding.instance.removeObserver(this);
     _runtimeService.stop();
     super.dispose();
+  }
+
+  void _schedulePrepareRuntime() {
+    Future<void>.microtask(() {
+      if (mounted) _prepareRuntime();
+    });
   }
 
   Future<void> _prepareRuntime() async {
@@ -98,6 +104,7 @@ class _ArKitCameraBackgroundState extends State<ArKitCameraBackground>
       setState(() => _isChecking = false);
       return;
     }
+    _publish(const ArRuntimeState.available());
     await _startRuntime();
   }
 
@@ -122,7 +129,7 @@ class _ArKitCameraBackgroundState extends State<ArKitCameraBackground>
   void _publish(ArRuntimeState state) {
     _state = state;
     widget.onArStateChanged?.call(state);
-    if (state.shouldUseArKit) {
+    if (state.shouldUseArKit && state.isRunning) {
       widget.onCameraStateChanged?.call(
         const CameraRuntimeState.ready(
           currentZoomLevel: 1,
@@ -137,7 +144,7 @@ class _ArKitCameraBackgroundState extends State<ArKitCameraBackground>
 
   @override
   Widget build(BuildContext context) {
-    if (_state.shouldUseArKit) {
+    if (_state.shouldUseArKit && _state.isRunning) {
       return const UiKitView(
         key: Key('arkit-camera-background'),
         viewType: IosArKitRuntimeService.viewType,
