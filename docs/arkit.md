@@ -36,12 +36,12 @@ Die AR-Domäne unterscheidet mehrere Ebenen:
 
 Flutter berechnet weiterhin eine UI-agnostische lokale Koordinate für Tests, Fallback und Payloads:
 
-1. Haversine-Distanz zwischen Nutzer und Ziel berechnen.
-2. Initial Bearing von Nutzer zu Ziel berechnen.
-3. ENU-artige lokale Koordinate bilden:
-   - `eastMeters = sin(bearing) * distance`
-   - `northMeters = cos(bearing) * distance`
-   - `upMeters = targetAltitude - currentAltitude`, sonst `0`
+1. Lokale Tangentialebene relativ zur Nutzer-/Session-Origin-Position bilden.
+2. Latitude-/Longitude-Deltas in ENU-Meter übersetzen:
+   - `eastMeters = deltaLongitudeRadians * cos(originLatitudeRadians) * earthRadius`
+   - `northMeters = deltaLatitudeRadians * earthRadius`
+   - `upMeters = targetAltitude - currentAltitude`, sonst stabil `0`
+3. GPS-Distanz und Bearing nur noch für Labels, Fallback und Debug ableiten.
 4. In ARKit-Konvention mappen:
    - `x = east/right`
    - `y = up`
@@ -110,6 +110,6 @@ Es werden keine Secrets und keine rohen User-IDs angezeigt.
 
 ## Validierung und bekannte Grenzen
 
-Die Flutter-Schicht kann lokal per Analyzer und Tests geprüft werden. Die native ARKit-Kompilierung benötigt macOS/Xcode und muss in Codemagic/TestFlight final validiert werden, weil Linux keine iOS-Builds ausführen kann. Fahrtests auf einem echten iPhone müssen insbesondere Heading-Qualität, Drift, Rekalibrierungsschwellen, FOV-Ausblendung und Lesbarkeit im Fahrzeug prüfen.
+Die Flutter-Schicht kann lokal per Analyzer und Tests geprüft werden. Native Swift/XCTest-Strukturen sind in dieser Linux-Umgebung nicht praktisch ausführbar; die ARKit-Kompilierung und native Projektion müssen in Codemagic/TestFlight final validiert werden, weil Linux keine iOS-Builds ausführen kann. Fahrtests auf einem echten iPhone müssen insbesondere Heading-Qualität, Drift, Rekalibrierungsschwellen, FOV-Ausblendung und Lesbarkeit im Fahrzeug prüfen.
 
 `ARGeoAnchor` bleibt ein zukünftiger Upgrade-Pfad für Geräte/Regionen, in denen Apple Geographic Location Tracking zuverlässig verfügbar ist. Der aktuelle MVP nutzt absichtlich geo-abgeleitete World-Tracking-Anker plus Fallback, damit Kamera-Startup, Supabase-Login, Community-Reporting und Fallback-Modus unverändert robust bleiben.

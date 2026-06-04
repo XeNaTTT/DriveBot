@@ -33,7 +33,9 @@ final class ArAnchorCandidateMapper {
       return const [];
     }
 
+    final now = DateTime.now();
     return objects
+        .where((object) => object.warning.isActiveAt(now))
         .map((object) => _candidateFor(object, location, userLat, userLon))
         .whereType<ArGeoAnchorCandidate>()
         .toList(growable: false);

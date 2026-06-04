@@ -65,3 +65,20 @@ The fallback hierarchy is:
 1. ARKit anchored/projection result when native AR and stable tracking are available.
 2. Bearing/FOV projection with stable horizon placement when heading/location data is available.
 3. Bottom warning card only when floating placement is not safe.
+
+## Geo-AR anchoring update
+
+DriveBot now follows the ARKit + CoreLocation reference pattern more closely:
+Flutter creates stable geo anchor candidates, converts coordinates into a local
+East/North/Up tangent plane for testability, and sends the native iOS layer the
+current user coordinate, heading, target coordinate and stable target id. The
+iOS `ARSCNView` keeps a session origin, maps targets to ARKit world space with
+`x = east`, `y = up`, `z = -north`, keeps anchors by stable id, and uses the
+active `ARFrame.camera.projectPoint` result as the preferred marker screen
+position. Flutter only renders the existing German marker UI at the native
+screen coordinates; bearing/FOV/horizon projection remains as fallback.
+
+Recalibration is intentionally threshold-based rather than per-frame: targets
+are recalculated when the user moves meaningfully, heading drift exceeds the
+configured threshold, or ARKit tracking state changes. Expired warnings are
+filtered before AR projection, and sensor/AR ticks do not refetch warning data.

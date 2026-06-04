@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import '../../location/domain/location_status.dart';
 import '../domain/ar_anchor_candidate_mapper.dart';
 import '../domain/ar_anchor_projection.dart';
@@ -60,17 +58,20 @@ final class ArAnchorProjectionService {
     Map<String, ArWorldAnchorState> nativeAnchorStates = const {},
     String? selectedInfoObjectId,
   }) {
+    final activeObjects = objects
+        .where((object) => object.warning.isActiveAt(DateTime.now()))
+        .toList(growable: false);
     final trackingLimited =
         runtimeState.trackingQuality == ArTrackingQuality.limited ||
         runtimeState.trackingQuality == ArTrackingQuality.unavailable;
     final fallbackMarkers = projectionMapper.project(
-      objects: objects,
+      objects: activeObjects,
       userHeadingDegrees: location.headingDegrees,
       devicePitchDegrees: runtimeState.devicePitchDegrees,
       deviceRollDegrees: runtimeState.deviceRollDegrees,
       trackingLimited: trackingLimited,
     );
-    final hiddenByFov = objects.length - fallbackMarkers.length;
+    final hiddenByFov = activeObjects.length - fallbackMarkers.length;
 
     if (!location.hasLiveLocation) {
       final markers = fallbackMarkers
@@ -82,7 +83,8 @@ final class ArAnchorProjectionService {
         selectedInfoObjectId: selectedInfoObjectId,
         candidates: const [],
         projections: const [],
-        statusLabel: objects.any((object) => object.warning.hasCoordinates)
+        statusLabel:
+            activeObjects.any((object) => object.warning.hasCoordinates)
             ? 'Standort erforderlich'
             : runtimeState.germanStatusLabel,
         hiddenByFov: hiddenByFov,
@@ -91,7 +93,7 @@ final class ArAnchorProjectionService {
     }
 
     final candidates = candidateMapper.geoCandidatesFromObjects(
-      objects: objects,
+      objects: activeObjects,
       location: location,
     );
     final geospatialIds = candidates.map((candidate) => candidate.id).toSet();
@@ -127,7 +129,7 @@ final class ArAnchorProjectionService {
       );
     }
 
-    final objectById = {for (final object in objects) object.id: object};
+    final objectById = {for (final object in activeObjects) object.id: object};
     final projections = candidates
         .map((candidate) {
           final object = objectById[candidate.id];
@@ -245,7 +247,7 @@ final class ArAnchorProjectionService {
         .map((state) => state.lastRecalibrationAgeSeconds)
         .whereType<double>();
     if (ages.isEmpty) return null;
-    return ages.reduce(math.min);
+    return ages.reduce((current, next) => current < next ? current : next);
   }
 
   ArAnchorProjection _projectionFor(
@@ -254,9 +256,12 @@ final class ArAnchorProjectionService {
     ArRuntimeState runtimeState,
     LocationStatus location,
   ) {
-    final local = ArLocalCoordinate(
-      eastMeters: candidate.distanceMeters * _sinDeg(candidate.bearingDegrees),
-      northMeters: candidate.distanceMeters * _cosDeg(candidate.bearingDegrees),
+    final local = coordinateMapper.localCoordinate(
+      currentLatitude: location.latitude ?? 0,
+      currentLongitude: location.longitude ?? 0,
+      targetLatitude: candidate.latitude,
+      targetLongitude: candidate.longitude,
+      targetAltitude: candidate.altitude,
     );
     final arkit = coordinateMapper.arKitCoordinateFor(local);
     final halfFov = projectionMapper.horizontalFovDegrees / 2;
@@ -319,8 +324,4 @@ final class ArAnchorProjectionService {
         );
       })
       .toList(growable: false);
-
-  double _sinDeg(double degrees) => math.sin(degrees * math.pi / 180);
-
-  double _cosDeg(double degrees) => math.cos(degrees * math.pi / 180);
 }

@@ -7,6 +7,13 @@ final class GeoArCoordinateMapper {
 
   static const double _earthRadiusMeters = 6371000;
 
+  /// Converts WGS84 latitude/longitude into a local tangent plane in meters.
+  ///
+  /// DriveBot uses the ENU convention used by common Geo-AR pipelines:
+  /// east is positive x/right, north is positive forward in the local map, and
+  /// up is altitude relative to the user/session origin. Missing target
+  /// altitude deliberately resolves to `0` instead of a distance-derived value
+  /// so marker height stays horizon-stable until a reliable altitude exists.
   GeoArCoordinate localCoordinate({
     required double currentLatitude,
     required double currentLongitude,
@@ -15,25 +22,26 @@ final class GeoArCoordinateMapper {
     double currentAltitude = 0,
     double? targetAltitude,
   }) {
-    final distance = distanceMeters(
-      currentLatitude: currentLatitude,
-      currentLongitude: currentLongitude,
+    final enu = eastNorthMeters(
+      originLatitude: currentLatitude,
+      originLongitude: currentLongitude,
       targetLatitude: targetLatitude,
       targetLongitude: targetLongitude,
     );
-    final bearing = bearingDegrees(
-      currentLatitude: currentLatitude,
-      currentLongitude: currentLongitude,
-      targetLatitude: targetLatitude,
-      targetLongitude: targetLongitude,
+    final distance = math.sqrt(
+      enu.eastMeters * enu.eastMeters + enu.northMeters * enu.northMeters,
     );
-    final radians = _degreesToRadians(bearing);
     return GeoArCoordinate(
-      eastMeters: math.sin(radians) * distance,
-      northMeters: math.cos(radians) * distance,
-      upMeters: (targetAltitude ?? currentAltitude) - currentAltitude,
+      eastMeters: enu.eastMeters,
+      northMeters: enu.northMeters,
+      upMeters: targetAltitude == null ? 0 : targetAltitude - currentAltitude,
       distanceMeters: distance,
-      bearingDegrees: bearing,
+      bearingDegrees: bearingDegrees(
+        currentLatitude: currentLatitude,
+        currentLongitude: currentLongitude,
+        targetLatitude: targetLatitude,
+        targetLongitude: targetLongitude,
+      ),
     );
   }
 
@@ -44,23 +52,36 @@ final class GeoArCoordinateMapper {
         z: -coordinate.northMeters,
       );
 
+  ({double eastMeters, double northMeters}) eastNorthMeters({
+    required double originLatitude,
+    required double originLongitude,
+    required double targetLatitude,
+    required double targetLongitude,
+  }) {
+    final originLat = _degreesToRadians(originLatitude);
+    final deltaLat = _degreesToRadians(targetLatitude - originLatitude);
+    final deltaLon = _degreesToRadians(targetLongitude - originLongitude);
+    return (
+      eastMeters: deltaLon * math.cos(originLat) * _earthRadiusMeters,
+      northMeters: deltaLat * _earthRadiusMeters,
+    );
+  }
+
   double distanceMeters({
     required double currentLatitude,
     required double currentLongitude,
     required double targetLatitude,
     required double targetLongitude,
   }) {
-    final fromLat = _degreesToRadians(currentLatitude);
-    final toLat = _degreesToRadians(targetLatitude);
-    final deltaLat = _degreesToRadians(targetLatitude - currentLatitude);
-    final deltaLon = _degreesToRadians(targetLongitude - currentLongitude);
-    final a =
-        math.sin(deltaLat / 2) * math.sin(deltaLat / 2) +
-        math.cos(fromLat) *
-            math.cos(toLat) *
-            math.sin(deltaLon / 2) *
-            math.sin(deltaLon / 2);
-    return _earthRadiusMeters * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    final enu = eastNorthMeters(
+      originLatitude: currentLatitude,
+      originLongitude: currentLongitude,
+      targetLatitude: targetLatitude,
+      targetLongitude: targetLongitude,
+    );
+    return math.sqrt(
+      enu.eastMeters * enu.eastMeters + enu.northMeters * enu.northMeters,
+    );
   }
 
   double bearingDegrees({
