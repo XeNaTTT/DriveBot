@@ -42,6 +42,25 @@ class HudWarningItem {
 
   bool get hasCoordinates => latitude != null && longitude != null;
 
+  bool isActiveAt(DateTime now) {
+    if (validFrom != null && validFrom!.isAfter(now)) return false;
+    if (validTo == null || validTo!.isAfter(now)) return true;
+    return !_isCommunitySpeedCamera;
+  }
+
+  bool get _isCommunitySpeedCamera {
+    if (type != WarningType.speedCamera) return false;
+    final normalizedSource = source?.toLowerCase();
+    if (normalizedSource == null || !normalizedSource.contains('community')) {
+      return false;
+    }
+    final normalizedTitle = title.toLowerCase();
+    final normalizedDetail = detail.toLowerCase();
+    return normalizedTitle.contains('blitzer') &&
+        !normalizedTitle.contains('community') &&
+        !normalizedDetail.contains('feste kamera');
+  }
+
   String get stableId {
     if (id != null && id!.isNotEmpty) return id!;
     final locationPart = hasCoordinates
