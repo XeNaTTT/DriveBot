@@ -9,6 +9,7 @@ import '../../ar/application/ar_selection_controller.dart';
 import '../../ar/data/ar_runtime_service.dart';
 import '../../ar/data/ios_arkit_runtime_service.dart';
 import '../../ar/domain/ar_info_object.dart';
+import '../../ar/domain/ar_marker_declutter.dart';
 import '../../ar/domain/ar_marker_model.dart';
 import '../../ar/domain/ar_projection_mapper.dart';
 import '../../ar/domain/ar_runtime_state.dart';
@@ -73,6 +74,8 @@ class _HudScreenState extends State<HudScreen> {
   final ArSelectionController _selectionController = ArSelectionController();
   final ArInfoObjectFactory _infoObjectFactory = const ArInfoObjectFactory();
   Map<String, ArMarkerModel> _previousMarkersById = const {};
+  ArMarkerDeclutterState _previousDeclutterState =
+      const ArMarkerDeclutterState();
   String? _arOverlayStatusLabel;
   late ArRuntimeService _arRuntimeService;
   bool _isWarningDataLoading = true;
@@ -245,6 +248,7 @@ class _HudScreenState extends State<HudScreen> {
                 previousMarkers: _previousMarkersById,
                 nativeAnchorStates: _nativeAnchorStatesById,
                 selectedInfoObjectId: _selectionController.selectedInfoObjectId,
+                previousDeclutterState: _previousDeclutterState,
               );
           final markers = projectionResult.markers;
           _hiddenMarkersByOverlap = projectionResult.hiddenByOverlap;
@@ -253,9 +257,8 @@ class _HudScreenState extends State<HudScreen> {
           _arProjectionSourceLabel = projectionResult.projectionSourceLabel;
           _lastRecalibrationAgeSeconds =
               projectionResult.lastRecalibrationAgeSeconds;
-          _previousMarkersById = {
-            for (final marker in markers) marker.infoObject.id: marker,
-          };
+          _previousMarkersById = projectionResult.projectedMarkers;
+          _previousDeclutterState = projectionResult.declutterState;
           _syncWorldAnchors(projectionResult);
           _collapseMissingSelection(markers.map((m) => m.infoObject.id));
           final selectedObject = _selectedObject(infoObjects);

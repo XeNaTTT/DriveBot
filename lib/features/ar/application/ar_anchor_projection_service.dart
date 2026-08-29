@@ -22,6 +22,8 @@ final class ArAnchorProjectionResult {
     required this.hiddenByTracking,
     required this.projectionSourceLabel,
     this.lastRecalibrationAgeSeconds,
+    this.declutterState = const ArMarkerDeclutterState(),
+    this.projectedMarkers = const {},
   });
 
   final List<ArMarkerModel> markers;
@@ -33,6 +35,8 @@ final class ArAnchorProjectionResult {
   final int hiddenByTracking;
   final String projectionSourceLabel;
   final double? lastRecalibrationAgeSeconds;
+  final ArMarkerDeclutterState declutterState;
+  final Map<String, ArMarkerModel> projectedMarkers;
 }
 
 final class ArAnchorProjectionService {
@@ -57,9 +61,12 @@ final class ArAnchorProjectionService {
     Map<String, ArMarkerModel> previousMarkers = const {},
     Map<String, ArWorldAnchorState> nativeAnchorStates = const {},
     String? selectedInfoObjectId,
+    ArMarkerDeclutterState previousDeclutterState =
+        const ArMarkerDeclutterState(),
+    DateTime? now,
   }) {
     final activeObjects = objects
-        .where((object) => object.warning.isActiveAt(DateTime.now()))
+        .where((object) => object.warning.isActiveAt(now ?? DateTime.now()))
         .toList(growable: false);
     final trackingLimited =
         runtimeState.trackingQuality == ArTrackingQuality.limited ||
@@ -81,6 +88,8 @@ final class ArAnchorProjectionService {
         markers: markers,
         previousMarkers: previousMarkers,
         selectedInfoObjectId: selectedInfoObjectId,
+        previousDeclutterState: previousDeclutterState,
+        now: now,
         candidates: const [],
         projections: const [],
         statusLabel:
@@ -105,6 +114,8 @@ final class ArAnchorProjectionService {
         markers: fallbackMarkers,
         previousMarkers: previousMarkers,
         selectedInfoObjectId: selectedInfoObjectId,
+        previousDeclutterState: previousDeclutterState,
+        now: now,
         candidates: candidates,
         projections: const [],
         statusLabel: runtimeState.germanStatusLabel,
@@ -120,6 +131,8 @@ final class ArAnchorProjectionService {
             .toList(growable: false),
         previousMarkers: previousMarkers,
         selectedInfoObjectId: selectedInfoObjectId,
+        previousDeclutterState: previousDeclutterState,
+        now: now,
         candidates: candidates,
         projections: const [],
         statusLabel: 'Tracking eingeschränkt',
@@ -191,6 +204,8 @@ final class ArAnchorProjectionService {
       markers: markers,
       previousMarkers: previousMarkers,
       selectedInfoObjectId: selectedInfoObjectId,
+      previousDeclutterState: previousDeclutterState,
+      now: now,
       candidates: candidates,
       projections: projections,
       statusLabel: projections.any((projection) => projection.usesWorldAnchor)
@@ -212,6 +227,8 @@ final class ArAnchorProjectionService {
     required List<ArMarkerModel> markers,
     required Map<String, ArMarkerModel> previousMarkers,
     required String? selectedInfoObjectId,
+    required ArMarkerDeclutterState previousDeclutterState,
+    required DateTime? now,
     required List<ArGeoAnchorCandidate> candidates,
     required List<ArAnchorProjection> projections,
     required String statusLabel,
@@ -228,6 +245,8 @@ final class ArAnchorProjectionService {
     final decluttered = declutter.apply(
       markers: smoothed,
       selectedInfoObjectId: selectedInfoObjectId,
+      previousState: previousDeclutterState,
+      now: now,
     );
     return ArAnchorProjectionResult(
       markers: decluttered.visibleMarkers,
@@ -239,6 +258,10 @@ final class ArAnchorProjectionService {
       hiddenByTracking: hiddenByTracking,
       projectionSourceLabel: projectionSourceLabel,
       lastRecalibrationAgeSeconds: lastRecalibrationAgeSeconds,
+      declutterState: decluttered.state,
+      projectedMarkers: {
+        for (final marker in smoothed) marker.infoObject.id: marker,
+      },
     );
   }
 
