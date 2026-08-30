@@ -20,6 +20,7 @@ import '../../ar/presentation/arkit_camera_background.dart';
 import '../../camera/domain/camera_runtime_state.dart';
 import '../../camera/presentation/camera_hud_background.dart';
 import '../../data_sources/domain/data_source_registry.dart';
+import '../../drive_assistant/presentation/drive_assistant_panel.dart';
 import '../../filters/application/information_category_controller.dart';
 import '../../filters/domain/information_category.dart';
 import '../../filters/presentation/category_filter_button.dart';
@@ -86,6 +87,7 @@ class _HudScreenState extends State<HudScreen> {
   double? _lastRecalibrationAgeSeconds;
   Map<String, ArWorldAnchorState> _nativeAnchorStatesById = const {};
   bool _isSyncingWorldAnchors = false;
+  bool _driveAssistantEnabled = false;
 
   @override
   void initState() {
@@ -420,18 +422,36 @@ class _HudScreenState extends State<HudScreen> {
                     ),
                   ),
                 ),
+                Positioned(
+                  top: MediaQuery.paddingOf(context).top + 58,
+                  right: 12,
+                  child: _DriveAssistantToggle(
+                    enabled: _driveAssistantEnabled,
+                    onPressed: () => setState(
+                      () => _driveAssistantEnabled = !_driveAssistantEnabled,
+                    ),
+                  ),
+                ),
                 if (selectedObject != null)
                   ArInfoDetailCard(
                     infoObject: selectedObject,
                     onClose: () => setState(_selectionController.collapse),
                   ),
-                ArMarkerLayer(
-                  markers: markers,
-                  selectedInfoObjectId:
-                      _selectionController.selectedInfoObjectId,
-                  onMarkerTap: (id) =>
-                      setState(() => _selectionController.select(id)),
-                ),
+                if (_driveAssistantEnabled)
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 86, 12, 100),
+                      child: DriveAssistantPanel(speedKph: location.speedKph),
+                    ),
+                  )
+                else
+                  ArMarkerLayer(
+                    markers: markers,
+                    selectedInfoObjectId:
+                        _selectionController.selectedInfoObjectId,
+                    onMarkerTap: (id) =>
+                        setState(() => _selectionController.select(id)),
+                  ),
               ],
             ),
           );
@@ -519,6 +539,27 @@ class _HudScreenState extends State<HudScreen> {
       if (mounted) setState(() => _selectionController.collapse());
     });
   }
+}
+
+class _DriveAssistantToggle extends StatelessWidget {
+  const _DriveAssistantToggle({required this.enabled, required this.onPressed});
+
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => IconButton.filled(
+    key: const Key('drive-assistant-toggle'),
+    tooltip: enabled
+        ? 'Drive Assistant ausschalten'
+        : 'Drive Assistant einschalten',
+    onPressed: onPressed,
+    style: IconButton.styleFrom(
+      backgroundColor: enabled ? const Color(0xFF54E6A5) : Colors.black54,
+      foregroundColor: enabled ? const Color(0xFF07111C) : Colors.white,
+    ),
+    icon: Icon(enabled ? Icons.speed : Icons.speed_outlined),
+  );
 }
 
 class _StatusBar extends StatelessWidget {

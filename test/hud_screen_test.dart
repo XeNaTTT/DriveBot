@@ -100,6 +100,25 @@ void main() {
     expect(find.textContaining('Modus'), findsOneWidget);
   });
 
+  testWidgets('Drive Assistant can be toggled and shows gear guidance', (
+    tester,
+  ) async {
+    await tester.pumpWidget(buildHud(warnings: _sampleWarnings));
+
+    expect(find.byKey(const Key('drive-assistant-panel')), findsNothing);
+    await tester.tap(find.byKey(const Key('drive-assistant-toggle')));
+    await tester.pump();
+
+    expect(find.byKey(const Key('drive-assistant-panel')), findsOneWidget);
+    expect(find.byKey(const Key('drive-assistant-rpm-gauge')), findsOneWidget);
+    expect(find.text('GANG 6'), findsOneWidget);
+    expect(find.text('84 km/h · GPS'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('drive-assistant-toggle')));
+    await tester.pump();
+    expect(find.byKey(const Key('drive-assistant-panel')), findsNothing);
+  });
+
   testWidgets('filter button renders with German semantics', (tester) async {
     await tester.pumpWidget(buildHud(warnings: _sampleWarnings));
 
