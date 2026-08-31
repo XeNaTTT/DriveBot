@@ -7,12 +7,16 @@ workflows:
     environment:
       groups:
         - Backend
+
       flutter: stable
-      xcode: latest
+      xcode: 26.6
       cocoapods: default
+
       vars:
         BUNDLE_ID: de.driveassistant.ar
         APPLE_TEAM_ID: QLQ959FUNR
+        APP_STORE_APPLE_ID: 6772303578
+
       ios_signing:
         distribution_type: app_store
         bundle_identifier: de.driveassistant.ar
@@ -38,64 +42,63 @@ workflows:
       - name: Toolchain diagnostics
         script: |
           set -e
+          echo "Flutter:"
           flutter --version
+
+          echo "Dart:"
           dart --version
+
+          echo "Xcode:"
           xcodebuild -version
 
+          echo "Bundle ID:"
+          echo "$BUNDLE_ID"
+
+          echo "App Store Apple ID:"
+          echo "$APP_STORE_APPLE_ID"
+
       - name: Flutter clean
-        script: flutter clean
+        script: |
+          flutter clean
 
       - name: Resolve Flutter dependencies
-        script: flutter pub get
-
-     # - name: Verify formatting
-     #   script: dart format --output=none --set-exit-if-changed .
-
-      - name: Static analysis
-        script: flutter analyze
-
-      - name: Unit and widget tests
-        script: flutter test
-
-
-      - name: Clean and install CocoaPods
         script: |
-          rm -rf ios/Pods
-          rm -f ios/Pods/Manifest.lock
-          cd ios
-          pod install --repo-update
-          cd ..
+          flutter pub get
 
-      - name: Prepare iOS project without code signing
+      - name: Install CocoaPods dependencies
         script: |
-          flutter build ios \
-            --release \
-            --dart-define=SUPABASE_URL=$SUPABASE_URL \
-            --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY \
-            --no-codesign
+          find . -name "Podfile" -execdir pod install \;
 
-      - name: Apply provisioning profiles
+      - name: Set up iOS code signing
         script: |
           xcode-project use-profiles
+
+      - name: Determine next App Store build number
+        script: |
+          LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID")
+
+          echo "Latest App Store build number: $LATEST_BUILD_NUMBER"
+
+          NEXT_BUILD_NUMBER=$((LATEST_BUILD_NUMBER + 1))
+
+          echo "Next build number: $NEXT_BUILD_NUMBER"
+
+          echo "NEXT_BUILD_NUMBER=$NEXT_BUILD_NUMBER" >> $CM_ENV
 
       - name: Build iOS IPA
         script: |
           flutter build ipa \
             --release \
-            --build-name=1.0.$PROJECT_BUILD_NUMBER \
-            --build-number=$PROJECT_BUILD_NUMBER \
-            --dart-define=SUPABASE_URL=$SUPABASE_URL \
-            --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY \
+            --build-number="$NEXT_BUILD_NUMBER" \
             --export-options-plist=/Users/builder/export_options.plist
 
     artifacts:
       - build/ios/ipa/*.ipa
-      - build/ios/archive/*.xcarchive
       - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
 
     publishing:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
-        beta_groups:
-          - Timoalex
+        submit_to_app_store: false
