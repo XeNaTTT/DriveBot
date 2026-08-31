@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../domain/drive_telemetry.dart';
@@ -11,12 +9,16 @@ class DriveAssistantPanel extends StatelessWidget {
     required this.speedKph,
     this.currentGear,
     this.profile = VehicleShiftProfile.citroenJumper2020,
+    this.bottomScrollPadding = 20,
+    this.fillAvailableHeight = false,
     super.key,
   });
 
   final int speedKph;
   final int? currentGear;
   final VehicleShiftProfile profile;
+  final double bottomScrollPadding;
+  final bool fillAvailableHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -29,43 +31,40 @@ class DriveAssistantPanel extends StatelessWidget {
           'Fahrassistenz, Gang $gear, ${telemetry.rpm} Umdrehungen pro Minute, ${telemetry.coachingText}',
       child: ClipRRect(
         borderRadius: BorderRadius.circular(34),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: Container(
-            key: const Key('drive-assistant-panel'),
-            constraints: const BoxConstraints(maxWidth: 430, maxHeight: 610),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xC92A3544), Color(0xB20A1019)],
+        child: Container(
+          key: const Key('drive-assistant-panel'),
+          height: fillAvailableHeight ? double.infinity : null,
+          constraints: BoxConstraints(
+            maxWidth: 430,
+            maxHeight: fillAvailableHeight ? double.infinity : 610,
+          ),
+          decoration: BoxDecoration(
+            color: const Color(0xF20A1019),
+            border: Border.all(color: Colors.white.withValues(alpha: .18)),
+            borderRadius: BorderRadius.circular(34),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x88000000),
+                blurRadius: 30,
+                spreadRadius: 2,
               ),
-              border: Border.all(color: Colors.white.withValues(alpha: .28)),
-              borderRadius: BorderRadius.circular(34),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x88000000),
-                  blurRadius: 30,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _Header(profile: profile, telemetry: telemetry),
-                  const SizedBox(height: 14),
-                  _CurveCard(profile: profile, telemetry: telemetry),
-                  const SizedBox(height: 14),
-                  _CoachingCard(telemetry: telemetry),
-                  if (telemetry.fact case final fact?) ...[
-                    const SizedBox(height: 12),
-                    _FactCard(fact: fact),
-                  ],
+            ],
+          ),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(20, 18, 20, bottomScrollPadding),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _Header(profile: profile, telemetry: telemetry),
+                const SizedBox(height: 14),
+                _CurveCard(profile: profile, telemetry: telemetry),
+                const SizedBox(height: 14),
+                _CoachingCard(telemetry: telemetry),
+                if (telemetry.fact case final fact?) ...[
+                  const SizedBox(height: 12),
+                  _FactCard(fact: fact),
                 ],
-              ),
+              ],
             ),
           ),
         ),

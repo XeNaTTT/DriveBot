@@ -106,7 +106,7 @@ void main() {
     await tester.pumpWidget(buildHud(warnings: _sampleWarnings));
 
     expect(find.byKey(const Key('drive-assistant-panel')), findsNothing);
-    await tester.tap(find.byKey(const Key('drive-assistant-toggle')));
+    await tester.tap(find.byKey(const Key('floating-navigation-assistant')));
     await tester.pump();
 
     expect(find.byKey(const Key('drive-assistant-panel')), findsOneWidget);
@@ -116,7 +116,7 @@ void main() {
     expect(find.text('KM/H GPS'), findsOneWidget);
     expect(find.byKey(const Key('coaching-card')), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('drive-assistant-toggle')));
+    await tester.tap(find.byKey(const Key('floating-navigation-hud')));
     await tester.pump();
     expect(find.byKey(const Key('drive-assistant-panel')), findsNothing);
   });
