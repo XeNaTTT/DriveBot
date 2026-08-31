@@ -82,3 +82,11 @@ Recalibration is intentionally threshold-based rather than per-frame: targets
 are recalculated when the user moves meaningfully, heading drift exceeds the
 configured threshold, or ARKit tracking state changes. Expired warnings are
 filtered before AR projection, and sensor/AR ticks do not refetch warning data.
+
+On iOS, geographic offsets and movement thresholds are calculated directly
+with MapKit (`MKMapPoint`) and Core Location (`CLLocation.distance`) instead of
+repeating a custom spherical approximation for every marker. The native runtime
+caches the MapKit origin and meter scale once per recalibration, uses the
+shortest offset across the date line, and passes the resulting local coordinates
+straight to ARKit's SIMD world-space APIs. Flutter remains responsible only for
+the UI-agnostic anchor payload and marker presentation.
