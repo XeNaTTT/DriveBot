@@ -72,10 +72,15 @@ The workflow uses:
 1. Start workflow: **ios-testflight**.
 2. Codemagic runs:
    - `flutter pub get`
-   - `flutter analyze`
-   - `flutter test`
-   - `flutter build ipa --release`
+   - CocoaPods dependency installation
+   - iOS code-signing setup
+   - generation of a UTC timestamp build number
+   - `flutter build ipa --release --build-number=<timestamp>`
 3. On success, an IPA is uploaded to App Store Connect/TestFlight.
+
+The generated build number uses the `yyyyMMddHHmmss` UTC format. This keeps
+`CFBundleVersion` increasing across workflow runs and prevents App Store Connect
+from rejecting an upload because its build number was already used.
 
 ## 9) Find the build in App Store Connect > TestFlight
 
