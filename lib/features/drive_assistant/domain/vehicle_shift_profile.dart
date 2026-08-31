@@ -25,6 +25,14 @@ class VehicleShiftProfile {
   final int maximumRpm;
   final Map<int, List<TractiveForcePoint>> tractiveForceCurves;
 
+  double speedKphAtRpm({required int rpm, required int gear}) {
+    final safeGear = gear.clamp(1, gearRatios.length);
+    return rpm *
+        60 *
+        wheelCircumferenceMeters /
+        (gearRatios[safeGear - 1] * finalDriveRatio * 1000);
+  }
+
   static const citroenJumper2020 = VehicleShiftProfile(
     name: 'Citroën Jumper · 2020',
     gearRatios: [3.727, 1.952, 1.290, 0.875, 0.673, 0.585],
