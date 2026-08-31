@@ -4,6 +4,9 @@ workflows:
     max_build_duration: 120
     instance_type: mac_mini_m2
 
+    integrations:
+      app_store_connect: DriveBot
+
     environment:
       groups:
         - Backend
@@ -15,18 +18,20 @@ workflows:
       vars:
         BUNDLE_ID: de.driveassistant.ar
         APPLE_TEAM_ID: QLQ959FUNR
-        APP_STORE_APPLE_ID: 6772303578
+        APP_STORE_APPLE_ID: "6772303578"
+
+        # Wichtig:
+        # Übergibt die App-Store-Apple-ID direkt an Apples altool.
+        APP_STORE_CONNECT_ALTOOL_ADDITIONAL_ARGUMENTS: "--apple-id 6772303578"
 
       ios_signing:
         distribution_type: app_store
         bundle_identifier: de.driveassistant.ar
 
-    integrations:
-      app_store_connect: DriveBot
-
     triggering:
       events:
         - push
+
       branch_patterns:
         - pattern: main
           include: true
@@ -42,39 +47,47 @@ workflows:
       - name: Toolchain diagnostics
         script: |
           set -e
-          echo "Flutter:"
+
+          echo "=== Flutter ==="
           flutter --version
 
-          echo "Dart:"
+          echo "=== Dart ==="
           dart --version
 
-          echo "Xcode:"
+          echo "=== Xcode ==="
           xcodebuild -version
 
-          echo "Bundle ID:"
-          echo "$BUNDLE_ID"
-
-          echo "App Store Apple ID:"
-          echo "$APP_STORE_APPLE_ID"
+          echo "=== App configuration ==="
+          echo "Bundle ID: $BUNDLE_ID"
+          echo "App Store Apple ID: $APP_STORE_APPLE_ID"
+          echo "altool args: $APP_STORE_CONNECT_ALTOOL_ADDITIONAL_ARGUMENTS"
 
       - name: Flutter clean
         script: |
+          set -e
           flutter clean
 
       - name: Resolve Flutter dependencies
         script: |
+          set -e
           flutter pub get
 
       - name: Install CocoaPods dependencies
         script: |
-          find . -name "Podfile" -execdir pod install \;
+          set -e
+          cd ios
+          pod install
+          cd ..
 
       - name: Set up iOS code signing
         script: |
+          set -e
           xcode-project use-profiles
 
       - name: Determine next App Store build number
         script: |
+          set -e
+
           LATEST_BUILD_NUMBER=$(app-store-connect get-latest-app-store-build-number "$APP_STORE_APPLE_ID")
 
           echo "Latest App Store build number: $LATEST_BUILD_NUMBER"
@@ -82,11 +95,14 @@ workflows:
           NEXT_BUILD_NUMBER=$((LATEST_BUILD_NUMBER + 1))
 
           echo "Next build number: $NEXT_BUILD_NUMBER"
-
-          echo "NEXT_BUILD_NUMBER=$NEXT_BUILD_NUMBER" >> $CM_ENV
+          echo "NEXT_BUILD_NUMBER=$NEXT_BUILD_NUMBER" >> "$CM_ENV"
 
       - name: Build iOS IPA
         script: |
+          set -e
+
+          echo "Building with build number: $NEXT_BUILD_NUMBER"
+
           flutter build ipa \
             --release \
             --build-number="$NEXT_BUILD_NUMBER" \
