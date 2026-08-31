@@ -34,6 +34,7 @@ import '../../sensors/domain/sensor_runtime_state.dart';
 import '../../warnings/domain/warning_repository.dart';
 import '../../warnings/domain/warning_request.dart';
 import '../domain/hud_repository.dart';
+import 'floating_navigation_bar.dart';
 
 typedef CameraLayerBuilder = Widget Function(SensorPermissionStatus status);
 
@@ -422,26 +423,27 @@ class _HudScreenState extends State<HudScreen> {
                     ),
                   ),
                 ),
-                Positioned(
-                  top: MediaQuery.paddingOf(context).top + 58,
-                  right: 12,
-                  child: _DriveAssistantToggle(
-                    enabled: _driveAssistantEnabled,
-                    onPressed: () => setState(
-                      () => _driveAssistantEnabled = !_driveAssistantEnabled,
-                    ),
-                  ),
-                ),
                 if (selectedObject != null)
                   ArInfoDetailCard(
                     infoObject: selectedObject,
                     onClose: () => setState(_selectionController.collapse),
                   ),
                 if (_driveAssistantEnabled)
-                  Center(
+                  Positioned.fill(
+                    top: 86,
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 86, 12, 100),
-                      child: DriveAssistantPanel(speedKph: location.speedKph),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: DriveAssistantPanel(
+                          speedKph: location.speedKph,
+                          fillAvailableHeight: true,
+                          bottomScrollPadding:
+                              FloatingNavigationBar.height +
+                              MediaQuery.paddingOf(context).bottom +
+                              28,
+                        ),
+                      ),
                     ),
                   )
                 else
@@ -452,6 +454,37 @@ class _HudScreenState extends State<HudScreen> {
                     onMarkerTap: (id) =>
                         setState(() => _selectionController.select(id)),
                   ),
+                Positioned(
+                  left: 24,
+                  right: 24,
+                  bottom: MediaQuery.paddingOf(context).bottom + 8,
+                  height: FloatingNavigationBar.height,
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 320),
+                      child: FloatingNavigationBar(
+                        items: const [
+                          FloatingNavigationItem(
+                            id: 'hud',
+                            label: 'HUD',
+                            systemImage: 'viewfinder',
+                          ),
+                          FloatingNavigationItem(
+                            id: 'assistant',
+                            label: 'Fahrassistenz',
+                            systemImage: 'speedometer',
+                          ),
+                        ],
+                        selectedId: _driveAssistantEnabled
+                            ? 'assistant'
+                            : 'hud',
+                        onSelected: (id) => setState(
+                          () => _driveAssistantEnabled = id == 'assistant',
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           );
@@ -539,27 +572,6 @@ class _HudScreenState extends State<HudScreen> {
       if (mounted) setState(() => _selectionController.collapse());
     });
   }
-}
-
-class _DriveAssistantToggle extends StatelessWidget {
-  const _DriveAssistantToggle({required this.enabled, required this.onPressed});
-
-  final bool enabled;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) => IconButton.filled(
-    key: const Key('drive-assistant-toggle'),
-    tooltip: enabled
-        ? 'Drive Assistant ausschalten'
-        : 'Drive Assistant einschalten',
-    onPressed: onPressed,
-    style: IconButton.styleFrom(
-      backgroundColor: enabled ? const Color(0xFF54E6A5) : Colors.black54,
-      foregroundColor: enabled ? const Color(0xFF07111C) : Colors.white,
-    ),
-    icon: Icon(enabled ? Icons.speed : Icons.speed_outlined),
-  );
 }
 
 class _StatusBar extends StatelessWidget {

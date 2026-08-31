@@ -13,6 +13,17 @@ import UIKit
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     registerArKitFoundation(with: engineBridge.pluginRegistry)
+    registerFloatingNavigationBar(with: engineBridge.pluginRegistry)
+  }
+
+  private func registerFloatingNavigationBar(with registry: FlutterPluginRegistry) {
+    guard let registrar = registry.registrar(forPlugin: "DriveBotFloatingNavigationBar") else {
+      return
+    }
+    registrar.register(
+      FloatingNavigationBarViewFactory(messenger: registrar.messenger()),
+      withId: "drivebot/floating_navigation_bar"
+    )
   }
 
   private func registerArKitFoundation(with registry: FlutterPluginRegistry) {
