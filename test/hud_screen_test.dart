@@ -111,6 +111,9 @@ void main() {
 
     expect(find.byKey(const Key('drive-assistant-panel')), findsOneWidget);
     expect(find.byKey(const Key('drive-assistant-rpm-gauge')), findsOneWidget);
+    expect(find.byKey(const Key('efficiency-zone-legend')), findsOneWidget);
+    expect(find.text('ECO-ZIEL'), findsOneWidget);
+    expect(find.text('AUSSERHALB'), findsOneWidget);
     expect(find.byKey(const Key('recommended-gear')), findsOneWidget);
     expect(find.text('84'), findsOneWidget);
     expect(find.text('KM/H GPS'), findsOneWidget);

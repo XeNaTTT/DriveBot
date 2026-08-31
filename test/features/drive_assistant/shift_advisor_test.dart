@@ -6,6 +6,16 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const advisor = ShiftAdvisor(VehicleShiftProfile.citroenJumper2020);
 
+  test('maps the configured eco rpm band to gear-specific road speeds', () {
+    const profile = VehicleShiftProfile.citroenJumper2020;
+
+    final start = profile.speedKphAtRpm(rpm: profile.ecoRpmStart, gear: 6);
+    final end = profile.speedKphAtRpm(rpm: profile.ecoRpmEnd, gear: 6);
+
+    expect(start, closeTo(84.9, .1));
+    expect(end, closeTo(103.8, .1));
+  });
+
   test('selects first gear and idle rpm while stopped', () {
     final result = advisor.recommend(0);
     expect(result.gear, 1);

@@ -262,8 +262,51 @@ class _CurveCard extends StatelessWidget {
           width: double.infinity,
           child: CustomPaint(painter: _ForceCurvePainter(profile, telemetry)),
         ),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(4, 2, 4, 2),
+          child: Row(
+            key: Key('efficiency-zone-legend'),
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _LegendItem(color: Color(0xFF30F29A), label: 'ECO-ZIEL'),
+              SizedBox(width: 18),
+              _LegendItem(color: Color(0xFFFFB84D), label: 'AUSSERHALB'),
+            ],
+          ),
+        ),
       ],
     ),
+  );
+}
+
+class _LegendItem extends StatelessWidget {
+  const _LegendItem({required this.color, required this.label});
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 18,
+        height: 6,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(99),
+        ),
+      ),
+      const SizedBox(width: 6),
+      Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white70,
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          letterSpacing: .6,
+        ),
+      ),
+    ],
   );
 }
 
@@ -388,6 +431,37 @@ class _ForceCurvePainter extends CustomPainter {
       plot.bottom - force / maxForce * plot.height,
     );
 
+    final ecoStartSpeed = profile.speedKphAtRpm(
+      rpm: profile.ecoRpmStart,
+      gear: telemetry.gear,
+    );
+    final ecoEndSpeed = profile.speedKphAtRpm(
+      rpm: profile.ecoRpmEnd,
+      gear: telemetry.gear,
+    );
+    final ecoLeft = map(ecoStartSpeed.clamp(minSpeed, maxSpeed), 0).dx;
+    final ecoRight = map(ecoEndSpeed.clamp(minSpeed, maxSpeed), 0).dx;
+    if (ecoRight > ecoLeft) {
+      final ecoBand = RRect.fromRectAndRadius(
+        Rect.fromLTRB(ecoLeft, plot.top, ecoRight, plot.bottom),
+        const Radius.circular(8),
+      );
+      canvas.drawRRect(
+        ecoBand,
+        Paint()..color = const Color(0xFF30F29A).withValues(alpha: .13),
+      );
+      canvas.drawLine(
+        Offset(ecoLeft, plot.top),
+        Offset(ecoLeft, plot.bottom),
+        Paint()..color = const Color(0xFF30F29A).withValues(alpha: .45),
+      );
+      canvas.drawLine(
+        Offset(ecoRight, plot.top),
+        Offset(ecoRight, plot.bottom),
+        Paint()..color = const Color(0xFF30F29A).withValues(alpha: .45),
+      );
+    }
+
     for (var i = 0; i < 4; i++) {
       final y = plot.top + plot.height * i / 3;
       canvas.drawLine(
@@ -408,12 +482,26 @@ class _ForceCurvePainter extends CustomPainter {
     canvas.drawPath(
       path,
       Paint()
-        ..color = const Color(0xFF72E6FF)
+        ..color = const Color(0xFFFFB84D)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 4
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round,
     );
+    if (ecoRight > ecoLeft) {
+      canvas.save();
+      canvas.clipRect(Rect.fromLTRB(ecoLeft, plot.top, ecoRight, plot.bottom));
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = const Color(0xFF30F29A)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 5
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round,
+      );
+      canvas.restore();
+    }
     final pointer = map(
       telemetry.speedKph.clamp(minSpeed.round(), maxSpeed.round()).toDouble(),
       telemetry.tractiveForceNewton.toDouble(),
