@@ -78,6 +78,9 @@ The workflow uses:
    - `flutter build ipa --release --build-number=<timestamp>`
 3. On success, an IPA is uploaded to App Store Connect/TestFlight.
 
+The app version is read from `pubspec.yaml` (currently `1.1.1`). Codemagic keeps
+that user-facing version and overrides only the unique build number for each run.
+
 The generated build number uses the `yyyyMMddHHmmss` UTC format. This keeps
 `CFBundleVersion` increasing across workflow runs and prevents App Store Connect
 from rejecting an upload because its build number was already used.

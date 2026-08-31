@@ -16,14 +16,15 @@ private final class FloatingNavigationModel: ObservableObject {
 
   func update(from message: Any?) {
     guard let state = message as? [String: Any] else { return }
-    let decodedItems = (state["items"] as? [[String: Any]] ?? []).compactMap { value in
-      guard
-        let id = value["id"] as? String,
-        let label = value["label"] as? String,
-        let systemImage = value["systemImage"] as? String
-      else { return nil }
-      return NavigationItem(id: id, label: label, systemImage: systemImage)
-    }
+    let decodedItems: [NavigationItem] = (state["items"] as? [[String: Any]] ?? [])
+      .compactMap { value -> NavigationItem? in
+        guard
+          let id = value["id"] as? String,
+          let label = value["label"] as? String,
+          let systemImage = value["systemImage"] as? String
+        else { return nil }
+        return NavigationItem(id: id, label: label, systemImage: systemImage)
+      }
     items = decodedItems
     selectedID = state["selectedId"] as? String ?? ""
     onUpdate?()
@@ -57,7 +58,9 @@ private struct LiquidGlassNavigationBar: View {
           }
           .buttonStyle(.plain)
           .accessibilityLabel(item.label)
-          .accessibilityAddTraits(model.selectedID == item.id ? [.isSelected] : [])
+          .accessibilityAddTraits(
+            model.selectedID == item.id ? AccessibilityTraits.isSelected : AccessibilityTraits()
+          )
           .accessibilityIdentifier("floating-navigation-\(item.id)")
         }
       }
