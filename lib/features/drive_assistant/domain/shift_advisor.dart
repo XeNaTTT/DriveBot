@@ -27,6 +27,16 @@ class ShiftAdvisor {
     if (candidates.isEmpty) {
       return ShiftRecommendation(gear: 1, rpm: profile.idleRpm);
     }
+    final efficientCandidates = candidates
+        .where(
+          (candidate) =>
+              candidate.rpm >= profile.ecoRpmStart - 100 &&
+              candidate.rpm <= profile.ecoRpmEnd,
+        )
+        .toList();
+    if (efficientCandidates.isNotEmpty) {
+      return efficientCandidates.last;
+    }
     final ecoTarget = (profile.ecoRpmStart + profile.ecoRpmEnd) / 2;
     candidates.sort(
       (a, b) => (a.rpm - ecoTarget).abs().compareTo((b.rpm - ecoTarget).abs()),
