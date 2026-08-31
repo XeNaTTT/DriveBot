@@ -1,13 +1,64 @@
 import ARKit
+import CoreLocation
 import Flutter
+import MapKit
 import UIKit
 
 private struct GeoSessionOrigin {
-  let latitude: Double
-  let longitude: Double
+  let projection: AppleGeoProjection
   let altitude: Double
   let headingDegrees: Double
   let recalibratedAt: Date
+}
+
+/// Converts geographic coordinates with Apple's optimized MapKit projection.
+///
+/// Keeping the projected origin and scale in one immutable value avoids
+/// repeating trigonometry for every anchor during every Flutter sync.
+struct AppleGeoProjection {
+  let originCoordinate: CLLocationCoordinate2D
+
+  private let originLocation: CLLocation
+  private let originPoint: MKMapPoint
+  private let metersPerMapPoint: CLLocationDistance
+
+  init?(latitude: CLLocationDegrees, longitude: CLLocationDegrees) {
+    let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    guard CLLocationCoordinate2DIsValid(coordinate) else { return nil }
+
+    originCoordinate = coordinate
+    originLocation = CLLocation(latitude: latitude, longitude: longitude)
+    originPoint = MKMapPoint(coordinate)
+    metersPerMapPoint = MKMetersPerMapPointAtLatitude(latitude)
+  }
+
+  func eastNorthMeters(
+    latitude: CLLocationDegrees,
+    longitude: CLLocationDegrees
+  ) -> (east: CLLocationDistance, north: CLLocationDistance)? {
+    let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    guard CLLocationCoordinate2DIsValid(coordinate) else { return nil }
+
+    let targetPoint = MKMapPoint(coordinate)
+    var deltaX = targetPoint.x - originPoint.x
+    let worldWidth = MKMapSize.world.width
+    if deltaX > worldWidth / 2 { deltaX -= worldWidth }
+    if deltaX < -worldWidth / 2 { deltaX += worldWidth }
+
+    return (
+      east: deltaX * metersPerMapPoint,
+      north: -(targetPoint.y - originPoint.y) * metersPerMapPoint
+    )
+  }
+
+  func distanceMeters(
+    latitude: CLLocationDegrees,
+    longitude: CLLocationDegrees
+  ) -> CLLocationDistance? {
+    let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    guard CLLocationCoordinate2DIsValid(coordinate) else { return nil }
+    return originLocation.distance(from: CLLocation(latitude: latitude, longitude: longitude))
+  }
 }
 
 private struct GeoAnchorPayload {
@@ -168,12 +219,10 @@ final class ArKitView: NSObject, FlutterPlatformView, ARSessionDelegate {
     let heading = first.currentHeadingDegrees ?? 0
     let shouldReset: Bool
     if let origin = sessionOrigin {
-      let moved = Self.distanceMeters(
-        fromLatitude: origin.latitude,
-        fromLongitude: origin.longitude,
-        toLatitude: latitude,
-        toLongitude: longitude
-      )
+      let moved = origin.projection.distanceMeters(
+        latitude: latitude,
+        longitude: longitude
+      ) ?? .infinity
       let headingDelta = abs(Self.normalizedAngle(heading - origin.headingDegrees))
       shouldReset = moved > movementRecalibrationThresholdMeters ||
         headingDelta > headingRecalibrationThresholdDegrees ||
@@ -183,9 +232,11 @@ final class ArKitView: NSObject, FlutterPlatformView, ARSessionDelegate {
     }
 
     guard shouldReset else { return }
+    guard let projection = AppleGeoProjection(latitude: latitude, longitude: longitude) else {
+      return
+    }
     sessionOrigin = GeoSessionOrigin(
-      latitude: latitude,
-      longitude: longitude,
+      projection: projection,
       altitude: altitude,
       headingDegrees: heading,
       recalibratedAt: Date()
@@ -208,12 +259,12 @@ final class ArKitView: NSObject, FlutterPlatformView, ARSessionDelegate {
       return SIMD3<Float>(payload.x, payload.y, payload.z)
     }
 
-    let enu = Self.eastNorthMeters(
-      originLatitude: origin.latitude,
-      originLongitude: origin.longitude,
-      targetLatitude: targetLatitude,
-      targetLongitude: targetLongitude
-    )
+    guard let enu = origin.projection.eastNorthMeters(
+      latitude: targetLatitude,
+      longitude: targetLongitude
+    ) else {
+      return SIMD3<Float>(payload.x, payload.y, payload.z)
+    }
     let up: Float
     if let targetAltitude = payload.targetAltitude {
       up = Float(targetAltitude - origin.altitude)
@@ -413,36 +464,6 @@ final class ArKitView: NSObject, FlutterPlatformView, ARSessionDelegate {
     sessionStarted = false
   }
 
-  private static func eastNorthMeters(
-    originLatitude: Double,
-    originLongitude: Double,
-    targetLatitude: Double,
-    targetLongitude: Double
-  ) -> (east: Double, north: Double) {
-    let earthRadius = 6371000.0
-    let originLat = degreesToRadians(originLatitude)
-    let deltaLat = degreesToRadians(targetLatitude - originLatitude)
-    let deltaLon = degreesToRadians(targetLongitude - originLongitude)
-    let east = deltaLon * cos(originLat) * earthRadius
-    let north = deltaLat * earthRadius
-    return (east, north)
-  }
-
-  private static func distanceMeters(
-    fromLatitude: Double,
-    fromLongitude: Double,
-    toLatitude: Double,
-    toLongitude: Double
-  ) -> Double {
-    let enu = eastNorthMeters(
-      originLatitude: fromLatitude,
-      originLongitude: fromLongitude,
-      targetLatitude: toLatitude,
-      targetLongitude: toLongitude
-    )
-    return sqrt(enu.east * enu.east + enu.north * enu.north)
-  }
-
   private static func normalizedAngle(_ degrees: Double) -> Double {
     var normalized = degrees.truncatingRemainder(dividingBy: 360)
     if normalized > 180 { normalized -= 360 }
@@ -450,9 +471,6 @@ final class ArKitView: NSObject, FlutterPlatformView, ARSessionDelegate {
     return normalized
   }
 
-  private static func degreesToRadians(_ degrees: Double) -> Double {
-    degrees * Double.pi / 180
-  }
 }
 
 private extension Comparable {
