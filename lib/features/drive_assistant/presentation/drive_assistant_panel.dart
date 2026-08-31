@@ -1,170 +1,430 @@
-import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../domain/drive_telemetry.dart';
 import '../domain/shift_advisor.dart';
 import '../domain/vehicle_shift_profile.dart';
 
 class DriveAssistantPanel extends StatelessWidget {
   const DriveAssistantPanel({
     required this.speedKph,
+    this.currentGear,
     this.profile = VehicleShiftProfile.citroenJumper2020,
     super.key,
   });
 
   final int speedKph;
+  final int? currentGear;
   final VehicleShiftProfile profile;
 
   @override
   Widget build(BuildContext context) {
-    final recommendation = ShiftAdvisor(profile).recommend(speedKph);
+    final gear = currentGear ?? ShiftAdvisor(profile).recommend(speedKph).gear;
+    final telemetry = DriveTelemetryCalculator(
+      profile,
+    ).calculate(speedKph: speedKph, gear: gear);
     return Semantics(
       label:
-          'Schaltempfehlung Gang ${recommendation.gear}, ${recommendation.rpm} Umdrehungen pro Minute',
-      child: Container(
-        key: const Key('drive-assistant-panel'),
-        constraints: const BoxConstraints(maxWidth: 390),
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-        decoration: BoxDecoration(
-          color: const Color(0xEE07111C),
-          border: Border.all(color: const Color(0xFF54E6A5), width: 2),
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 18)],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(profile.name, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 174,
-              width: 300,
-              child: CustomPaint(
-                key: const Key('drive-assistant-rpm-gauge'),
-                painter: _RpmGaugePainter(profile, recommendation.rpm),
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 50),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '${recommendation.rpm}',
-                          style: const TextStyle(
-                            fontSize: 36,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const Text(
-                          'U/min',
-                          style: TextStyle(fontSize: 16, color: Colors.white70),
-                        ),
-                      ],
-                    ),
-                  ),
+          'Fahrassistenz, Gang $gear, ${telemetry.rpm} Umdrehungen pro Minute, ${telemetry.coachingText}',
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(34),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+          child: Container(
+            key: const Key('drive-assistant-panel'),
+            constraints: const BoxConstraints(maxWidth: 430, maxHeight: 610),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xC92A3544), Color(0xB20A1019)],
+              ),
+              border: Border.all(color: Colors.white.withValues(alpha: .28)),
+              borderRadius: BorderRadius.circular(34),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x88000000),
+                  blurRadius: 30,
+                  spreadRadius: 2,
                 ),
-              ),
-            ),
-            Text(
-              'GANG ${recommendation.gear}',
-              key: const Key('recommended-gear'),
-              style: const TextStyle(
-                fontSize: 42,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF54E6A5),
-                letterSpacing: 2,
-              ),
-            ),
-            Text(
-              '$speedKph km/h · GPS',
-              style: const TextStyle(fontSize: 18, color: Colors.white70),
-            ),
-            const SizedBox(height: 8),
-            const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _Legend(color: Color(0xFF54E6A5), label: 'Sparen'),
-                SizedBox(width: 20),
-                _Legend(color: Color(0xFFFFB547), label: 'Max. Kraft'),
               ],
             ),
-          ],
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _Header(profile: profile, telemetry: telemetry),
+                  const SizedBox(height: 14),
+                  _CurveCard(profile: profile, telemetry: telemetry),
+                  const SizedBox(height: 14),
+                  _CoachingCard(telemetry: telemetry),
+                  if (telemetry.fact case final fact?) ...[
+                    const SizedBox(height: 12),
+                    _FactCard(fact: fact),
+                  ],
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-class _Legend extends StatelessWidget {
-  const _Legend({required this.color, required this.label});
-  final Color color;
-  final String label;
+class _Header extends StatelessWidget {
+  const _Header({required this.profile, required this.telemetry});
+  final VehicleShiftProfile profile;
+  final DriveTelemetry telemetry;
+
   @override
-  Widget build(BuildContext context) => Row(
+  Widget build(BuildContext context) => Column(
     children: [
-      Container(
-        width: 14,
-        height: 14,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      Row(
+        children: [
+          const Icon(
+            Icons.auto_awesome_rounded,
+            color: Color(0xFF8CEBFF),
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'DRIVEBOT · FAHRASSISTENZ',
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: Colors.white70,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
+          _StatusPill(zone: telemetry.zone),
+        ],
       ),
-      const SizedBox(width: 6),
-      Text(
-        label,
-        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+      const SizedBox(height: 14),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: _Metric(value: '${telemetry.speedKph}', unit: 'KM/H GPS'),
+          ),
+          _Gear(gear: telemetry.gear),
+          Expanded(
+            child: _Metric(
+              value: '${telemetry.rpm}',
+              unit: 'U/MIN',
+              alignEnd: true,
+            ),
+          ),
+        ],
       ),
     ],
   );
 }
 
-class _RpmGaugePainter extends CustomPainter {
-  const _RpmGaugePainter(this.profile, this.rpm);
+class _Metric extends StatelessWidget {
+  const _Metric({
+    required this.value,
+    required this.unit,
+    this.alignEnd = false,
+  });
+  final String value;
+  final String unit;
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: alignEnd
+        ? CrossAxisAlignment.end
+        : CrossAxisAlignment.start,
+    children: [
+      Text(
+        value,
+        style: const TextStyle(
+          fontSize: 34,
+          fontWeight: FontWeight.w800,
+          height: .95,
+        ),
+      ),
+      Text(
+        unit,
+        style: const TextStyle(
+          fontSize: 11,
+          color: Colors.white60,
+          letterSpacing: 1.1,
+        ),
+      ),
+    ],
+  );
+}
+
+class _Gear extends StatelessWidget {
+  const _Gear({required this.gear});
+  final int gear;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('recommended-gear'),
+    width: 72,
+    height: 72,
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      color: Colors.white.withValues(alpha: .1),
+      border: Border.all(color: Colors.white.withValues(alpha: .25)),
+    ),
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(
+          '$gear',
+          style: const TextStyle(
+            fontSize: 34,
+            fontWeight: FontWeight.w900,
+            height: .9,
+          ),
+        ),
+        const Text(
+          'GANG',
+          style: TextStyle(
+            fontSize: 9,
+            color: Colors.white60,
+            letterSpacing: 1,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.zone});
+  final EfficiencyZone zone;
+
+  @override
+  Widget build(BuildContext context) {
+    final optimal = zone == EfficiencyZone.optimal;
+    return Container(
+      key: const Key('efficiency-status'),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: (optimal ? const Color(0xFF30F29A) : const Color(0xFFFFB84D))
+            .withValues(alpha: .18),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(
+          color: optimal ? const Color(0xFF30F29A) : const Color(0xFFFFB84D),
+        ),
+      ),
+      child: Text(
+        optimal ? 'OPTIMAL' : 'COACHING',
+        style: TextStyle(
+          color: optimal ? const Color(0xFF70FFC0) : const Color(0xFFFFCC77),
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          letterSpacing: .8,
+        ),
+      ),
+    );
+  }
+}
+
+class _CurveCard extends StatelessWidget {
+  const _CurveCard({required this.profile, required this.telemetry});
   final VehicleShiftProfile profile;
-  final int rpm;
+  final DriveTelemetry telemetry;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+    decoration: _innerGlass,
+    child: Column(
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'RADZUGKRAFT',
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.white60,
+                letterSpacing: 1,
+              ),
+            ),
+            Text(
+              '${telemetry.tractiveForceNewton} N',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
+        SizedBox(
+          key: const Key('drive-assistant-rpm-gauge'),
+          height: 120,
+          width: double.infinity,
+          child: CustomPaint(painter: _ForceCurvePainter(profile, telemetry)),
+        ),
+      ],
+    ),
+  );
+}
+
+class _CoachingCard extends StatelessWidget {
+  const _CoachingCard({required this.telemetry});
+  final DriveTelemetry telemetry;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('coaching-card'),
+    padding: const EdgeInsets.all(14),
+    decoration: _innerGlass,
+    child: Row(
+      children: [
+        Text(
+          telemetry.arrowDirection,
+          style: const TextStyle(
+            color: Color(0xFF83E9FF),
+            fontSize: 30,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                telemetry.coachingText,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const Text(
+                'Zielbereich 1.800–2.200 U/min',
+                style: TextStyle(color: Colors.white60, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _FactCard extends StatelessWidget {
+  const _FactCard({required this.fact});
+  final DriveFact fact;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('drive-fact-popup'),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: const Color(0xFF77DFFF).withValues(alpha: .12),
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: const Color(0xFF77DFFF).withValues(alpha: .45)),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Icon(Icons.lightbulb_rounded, color: Color(0xFF8CEBFF), size: 22),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                fact.title,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: .8,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                fact.message,
+                style: const TextStyle(
+                  fontSize: 14,
+                  height: 1.25,
+                  color: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+final _innerGlass = BoxDecoration(
+  color: Colors.white.withValues(alpha: .075),
+  borderRadius: BorderRadius.circular(20),
+  border: Border.all(color: Colors.white.withValues(alpha: .14)),
+);
+
+class _ForceCurvePainter extends CustomPainter {
+  const _ForceCurvePainter(this.profile, this.telemetry);
+  final VehicleShiftProfile profile;
+  final DriveTelemetry telemetry;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height * .9);
-    final radius = math.min(size.width * .42, size.height * .76);
-    const start = math.pi;
-    const sweep = math.pi;
-    final rect = Rect.fromCircle(center: center, radius: radius);
-    final base = Paint()
-      ..color = Colors.white24
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 18
-      ..strokeCap = StrokeCap.butt;
-    canvas.drawArc(rect, start, sweep, false, base);
-    void zone(int from, int to, Color color) {
-      canvas.drawArc(
-        rect,
-        start + sweep * from / profile.maximumRpm,
-        sweep * (to - from) / profile.maximumRpm,
-        false,
-        Paint()
-          ..color = color
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 18,
+    final points = profile.tractiveForceCurves[telemetry.gear]!;
+    const padding = 10.0;
+    final plot = Rect.fromLTRB(
+      padding,
+      padding,
+      size.width - padding,
+      size.height - 16,
+    );
+    final minSpeed = points.first.speedKph;
+    final maxSpeed = points.last.speedKph;
+    final maxForce = points
+        .map((point) => point.forceNewton)
+        .reduce((a, b) => a > b ? a : b);
+    Offset map(double speed, double force) => Offset(
+      plot.left + (speed - minSpeed) / (maxSpeed - minSpeed) * plot.width,
+      plot.bottom - force / maxForce * plot.height,
+    );
+
+    for (var i = 0; i < 4; i++) {
+      final y = plot.top + plot.height * i / 3;
+      canvas.drawLine(
+        Offset(plot.left, y),
+        Offset(plot.right, y),
+        Paint()..color = Colors.white.withValues(alpha: .08),
       );
     }
-
-    zone(profile.ecoRpmStart, profile.ecoRpmEnd, const Color(0xFF54E6A5));
-    zone(profile.powerRpmStart, profile.powerRpmEnd, const Color(0xFFFFB547));
-    final angle =
-        start + sweep * rpm.clamp(0, profile.maximumRpm) / profile.maximumRpm;
-    final tip =
-        center + Offset(math.cos(angle), math.sin(angle)) * (radius - 4);
-    canvas.drawLine(
-      center,
-      tip,
+    final path = Path()
+      ..moveTo(
+        map(points.first.speedKph, points.first.forceNewton).dx,
+        map(points.first.speedKph, points.first.forceNewton).dy,
+      );
+    for (final point in points.skip(1)) {
+      final mapped = map(point.speedKph, point.forceNewton);
+      path.lineTo(mapped.dx, mapped.dy);
+    }
+    canvas.drawPath(
+      path,
       Paint()
-        ..color = Colors.white
-        ..strokeWidth = 5
-        ..strokeCap = StrokeCap.round,
+        ..color = const Color(0xFF72E6FF)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
     );
-    canvas.drawCircle(center, 8, Paint()..color = Colors.white);
+    final pointer = map(
+      telemetry.speedKph.clamp(minSpeed.round(), maxSpeed.round()).toDouble(),
+      telemetry.tractiveForceNewton.toDouble(),
+    );
+    canvas.drawCircle(pointer, 9, Paint()..color = const Color(0xFF30F29A));
+    canvas.drawCircle(pointer, 4, Paint()..color = Colors.white);
   }
 
   @override
-  bool shouldRepaint(covariant _RpmGaugePainter oldDelegate) =>
-      oldDelegate.rpm != rpm || oldDelegate.profile != profile;
+  bool shouldRepaint(covariant _ForceCurvePainter oldDelegate) =>
+      oldDelegate.telemetry.speedKph != telemetry.speedKph ||
+      oldDelegate.telemetry.gear != telemetry.gear;
 }

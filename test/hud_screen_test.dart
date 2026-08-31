@@ -111,8 +111,10 @@ void main() {
 
     expect(find.byKey(const Key('drive-assistant-panel')), findsOneWidget);
     expect(find.byKey(const Key('drive-assistant-rpm-gauge')), findsOneWidget);
-    expect(find.text('GANG 6'), findsOneWidget);
-    expect(find.text('84 km/h · GPS'), findsOneWidget);
+    expect(find.byKey(const Key('recommended-gear')), findsOneWidget);
+    expect(find.text('84'), findsOneWidget);
+    expect(find.text('KM/H GPS'), findsOneWidget);
+    expect(find.byKey(const Key('coaching-card')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('drive-assistant-toggle')));
     await tester.pump();
