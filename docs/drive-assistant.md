@@ -1,6 +1,6 @@
 # Drive Assistant
 
-Der optionale Drive-Assistant-Modus leitet aus der bereits vorhandenen GPS-Geschwindigkeit eine Schaltempfehlung ab. Der Fahrer schaltet die Ansicht über das Tachometer-Symbol im HUD ein und aus.
+Der Drive-Assistant-Modus leitet aus der bereits vorhandenen GPS-Geschwindigkeit eine Schaltempfehlung ab und ist die Startansicht der App. Kamera und AR bleiben dabei deaktiviert. Erst wenn der Fahrer über die Navigation bewusst zum HUD wechselt, werden die visuellen Sensoren gestartet.
 
 ## Architektur
 

@@ -26,7 +26,8 @@ typedef CompassStreamLoader = Stream<CompassEvent>? Function();
 typedef MotionStreamLoader = Stream<AccelerometerEvent> Function();
 typedef CameraDescriptionsLoader = Future<List<CameraDescription>> Function();
 
-class IosLocationRuntime implements LocationRepository, PermissionRepository {
+class IosLocationRuntime
+    implements LocationRepository, VisualSensorPermissionRepository {
   IosLocationRuntime({
     LocationRepository? mockLocationRepository,
     this.isLocationServiceEnabled = Geolocator.isLocationServiceEnabled,
@@ -37,6 +38,7 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
     this.getCompassStream = _defaultGetCompassStream,
     this.getMotionStream = _defaultGetMotionStream,
     this.loadCameraDescriptions = availableCameras,
+    this.startVisualSensorsOnInitialization = false,
   }) : _mockLocationRepository =
            mockLocationRepository ?? MockLocationRepository() {
     _initialize();
@@ -51,6 +53,7 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
   final CompassStreamLoader getCompassStream;
   final MotionStreamLoader getMotionStream;
   final CameraDescriptionsLoader loadCameraDescriptions;
+  final bool startVisualSensorsOnInitialization;
 
   final ValueNotifier<LocationStatus> _locationStatus = ValueNotifier(
     const LocationStatus(
@@ -77,6 +80,7 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
   StreamSubscription<Position>? _positionSubscription;
   StreamSubscription<CompassEvent>? _compassSubscription;
   StreamSubscription<AccelerometerEvent>? _motionSubscription;
+  bool _visualSensorsEnabled = false;
   Position? _lastPosition;
   int? _lastCompassHeading;
   double? _smoothedPitchDegrees;
@@ -95,7 +99,9 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
       _motionStatus;
 
   Future<void> _initialize() async {
-    await _initializeCameraAndMotionState();
+    if (startVisualSensorsOnInitialization) {
+      await enableVisualSensors();
+    }
 
     final serviceEnabled = await _safeLocationServiceEnabled();
     if (!serviceEnabled) {
@@ -121,7 +127,10 @@ class IosLocationRuntime implements LocationRepository, PermissionRepository {
     _subscribeToPositions();
   }
 
-  Future<void> _initializeCameraAndMotionState() async {
+  @override
+  Future<void> enableVisualSensors() async {
+    if (_visualSensorsEnabled) return;
+    _visualSensorsEnabled = true;
     final cameraPermission = await _requestCameraPermission();
     _permissionStatus.value = _permissionStatus.value.copyWith(
       camera: cameraPermission,

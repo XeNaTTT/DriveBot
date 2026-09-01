@@ -32,6 +32,31 @@ void main() {
     expect(IosLocationRuntime.fixFromAccuracy(120), GpsFixStatus.unavailable);
   });
 
+  test('visual sensors stay disabled until explicitly enabled', () async {
+    var cameraLoads = 0;
+    var motionSubscriptions = 0;
+    final runtime = IosLocationRuntime(
+      isLocationServiceEnabled: () async => false,
+      getMotionStream: () {
+        motionSubscriptions++;
+        return const Stream<AccelerometerEvent>.empty();
+      },
+      loadCameraDescriptions: () async {
+        cameraLoads++;
+        return const [];
+      },
+    );
+
+    await _settleAsync();
+    expect(cameraLoads, 0);
+    expect(motionSubscriptions, 0);
+
+    await runtime.enableVisualSensors();
+    expect(cameraLoads, 1);
+    expect(motionSubscriptions, 1);
+    runtime.dispose();
+  });
+
   test('real speed and compass heading become live sensor mode', () {
     final status = IosLocationRuntime.mapPositionToLocationStatus(
       position: _position(speed: 20, heading: 270, accuracy: 8),
