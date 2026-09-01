@@ -114,6 +114,7 @@ class _DriveAssistantAppState extends State<DriveAssistantApp> {
           permissionRepository: permissionRepository,
           accountEntryPoint: AccountEntryButton(controller: controller),
           reportController: _reportController,
+          initialDriveAssistantEnabled: true,
         ),
       ),
     );

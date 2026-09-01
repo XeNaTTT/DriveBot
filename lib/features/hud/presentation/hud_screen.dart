@@ -49,6 +49,7 @@ class HudScreen extends StatefulWidget {
     this.arRuntimeService,
     this.accountEntryPoint,
     this.reportController,
+    this.initialDriveAssistantEnabled = false,
     super.key,
   });
 
@@ -61,6 +62,7 @@ class HudScreen extends StatefulWidget {
   final ArRuntimeService? arRuntimeService;
   final Widget? accountEntryPoint;
   final SpeedCameraReportController? reportController;
+  final bool initialDriveAssistantEnabled;
 
   @override
   State<HudScreen> createState() => _HudScreenState();
@@ -88,11 +90,12 @@ class _HudScreenState extends State<HudScreen> {
   double? _lastRecalibrationAgeSeconds;
   Map<String, ArWorldAnchorState> _nativeAnchorStatesById = const {};
   bool _isSyncingWorldAnchors = false;
-  bool _driveAssistantEnabled = false;
+  late bool _driveAssistantEnabled;
 
   @override
   void initState() {
     super.initState();
+    _driveAssistantEnabled = widget.initialDriveAssistantEnabled;
     _arRuntimeService = widget.arRuntimeService ?? IosArKitRuntimeService();
     _categoryController.addListener(_handleCategoryFilterChanged);
     widget.reportController?.addListener(_handleReportControllerChanged);
@@ -217,6 +220,18 @@ class _HudScreenState extends State<HudScreen> {
     );
   }
 
+  Future<void> _selectNavigation(String id) async {
+    final showDriveAssistant = id == 'assistant';
+    if (!showDriveAssistant &&
+        widget.permissionRepository is VisualSensorPermissionRepository) {
+      await (widget.permissionRepository as VisualSensorPermissionRepository)
+          .enableVisualSensors();
+    }
+    if (mounted) {
+      setState(() => _driveAssistantEnabled = showDriveAssistant);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final allWarnings = [...widget.hudRepository.getNearbyWarnings()];
@@ -262,7 +277,7 @@ class _HudScreenState extends State<HudScreen> {
               projectionResult.lastRecalibrationAgeSeconds;
           _previousMarkersById = projectionResult.projectedMarkers;
           _previousDeclutterState = projectionResult.declutterState;
-          _syncWorldAnchors(projectionResult);
+          if (!_driveAssistantEnabled) _syncWorldAnchors(projectionResult);
           _collapseMissingSelection(markers.map((m) => m.infoObject.id));
           final selectedObject = _selectedObject(infoObjects);
           final primary =
@@ -283,7 +298,13 @@ class _HudScreenState extends State<HudScreen> {
           return Scaffold(
             body: Stack(
               children: [
-                _buildCameraLayer(permissions),
+                if (_driveAssistantEnabled)
+                  const ColoredBox(
+                    key: Key('drive-assistant-background'),
+                    color: Color(0xFF081018),
+                  )
+                else
+                  _buildCameraLayer(permissions),
                 if (selectedObject != null)
                   Positioned.fill(
                     child: GestureDetector(
@@ -478,9 +499,7 @@ class _HudScreenState extends State<HudScreen> {
                         selectedId: _driveAssistantEnabled
                             ? 'assistant'
                             : 'hud',
-                        onSelected: (id) => setState(
-                          () => _driveAssistantEnabled = id == 'assistant',
-                        ),
+                        onSelected: _selectNavigation,
                       ),
                     ),
                   ),

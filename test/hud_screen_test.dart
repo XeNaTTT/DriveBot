@@ -25,6 +25,7 @@ void main() {
     Size size = const Size(390, 844),
     double textScaleFactor = 1,
     CameraLayerBuilder? cameraLayerBuilder,
+    bool startInDriveAssistant = false,
   }) => MediaQuery(
     data: MediaQueryData(
       size: size,
@@ -44,6 +45,7 @@ void main() {
           ),
         ),
         cameraLayerBuilder: cameraLayerBuilder,
+        initialDriveAssistantEnabled: startInDriveAssistant,
       ),
     ),
   );
@@ -100,16 +102,24 @@ void main() {
     expect(find.textContaining('Modus'), findsOneWidget);
   });
 
-  testWidgets('Drive Assistant can be toggled and shows gear guidance', (
+  testWidgets('Drive Assistant opens by default without camera or AR', (
     tester,
   ) async {
-    await tester.pumpWidget(buildHud(warnings: _sampleWarnings));
-
-    expect(find.byKey(const Key('drive-assistant-panel')), findsNothing);
-    await tester.tap(find.byKey(const Key('floating-navigation-assistant')));
-    await tester.pump();
+    var cameraBuilds = 0;
+    await tester.pumpWidget(
+      buildHud(
+        warnings: _sampleWarnings,
+        cameraLayerBuilder: (_) {
+          cameraBuilds++;
+          return const SizedBox();
+        },
+        startInDriveAssistant: true,
+      ),
+    );
 
     expect(find.byKey(const Key('drive-assistant-panel')), findsOneWidget);
+    expect(find.byKey(const Key('drive-assistant-background')), findsOneWidget);
+    expect(cameraBuilds, 0);
     expect(find.byKey(const Key('drive-assistant-rpm-gauge')), findsOneWidget);
     expect(find.byKey(const Key('efficiency-zone-legend')), findsOneWidget);
     expect(find.text('ECO-ZIEL'), findsOneWidget);
@@ -122,6 +132,7 @@ void main() {
     await tester.tap(find.byKey(const Key('floating-navigation-hud')));
     await tester.pump();
     expect(find.byKey(const Key('drive-assistant-panel')), findsNothing);
+    expect(cameraBuilds, 1);
   });
 
   testWidgets('filter button renders with German semantics', (tester) async {
@@ -385,6 +396,7 @@ Widget _buildHudWithRepository({
       ),
     ),
     cameraLayerBuilder: cameraLayerBuilder,
+    initialDriveAssistantEnabled: false,
   ),
 );
 
