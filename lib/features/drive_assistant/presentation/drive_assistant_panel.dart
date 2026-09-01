@@ -260,7 +260,15 @@ class _CurveCard extends StatelessWidget {
           key: const Key('drive-assistant-rpm-gauge'),
           height: 120,
           width: double.infinity,
-          child: CustomPaint(painter: _ForceCurvePainter(profile, telemetry)),
+          child: Semantics(
+            label: 'Radzugkraft-Diagramm mit Newton-Skala links',
+            image: true,
+            child: ExcludeSemantics(
+              child: CustomPaint(
+                painter: _ForceCurvePainter(profile, telemetry),
+              ),
+            ),
+          ),
         ),
         const Padding(
           padding: EdgeInsets.fromLTRB(4, 2, 4, 2),
@@ -414,18 +422,19 @@ class _ForceCurvePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final points = profile.tractiveForceCurves[telemetry.gear]!;
-    const padding = 10.0;
+    const scaleWidth = 38.0;
     final plot = Rect.fromLTRB(
-      padding,
-      padding,
-      size.width - padding,
-      size.height - 16,
+      scaleWidth,
+      12,
+      size.width - 8,
+      size.height - 14,
     );
     final minSpeed = points.first.speedKph;
     final maxSpeed = points.last.speedKph;
-    final maxForce = points
+    final curveMaximum = points
         .map((point) => point.forceNewton)
         .reduce((a, b) => a > b ? a : b);
+    final maxForce = (curveMaximum / 1000).ceil() * 1000.0;
     Offset map(double speed, double force) => Offset(
       plot.left + (speed - minSpeed) / (maxSpeed - minSpeed) * plot.width,
       plot.bottom - force / maxForce * plot.height,
@@ -441,6 +450,20 @@ class _ForceCurvePainter extends CustomPainter {
     );
     final ecoLeft = map(ecoStartSpeed.clamp(minSpeed, maxSpeed), 0).dx;
     final ecoRight = map(ecoEndSpeed.clamp(minSpeed, maxSpeed), 0).dx;
+    final chartBackground = RRect.fromRectAndRadius(
+      plot,
+      const Radius.circular(10),
+    );
+    canvas.drawRRect(
+      chartBackground,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0x2430F29A), Color(0x08FFFFFF)],
+        ).createShader(plot),
+    );
+
     if (ecoRight > ecoLeft) {
       final ecoBand = RRect.fromRectAndRadius(
         Rect.fromLTRB(ecoLeft, plot.top, ecoRight, plot.bottom),
@@ -462,23 +485,39 @@ class _ForceCurvePainter extends CustomPainter {
       );
     }
 
-    for (var i = 0; i < 4; i++) {
-      final y = plot.top + plot.height * i / 3;
+    for (var i = 0; i <= 4; i++) {
+      final y = plot.top + plot.height * i / 4;
       canvas.drawLine(
         Offset(plot.left, y),
         Offset(plot.right, y),
         Paint()..color = Colors.white.withValues(alpha: .08),
       );
-    }
-    final path = Path()
-      ..moveTo(
-        map(points.first.speedKph, points.first.forceNewton).dx,
-        map(points.first.speedKph, points.first.forceNewton).dy,
+      _paintScaleLabel(
+        canvas,
+        value: maxForce * (4 - i) / 4,
+        y: y,
+        right: plot.left - 7,
       );
-    for (final point in points.skip(1)) {
-      final mapped = map(point.speedKph, point.forceNewton);
-      path.lineTo(mapped.dx, mapped.dy);
     }
+    _paintUnitLabel(canvas, right: plot.left - 7, top: 0);
+
+    final mappedPoints = points
+        .map((point) => map(point.speedKph, point.forceNewton))
+        .toList(growable: false);
+    final path = _smoothPath(mappedPoints);
+    final fillPath = Path.from(path)
+      ..lineTo(mappedPoints.last.dx, plot.bottom)
+      ..lineTo(mappedPoints.first.dx, plot.bottom)
+      ..close();
+    canvas.drawPath(
+      fillPath,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0x66FFB84D), Color(0x08FFB84D)],
+        ).createShader(plot),
+    );
     canvas.drawPath(
       path,
       Paint()
@@ -491,6 +530,15 @@ class _ForceCurvePainter extends CustomPainter {
     if (ecoRight > ecoLeft) {
       canvas.save();
       canvas.clipRect(Rect.fromLTRB(ecoLeft, plot.top, ecoRight, plot.bottom));
+      canvas.drawPath(
+        fillPath,
+        Paint()
+          ..shader = const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0x7730F29A), Color(0x0A30F29A)],
+          ).createShader(plot),
+      );
       canvas.drawPath(
         path,
         Paint()
@@ -508,6 +556,62 @@ class _ForceCurvePainter extends CustomPainter {
     );
     canvas.drawCircle(pointer, 9, Paint()..color = const Color(0xFF30F29A));
     canvas.drawCircle(pointer, 4, Paint()..color = Colors.white);
+  }
+
+  Path _smoothPath(List<Offset> points) {
+    final path = Path()..moveTo(points.first.dx, points.first.dy);
+    for (var i = 0; i < points.length - 1; i++) {
+      final current = points[i];
+      final next = points[i + 1];
+      final midpointX = (current.dx + next.dx) / 2;
+      path.cubicTo(midpointX, current.dy, midpointX, next.dy, next.dx, next.dy);
+    }
+    return path;
+  }
+
+  void _paintScaleLabel(
+    Canvas canvas, {
+    required double value,
+    required double y,
+    required double right,
+  }) {
+    final label = value >= 1000
+        ? '${(value / 1000).toStringAsFixed(value % 1000 == 0 ? 0 : 1)}k'
+        : value.toStringAsFixed(0);
+    final painter = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: const TextStyle(
+          color: Color(0xB3FFFFFF),
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    painter.paint(
+      canvas,
+      Offset(right - painter.width, y - painter.height / 2),
+    );
+  }
+
+  void _paintUnitLabel(
+    Canvas canvas, {
+    required double right,
+    required double top,
+  }) {
+    final painter = TextPainter(
+      text: const TextSpan(
+        text: 'N',
+        style: TextStyle(
+          color: Color(0x99FFFFFF),
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    painter.paint(canvas, Offset(right - painter.width, top));
   }
 
   @override
