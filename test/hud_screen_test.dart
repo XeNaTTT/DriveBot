@@ -111,6 +111,10 @@ void main() {
 
     expect(find.byKey(const Key('drive-assistant-panel')), findsOneWidget);
     expect(find.byKey(const Key('drive-assistant-rpm-gauge')), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('Radzugkraft-Diagramm mit Newton-Skala links'),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('efficiency-zone-legend')), findsOneWidget);
     expect(find.text('ECO-ZIEL'), findsOneWidget);
     expect(find.text('AUSSERHALB'), findsOneWidget);

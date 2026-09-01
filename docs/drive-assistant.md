@@ -6,7 +6,7 @@ Der optionale Drive-Assistant-Modus leitet aus der bereits vorhandenen GPS-Gesch
 
 - `VehicleShiftProfile` hält fahrzeugspezifische, UI-unabhängige Übersetzungen, Drehzahlwerte und Zugkraft-Kurven. Im MVP ist ausschließlich der **Citroën Jumper, Baujahr 2020, 6-Gang-Diesel** vorkonfiguriert.
 - `ShiftAdvisor` bestimmt ohne Gangsignal einen effizienten Gang. `DriveTelemetryCalculator` berechnet für einen übermittelten oder geschätzten Gang Drehzahl, linear interpolierte Radzugkraft, Effizienzzone, Coaching und kontextbezogene Fakten.
-- `DriveAssistantPanel` zeichnet den Live-Zeiger auf der aktiven Zugkraftkurve und priorisiert Geschwindigkeit, Gang, Drehzahl und eine einzige Handlungsaufforderung. Das grün hinterlegte Kurvenband wird aus Übersetzung und Eco-Drehzahlbereich für den aktiven Gang berechnet; orange Kurvenabschnitte liegen außerhalb des verbrauchsarmen Zielbereichs. Die halbtransparente, weichgezeichnete Oberfläche bildet Apples Liquid-Glass-Anmutung mit Flutter-Primitiven plattformübergreifend nach.
+- `DriveAssistantPanel` zeichnet den Live-Zeiger auf der aktiven Zugkraftkurve und priorisiert Geschwindigkeit, Gang, Drehzahl und eine einzige Handlungsaufforderung. Eine links abgetragene Newton-Skala und horizontale Hilfslinien machen die Zugkraft direkt ablesbar. Die geglättete Kurve erhält eine farbige Verlaufsfläche: Das grün hinterlegte Kurvenband wird aus Übersetzung und Eco-Drehzahlbereich für den aktiven Gang berechnet; orange Kurvenabschnitte liegen außerhalb des verbrauchsarmen Zielbereichs. Die halbtransparente, weichgezeichnete Oberfläche bildet Apples Liquid-Glass-Anmutung mit Flutter-Primitiven plattformübergreifend nach.
 
 ## Effizienz- und Hinweislogik
 
