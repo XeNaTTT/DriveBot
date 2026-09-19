@@ -24,7 +24,15 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(theme: buildAppTheme(), home: const ArRacingScreen()),
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: ArRacingScreen(
+          backgroundBuilder: (_) => const ColoredBox(
+            key: Key('injected-ar-camera'),
+            color: Colors.black,
+          ),
+        ),
+      ),
     );
 
     expect(find.byKey(const Key('ar-racing-garage')), findsOneWidget);
@@ -40,7 +48,7 @@ void main() {
     await tester.tap(find.byKey(const Key('start-ar-race')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('ar-race-view')), findsOneWidget);
-    expect(find.text('LIDAR  •  LIVE'), findsOneWidget);
+    expect(find.byKey(const Key('injected-ar-camera')), findsOneWidget);
     expect(find.byKey(const Key('racing-caravan-3d')), findsOneWidget);
     expect(find.byKey(const Key('fleeing-caravan')), findsOneWidget);
 

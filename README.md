@@ -13,15 +13,17 @@ and increase its visible damage value.
   `MotionSteeringService`; widget tests use the mock implementation.
 - `features/ar_racing/presentation` contains the garage, model selection and AR
   race composition. A rear three-quarter vehicle view shrinks and travels toward
-  the room's vanishing point as it accelerates. The current room mesh is a
-  high-contrast mock visualization.
+  the room's vanishing point as it accelerates. The race now uses ARKit world
+  tracking on supported iOS hardware and a live rear-camera view on other
+  devices, with a high-contrast fallback when no camera is available.
 - Authentication remains optional and wraps the game through `AuthGate`.
 
-The MVP uses real gyroscope input on iOS and Android. LiDAR room meshing,
-physics-based mesh collisions and persistent vehicle deformation are currently
-represented by deterministic mock visuals and collision controls. A production
-adapter can implement the platform AR mesh API without leaking native details
-into presentation code.
+The MVP uses real gyroscope input on iOS and Android. ARKit supplies camera
+tracking on supported iOS devices; Android currently uses the live camera rather
+than world anchors. LiDAR room meshing, physics-based mesh collisions and
+persistent vehicle deformation remain represented by deterministic collision
+controls. A production mesh adapter can implement those capabilities without
+leaking native details into presentation code.
 
 ## Run
 
