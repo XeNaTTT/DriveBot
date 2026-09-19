@@ -141,7 +141,13 @@ final class ArKitView: NSObject, FlutterPlatformView, ARSessionDelegate {
 
     let configuration = ARWorldTrackingConfiguration()
     configuration.worldAlignment = .gravityAndHeading
-    configuration.planeDetection = []
+    configuration.planeDetection = [.horizontal, .vertical]
+    if #available(iOS 13.4, *), ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification) {
+      configuration.sceneReconstruction = .meshWithClassification
+      sceneView.debugOptions.insert(.showSceneUnderstanding)
+    } else {
+      sceneView.debugOptions.remove(.showSceneUnderstanding)
+    }
     sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
     anchorsById.removeAll()
     sessionOrigin = nil

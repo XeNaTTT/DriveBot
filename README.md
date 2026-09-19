@@ -18,12 +18,13 @@ and increase its visible damage value.
   devices, with a high-contrast fallback when no camera is available.
 - Authentication remains optional and wraps the game through `AuthGate`.
 
-The MVP uses real gyroscope input on iOS and Android. ARKit supplies camera
-tracking on supported iOS devices; Android currently uses the live camera rather
-than world anchors. LiDAR room meshing, physics-based mesh collisions and
-persistent vehicle deformation remain represented by deterministic collision
-controls. A production mesh adapter can implement those capabilities without
-leaking native details into presentation code.
+The race uses real accelerometer tilt input on iOS and Android and integrates it
+into the caravan's lateral track position. Large hold-to-drive brake and gas
+pedals control speed independently. On supported iOS devices ARKit enables
+classified scene reconstruction and displays the detected room mesh; devices
+without scene-reconstruction support still use plane detection and the live
+camera fallback. Physics-based mesh collisions and persistent vehicle
+deformation remain represented by deterministic collision controls.
 
 ## Run
 
@@ -34,5 +35,5 @@ flutter test
 flutter run
 ```
 
-Use a physical iOS or Android device for motion sensors. LiDAR support requires
-a compatible device and a future native room-mesh adapter.
+Use a physical iOS or Android device for motion sensors. Detailed classified
+room meshes require a scene-reconstruction-capable iOS device (typically LiDAR).

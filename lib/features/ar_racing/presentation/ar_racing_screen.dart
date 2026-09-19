@@ -33,6 +33,8 @@ class _ArRacingScreenState extends State<ArRacingScreen> {
   RaceSession _session = const RaceSession();
   StreamSubscription<double>? _motionSubscription;
   Timer? _driveTimer;
+  bool _accelerating = false;
+  bool _braking = false;
 
   CaravanModel get _model => caravanModels[_selected];
 
@@ -51,14 +53,24 @@ class _ArRacingScreenState extends State<ArRacingScreen> {
     _motionSubscription = widget.motionService.steering.listen((value) {
       if (mounted) setState(() => _session = _session.steer(value));
     });
-    _driveTimer = Timer.periodic(const Duration(milliseconds: 850), (_) {
-      if (mounted) setState(() => _session = _session.accelerate());
+    _driveTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      if (mounted) {
+        setState(
+          () => _session = _session.drive(
+            elapsedSeconds: .05,
+            accelerating: _accelerating,
+            braking: _braking,
+          ),
+        );
+      }
     });
   }
 
   void _finishRace() {
     _motionSubscription?.cancel();
     _driveTimer?.cancel();
+    _accelerating = false;
+    _braking = false;
     setState(() => _racing = false);
   }
 
@@ -73,6 +85,8 @@ class _ArRacingScreenState extends State<ArRacingScreen> {
               onImpact: () =>
                   setState(() => _session = _session.collide(impact: .8)),
               onClose: _finishRace,
+              onAcceleratingChanged: (value) => _accelerating = value,
+              onBrakingChanged: (value) => _braking = value,
               backgroundBuilder: widget.backgroundBuilder,
             )
           : _GarageView(
@@ -425,12 +439,16 @@ class _RaceView extends StatelessWidget {
     required this.session,
     required this.onImpact,
     required this.onClose,
+    required this.onAcceleratingChanged,
+    required this.onBrakingChanged,
     this.backgroundBuilder,
   });
   final CaravanModel model;
   final RaceSession session;
   final VoidCallback onImpact;
   final VoidCallback onClose;
+  final ValueChanged<bool> onAcceleratingChanged;
+  final ValueChanged<bool> onBrakingChanged;
   final ArRaceBackgroundBuilder? backgroundBuilder;
   @override
   Widget build(BuildContext context) => Stack(
@@ -450,7 +468,7 @@ class _RaceView extends StatelessWidget {
                 curve: Curves.easeInCubic,
                 left:
                     (constraints.maxWidth - (190 * scale)) / 2 +
-                    (session.steering * 38),
+                    (session.lateralPosition * constraints.maxWidth * .32),
                 bottom: 190 + travel,
                 width: 190 * scale,
                 height: 132 * scale,
@@ -545,6 +563,26 @@ class _RaceView extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 10),
+              Row(
+                children: [
+                  _PedalControl(
+                    key: const Key('brake-pedal'),
+                    label: 'BREMSE',
+                    icon: Icons.stop_rounded,
+                    color: const Color(0xFFFF5A36),
+                    onPressedChanged: onBrakingChanged,
+                  ),
+                  const Spacer(),
+                  _PedalControl(
+                    key: const Key('gas-pedal'),
+                    label: 'GAS',
+                    icon: Icons.speed_rounded,
+                    color: model.accent,
+                    onPressedChanged: onAcceleratingChanged,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
                 height: 50,
@@ -567,5 +605,69 @@ class _RaceView extends StatelessWidget {
         ),
       ),
     ],
+  );
+}
+
+class _PedalControl extends StatefulWidget {
+  const _PedalControl({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onPressedChanged,
+    super.key,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final ValueChanged<bool> onPressedChanged;
+
+  @override
+  State<_PedalControl> createState() => _PedalControlState();
+}
+
+class _PedalControlState extends State<_PedalControl> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+    widget.onPressedChanged(value);
+  }
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    label: widget.label,
+    child: Listener(
+      onPointerDown: (_) => _setPressed(true),
+      onPointerUp: (_) => _setPressed(false),
+      onPointerCancel: (_) => _setPressed(false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 90),
+        width: 108,
+        height: 72,
+        decoration: BoxDecoration(
+          color: _pressed ? widget.color : Colors.black.withValues(alpha: .72),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: widget.color, width: 2),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(widget.icon, color: _pressed ? Colors.black : widget.color),
+            const SizedBox(height: 3),
+            Text(
+              widget.label,
+              style: TextStyle(
+                color: _pressed ? Colors.black : Colors.white,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
   );
 }
