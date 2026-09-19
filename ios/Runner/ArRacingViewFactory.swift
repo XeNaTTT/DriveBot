@@ -11,6 +11,10 @@ final class ArRacingViewFactory: NSObject, FlutterPlatformViewFactory {
     viewIdentifier viewId: Int64,
     arguments args: Any?
   ) -> FlutterPlatformView {
-    ArRacingView(frame: frame, viewIdentifier: viewId)
+    let parameters = args as? [String: Any]
+    return ArRacingView(
+      frame: frame,
+      viewIdentifier: viewId,
+      vehicleID: parameters?["vehicleID"] as? String ?? "compact")
   }
 }

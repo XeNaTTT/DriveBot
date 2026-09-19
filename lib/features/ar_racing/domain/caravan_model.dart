@@ -25,9 +25,9 @@ class CaravanModel {
 
 const caravanModels = <CaravanModel>[
   CaravanModel(
-    id: 'comet',
-    name: 'COMET 350',
-    subtitle: 'Agil & schnell',
+    id: 'sport',
+    name: 'SPRINT SPORT',
+    subtitle: 'Direkte Lenkung & kräftiger Antrieb',
     color: Color(0xFFD8DDD8),
     accent: Color(0xFFFF5A36),
     speed: 92,
@@ -35,9 +35,9 @@ const caravanModels = <CaravanModel>[
     durability: 58,
   ),
   CaravanModel(
-    id: 'terra',
-    name: 'TERRA X',
-    subtitle: 'Geländetauglich',
+    id: 'offroad',
+    name: 'TRAIL OFFROAD',
+    subtitle: 'Mehr Bodenfreiheit & Federweg',
     color: Color(0xFFCFD3C8),
     accent: Color(0xFFD8FF3E),
     speed: 74,
@@ -45,9 +45,9 @@ const caravanModels = <CaravanModel>[
     durability: 94,
   ),
   CaravanModel(
-    id: 'neon',
-    name: 'NEON 520',
-    subtitle: 'Perfekt ausbalanciert',
+    id: 'compact',
+    name: 'CITY COMPACT',
+    subtitle: 'Gutmütig & kontrollierbar',
     color: Color(0xFFD7DBE2),
     accent: Color(0xFF8A6CFF),
     speed: 84,

@@ -15,8 +15,10 @@ cross a Flutter channel.
   are converted from anchor-local coordinates to AR world coordinates. Changes
   are coalesced for 350 ms, keyed by anchor UUID, and removals delete both the
   pending update and the Jolt body.
-- A tap uses an existing-plane-geometry AR raycast. It places a simple,
-  license-free 30 cm RC car composed of a body and four wheel entities.
+- The centre reticle uses an `existingPlaneGeometry` raycast on every display
+  update. A tap is accepted only while that exact hit is valid. Placement moves
+  through `aiming -> placing -> building -> ready`; repeated taps cannot enter
+  the transaction again.
 - `DriveBotJolt` is an Objective-C++ boundary around Jolt Physics **v5.6.0**, at
   commit `e77f175595e64cb44218cc9d9d56fc365ad0e36a`. The pod installation verifies
   that commit. It uses Jolt's `VehicleConstraint`, four ray/cast wheel contacts,
@@ -28,10 +30,11 @@ cross a Flutter channel.
 ## Scale and configuration
 
 All values use SI units and the ARKit coordinate system: one AR unit is one
-metre. The test car is 0.30 m long, 0.15 m wide, has 0.025 m radius wheels and
-1.8 kg mass. Its HUD reports actual metres per second from Jolt linear velocity;
+metre. The cars are approximately 0.30 m long and have 0.025 m radius wheels.
+Sport, off-road and compact profiles vary mass, engine torque, steering and
+suspension inside the native physics boundary. The HUD reports actual metres per second from Jolt linear velocity;
 it does not apply a full-size-car multiplier. Vehicle shape, wheel positions,
-suspension, mass and drive values are centralized in `DBJoltWorld.reset` so a
+suspension, mass and drive values are centralized in `DBJoltWorld.prepareVehicle` so a
 future USDZ presentation can be swapped without changing physics ownership.
 
 An Object Capture USDZ still requires an explicit preparation record (model
@@ -45,7 +48,50 @@ Limited/interrupted tracking and app resignation release all inputs and pause
 Jolt. Interruption recovery resets the AR origin, environment colliders and car
 instead of mixing coordinate systems. Throttle/brake controls handle touch exit
 and cancellation independently, so steering and throttle support multitouch.
-The debug control is off by default; no room wireframe is permanently shown.
+The scan overlay starts visible, is hidden for driving and remains independently
+toggleable without adding colliders. Speed and pedals only exist in the ready
+state; scan instructions only exist before it. Motion steering is the default,
+and the legacy touch steering pad remains hidden.
+
+## Placement diagnostics and crash status
+
+No symbolicated device crash report was available in this repository and the
+Linux build host cannot run ARKit/Jolt on an iPhone. Therefore no Swift trap,
+Objective-C exception, C++ assertion or invalid access is claimed as the proven
+cause. The old boundary did, however, call `Create().Get()`, use a body lock and
+start the first step without checking shape creation, body allocation or lock
+success.
+
+The replacement is transactional: it rejects non-finite transforms, checks
+shape/body/lock creation, keeps the vehicle paused until all constraints and
+visible entities exist, and removes partial resources on every error. All world
+mutation and stepping is dispatched on the main thread. Unified logging under
+subsystem `de.drivebot`, category `ARPlacement`, records begin, rejection,
+native failure, stale generation and ready stages. A symbolicated `.ips` report
+and the matching `ARPlacement` device log are still required to identify the
+original exception class and failing frame conclusively.
+
+## Scan rendering
+
+On LiDAR devices RealityKit's `showSceneUnderstanding` renderer displays the
+session's real reconstructed mesh. Confirmed plane anchors get a subtle teal
+surface and the valid centre raycast gets a teal marker. These entities have no
+RealityKit physics components; collision remains exclusively in Jolt. Mesh
+collider conversion is coalesced for 350 ms. The scan is hidden after successful
+placement and can be restored with **Scan anzeigen**. Without scene
+reconstruction the UI explicitly reports limited plane-only mode; it never
+invents a completion percentage.
+
+## Bundled model limitation
+
+The repository does **not** yet contain the Kenney Car Kit archive or three
+converted USDZ assets. The official host rejected downloads from this build
+environment, so fabricating filenames, relabelling glTF files, or claiming that
+materials and hierarchies were inspected would be misleading. Three distinct
+native appearances and physics profiles are selectable and work offline, but
+the garage art is not a render of imported Kenney geometry. Importing and
+device-checking the official CC0 models (wheel pivots, materials, axes and
+scale) remains an explicit acceptance blocker.
 
 ## Device acceptance test
 
