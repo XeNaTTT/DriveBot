@@ -1,5 +1,5 @@
 name: driveassistant_ar
-description: "DriveAssistant AR - AR-inspired driving safety HUD foundation with mock data."
+description: "Room Rally - an AR caravan racing game controlled by motion."
 publish_to: 'none'
 version: 1.1.1+1
 
