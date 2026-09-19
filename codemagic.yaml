@@ -84,6 +84,12 @@ workflows:
       - name: Install CocoaPods dependencies
         script: |
           set -e
+          JOLT_DIR=ios/DriveBotJolt/Vendor/Jolt
+          if [ ! -f "$JOLT_DIR/Jolt/Jolt.h" ]; then
+            rm -rf "$JOLT_DIR"
+            git clone --depth 1 --branch v5.6.0 https://github.com/jrouwe/JoltPhysics.git "$JOLT_DIR"
+          fi
+          test "$(git -C "$JOLT_DIR" rev-parse HEAD)" = "e77f175595e64cb44218cc9d9d56fc365ad0e36a"
           cd ios
           pod install
           cd ..

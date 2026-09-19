@@ -25,3 +25,5 @@ android/app/src/main/java/io/flutter/plugins/
 *.dSYM
 
 node_modules/
+# Reproducibly fetched by the local DriveBotJolt pod / Codemagic.
+ios/DriveBotJolt/Vendor/
