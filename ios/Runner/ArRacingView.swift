@@ -408,11 +408,32 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       }
       var indices: [UInt32] = []
       indices.reserveCapacity(geometry.faces.count * 3)
-      for f in 0..<geometry.faces.count {
+      let faces: ARGeometryElement = geometry.faces
+      let indicesPerFace: Int = faces.indexCountPerPrimitive
+      guard faces.primitiveType == .triangle, indicesPerFace == 3,
+        let indicesPerFace32 = UInt32(exactly: indicesPerFace),
+        let vertexCount32 = UInt32(exactly: geometry.vertices.count)
+      else { return }
+
+      for faceIndex in 0..<faces.count {
         // Plane anchors already provide the floor collider. Classification is
         // optional, so an absent/unknown value must not discard valid geometry.
-        if geometry.classification(at: f) == .floor { continue }
-        for j in 0..<3 { indices.append(geometry.faces.index(of: f, j: j)) }
+        if geometry.classification(at: faceIndex) == .floor { continue }
+        guard let faceIndex32 = UInt32(exactly: faceIndex) else { continue }
+
+        var triangleIndices: [UInt32] = []
+        triangleIndices.reserveCapacity(indicesPerFace)
+        for cornerIndex in UInt32(0)..<indicesPerFace32 {
+          guard let vertexIndex = geometry.vertexIndex(
+            of: faceIndex32, corner: cornerIndex),
+            vertexIndex < vertexCount32
+          else {
+            triangleIndices.removeAll()
+            break
+          }
+          triangleIndices.append(vertexIndex)
+        }
+        indices.append(contentsOf: triangleIndices)
       }
       self?.replaceCollider(id: id, vertices: vertices, indices: indices)
     }
@@ -438,12 +459,29 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     let p = vertices.buffer.contents().advanced(by: vertices.offset + i * vertices.stride)
     return p.assumingMemoryBound(to: SIMD3<Float>.self).pointee
   }
-  fileprivate func index(of face: Int, j: Int) -> UInt32 {
-    let p = faces.buffer.contents().advanced(
-      by: (face * faces.indexCountPerPrimitive + j) * faces.bytesPerIndex)
-    return faces.bytesPerIndex == 2
-      ? UInt32(p.assumingMemoryBound(to: UInt16.self).pointee)
-      : p.assumingMemoryBound(to: UInt32.self).pointee
+  fileprivate func vertexIndex(of face: UInt32, corner: UInt32) -> UInt32? {
+    let faces: ARGeometryElement = self.faces
+    guard let faceIndex = Int(exactly: face), let cornerIndex = Int(exactly: corner),
+      faceIndex < faces.count, cornerIndex < faces.indexCountPerPrimitive,
+      faces.bytesPerIndex == MemoryLayout<UInt16>.size
+        || faces.bytesPerIndex == MemoryLayout<UInt32>.size
+    else { return nil }
+
+    let (primitiveOffset, primitiveOverflow) = faceIndex.multipliedReportingOverflow(
+      by: faces.indexCountPerPrimitive)
+    let (flatIndex, indexOverflow) = primitiveOffset.addingReportingOverflow(cornerIndex)
+    let (byteOffset, byteOffsetOverflow) = flatIndex.multipliedReportingOverflow(
+      by: faces.bytesPerIndex)
+    let (bufferEnd, bufferEndOverflow) = byteOffset.addingReportingOverflow(faces.bytesPerIndex)
+    guard !primitiveOverflow, !indexOverflow, !byteOffsetOverflow, !bufferEndOverflow,
+      byteOffset >= 0, bufferEnd <= faces.buffer.length
+    else { return nil }
+
+    let pointer = faces.buffer.contents().advanced(by: byteOffset)
+    if faces.bytesPerIndex == MemoryLayout<UInt16>.size {
+      return UInt32(pointer.load(as: UInt16.self))
+    }
+    return pointer.load(as: UInt32.self)
   }
 
   fileprivate func classification(at face: Int) -> ARMeshClassification {
