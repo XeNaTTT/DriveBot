@@ -234,7 +234,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     ]
     for pos in positions {
       let wheel = ModelEntity(
-        mesh: .generateCylinder(height: 0.018, radius: 0.025),
+        mesh: wheelMesh(),
         materials: [SimpleMaterial(color: .darkGray, isMetallic: false)])
       wheel.orientation = simd_quatf(angle: .pi / 2, axis: [0, 0, 1])
       wheel.position = pos
@@ -249,6 +249,16 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     phase = .ready
   }
 
+  private func wheelMesh() -> MeshResource {
+    if #available(iOS 18.0, *) {
+      return .generateCylinder(height: 0.018, radius: 0.025)
+    }
+
+    // Before iOS 18 RealityKit has no synchronous cylinder generator. A rounded
+    // 18 x 50 x 50 mm mesh preserves the wheel envelope and the common rotation.
+    return .generateBox(size: [0.05, 0.018, 0.05], cornerRadius: 0.0125)
+  }
+
   @objc private func resetCar() {
     releaseInputs()
     carAnchor?.removeFromParent()
@@ -257,7 +267,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
   @objc private func toggleDebug() {
     debugVisible.toggle()
-    debugEntities.values.forEach { $0.isEnabled = debugVisible }
+    for entity in debugEntities.values { entity.isEnabled = debugVisible }
   }
   @objc private func throttleDown() {
     throttle = 1
@@ -317,7 +327,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     for (i, value) in state.wheelTransforms.enumerated() where i < wheels.count {
       var matrix = matrix_identity_float4x4
       value.getValue(&matrix)
-      wheels[i].transformMatrix(relativeTo: nil) = matrix
+      wheels[i].setTransformMatrix(matrix, relativeTo: nil)
     }
     if state.collided { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
   }
@@ -399,7 +409,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       var indices: [UInt32] = []
       indices.reserveCapacity(geometry.faces.count * 3)
       for f in 0..<geometry.faces.count {
-        if geometry.classificationOf(faceWithIndex: f) == .floor { continue }
+        // Plane anchors already provide the floor collider. Classification is
+        // optional, so an absent/unknown value must not discard valid geometry.
+        if geometry.classification(at: f) == .floor { continue }
         for j in 0..<3 { indices.append(geometry.faces.index(of: f, j: j)) }
       }
       self?.replaceCollider(id: id, vertices: vertices, indices: indices)
@@ -432,5 +444,23 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     return faces.bytesPerIndex == 2
       ? UInt32(p.assumingMemoryBound(to: UInt16.self).pointee)
       : p.assumingMemoryBound(to: UInt32.self).pointee
+  }
+
+  fileprivate func classification(at face: Int) -> ARMeshClassification {
+    guard face >= 0, let classifications = classification,
+      face < faces.count, face < classifications.count,
+      classifications.format == .uchar, classifications.offset >= 0,
+      classifications.stride > 0
+    else { return .none }
+
+    let (faceOffset, overflow) = face.multipliedReportingOverflow(by: classifications.stride)
+    guard !overflow else { return .none }
+    let (byteOffset, additionOverflow) = classifications.offset.addingReportingOverflow(faceOffset)
+    guard !additionOverflow, byteOffset >= 0, byteOffset < classifications.buffer.length else {
+      return .none
+    }
+
+    let rawValue = classifications.buffer.contents().advanced(by: byteOffset).load(as: UInt8.self)
+    return ARMeshClassification(rawValue: Int(rawValue)) ?? .none
   }
 }
