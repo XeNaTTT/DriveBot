@@ -32,4 +32,20 @@ class ArRacingIosCompatibilityTest < Minitest::Test
     assert_includes SOURCE, 'let vertexCount32 = UInt32(exactly: geometry.vertices.count)'
     assert_includes SOURCE, 'vertexIndex < vertexCount32'
   end
+
+  def test_placement_is_guarded_and_transactional
+    assert_includes SOURCE, 'guard phase == .aiming, let candidate = placementCandidate'
+    assert_includes SOURCE, 'physics.prepareVehicle('
+    assert_includes SOURCE, 'physics.removeVehicle()'
+    assert_includes SOURCE, 'placementGeneration += 1'
+    assert_includes SOURCE, 'Self.logger.notice("placement.ready'
+  end
+
+  def test_scan_and_driving_hud_follow_real_state
+    assert_includes SOURCE, 'arView.debugOptions.insert(.showSceneUnderstanding)'
+    assert_includes SOURCE, 'allowing: .existingPlaneGeometry'
+    assert_includes SOURCE, 'speed.isHidden = phase != .ready'
+    assert_includes SOURCE, 'steeringPad.isHidden = true'
+    refute_match(/scan.*percent|scan.*progress/i, SOURCE)
+  end
 end

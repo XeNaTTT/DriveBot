@@ -34,4 +34,22 @@ class DriveBotJoltIntegrationTest < Minitest::Test
 
     refute_match(/JPH_[A-Z0-9_]+=0/, podspec)
   end
+
+  def test_vehicle_creation_checks_each_fallible_jolt_resource
+    wrapper = File.read(WRAPPER)
+
+    assert_includes wrapper, 'shapeResult.HasError()'
+    assert_includes wrapper, 'Body *createdBody = bodies.CreateBody(body)'
+    assert_includes wrapper, 'if (!lock.Succeeded())'
+    assert_includes wrapper, '- (void)removeVehicle'
+    refute_includes wrapper, 'Create().Get()'
+  end
+
+  def test_mesh_boundary_validates_buffer_layout_and_indices
+    wrapper = File.read(WRAPPER)
+
+    assert_includes wrapper, 'vertexData.length % sizeof(simd_float3)'
+    assert_includes wrapper, 'inputIndices[index] >= vertexCount'
+    assert_includes wrapper, 'if (!IsFinite(inputVertices[index])) return;'
+  end
 end

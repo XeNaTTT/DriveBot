@@ -27,11 +27,32 @@ class _ArRacingScreenState extends State<ArRacingScreen> {
   int _selected = 0;
   bool _racing = false;
   void _startRace() {
+    SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
     setState(() => _racing = true);
   }
 
   void _finishRace() {
+    SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
     setState(() => _racing = false);
+  }
+
+  @override
+  void dispose() {
+    if (_racing) {
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    }
+    super.dispose();
   }
 
   @override
@@ -41,6 +62,7 @@ class _ArRacingScreenState extends State<ArRacingScreen> {
       child: _racing
           ? _RaceView(
               onClose: _finishRace,
+              vehicleID: caravanModels[_selected].id,
               backgroundBuilder: widget.backgroundBuilder,
             )
           : _GarageView(
@@ -244,7 +266,7 @@ class _GarageView extends StatelessWidget {
                                   Icon(Icons.view_in_ar_rounded),
                                   SizedBox(width: 10),
                                   Text(
-                                    'RAUM SCANNEN & STARTEN',
+                                    'MIT DIESEM AUTO STARTEN',
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.w900,
@@ -388,9 +410,14 @@ class _ModelChoice extends StatelessWidget {
 }
 
 class _RaceView extends StatelessWidget {
-  const _RaceView({required this.onClose, this.backgroundBuilder});
+  const _RaceView({
+    required this.onClose,
+    required this.vehicleID,
+    this.backgroundBuilder,
+  });
 
   final VoidCallback onClose;
+  final String vehicleID;
   final ArRaceBackgroundBuilder? backgroundBuilder;
 
   @override
@@ -401,10 +428,11 @@ class _RaceView extends StatelessWidget {
       if (backgroundBuilder != null)
         backgroundBuilder!(context)
       else
-        const UiKitView(
-          key: Key('native-ar-racing-view'),
+        UiKitView(
+          key: const Key('native-ar-racing-view'),
           viewType: 'drivebot/ar_racing_view',
-          creationParamsCodec: StandardMessageCodec(),
+          creationParams: <String, Object>{'vehicleID': vehicleID},
+          creationParamsCodec: const StandardMessageCodec(),
         ),
       SafeArea(
         child: Align(

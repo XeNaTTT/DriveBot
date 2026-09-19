@@ -1,14 +1,22 @@
 import ARKit
+import CoreMotion
 import DriveBotJolt
 import Flutter
 import GameController
 import RealityKit
 import UIKit
+import os
 
 /// Entire simulation stays native: Flutter only creates/disposes this view.
 /// ARKit/RealityKit use metres and Jolt receives the same world coordinates.
 final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
-  private enum Phase { case scanning, floorFound, placeCar, ready, interrupted }
+  private enum Phase { case scanning, aiming, placing, building, ready, interrupted }
+  private struct VehicleAppearance {
+    let bodySize: SIMD3<Float>
+    let color: UIColor
+    let profile: String
+  }
+  private static let logger = Logger(subsystem: "de.drivebot", category: "ARPlacement")
   private let root = UIView()
   private let arView: ARView
   private let physics = DBJoltWorld()
@@ -16,6 +24,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private let speed = UILabel()
   private let resetButton = UIButton(type: .system)
   private let debugButton = UIButton(type: .system)
+  private let scanButton = UIButton(type: .system)
   private let steeringPad = UIView()
   private let steeringKnob = UIView()
   private let throttleButton = UIButton(type: .system)
@@ -33,8 +42,24 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private var debugEntities: [UUID: Entity] = [:]
   private var hasFloor = false
   private var hasSceneReconstruction = false
+  private var placementCandidate: SIMD3<Float>?
+  private var placementMarker: ModelEntity?
+  private var floorEntities: [UUID: ModelEntity] = [:]
+  private var floorAnchors: [UUID: AnchorEntity] = [:]
+  private let motion = CMMotionManager()
+  private let vehicleID: String
+  private var placementGeneration = 0
 
-  init(frame: CGRect, viewIdentifier: Int64) {
+  private var appearance: VehicleAppearance {
+    switch vehicleID {
+    case "sport": return VehicleAppearance(bodySize: [0.14, 0.035, 0.30], color: .systemRed, profile: "sport")
+    case "offroad": return VehicleAppearance(bodySize: [0.17, 0.075, 0.28], color: .systemGreen, profile: "offroad")
+    default: return VehicleAppearance(bodySize: [0.15, 0.055, 0.25], color: .systemBlue, profile: "compact")
+    }
+  }
+
+  init(frame: CGRect, viewIdentifier: Int64, vehicleID: String) {
+    self.vehicleID = vehicleID
     arView = ARView(frame: frame, cameraMode: .ar, automaticallyConfigureSession: false)
     super.init()
     root.backgroundColor = .black
@@ -52,12 +77,15 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       self, selector: #selector(interrupted), name: UIApplication.willResignActiveNotification,
       object: nil)
     requestCameraAndStart()
+    startMotionSteering()
   }
 
   deinit {
     displayLink?.invalidate()
     NotificationCenter.default.removeObserver(self)
     arView.session.pause()
+    motion.stopDeviceMotionUpdates()
+    physics.removeVehicle()
   }
   func view() -> UIView { root }
 
@@ -94,6 +122,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       arView.environment.sceneUnderstanding.options = [.occlusion, .receivesLighting]
     }
     arView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
+    setScanVisible(true)
     phase = .scanning
     startDisplayLink()
   }
@@ -128,10 +157,12 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     root.addSubview(speed)
     style(resetButton, title: "↻")
     style(debugButton, title: "⚙︎")
+    style(scanButton, title: "Scan anzeigen")
     style(throttleButton, title: "GAS")
     style(brakeButton, title: "BREMSE")
     resetButton.addTarget(self, action: #selector(resetCar), for: .touchUpInside)
     debugButton.addTarget(self, action: #selector(toggleDebug), for: .touchUpInside)
+    scanButton.addTarget(self, action: #selector(toggleDebug), for: .touchUpInside)
     throttleButton.addTarget(
       self, action: #selector(throttleDown), for: [.touchDown, .touchDragEnter])
     throttleButton.addTarget(
@@ -156,6 +187,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     let guide = root.safeAreaLayoutGuide
     NSLayoutConstraint.activate([
       message.topAnchor.constraint(equalTo: guide.topAnchor, constant: 8),
+      message.leadingAnchor.constraint(greaterThanOrEqualTo: guide.leadingAnchor, constant: 64),
+      message.trailingAnchor.constraint(lessThanOrEqualTo: resetButton.leadingAnchor, constant: -12),
       message.centerXAnchor.constraint(equalTo: guide.centerXAnchor),
       message.heightAnchor.constraint(equalToConstant: 34),
       message.widthAnchor.constraint(lessThanOrEqualToConstant: 330),
@@ -163,6 +196,10 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       debugButton.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -8),
       debugButton.widthAnchor.constraint(equalToConstant: 44),
       debugButton.heightAnchor.constraint(equalToConstant: 44),
+      scanButton.topAnchor.constraint(equalTo: debugButton.bottomAnchor, constant: 8),
+      scanButton.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -8),
+      scanButton.widthAnchor.constraint(equalToConstant: 128),
+      scanButton.heightAnchor.constraint(equalToConstant: 44),
       resetButton.centerYAnchor.constraint(equalTo: debugButton.centerYAnchor),
       resetButton.trailingAnchor.constraint(equalTo: debugButton.leadingAnchor, constant: -8),
       resetButton.widthAnchor.constraint(equalToConstant: 44),
@@ -196,35 +233,54 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     case .scanning:
       message.text =
         hasSceneReconstruction
-        ? "Umgebung erfassen …" : "Boden erfassen (Hindernisse nur mit LiDAR)"
-    case .floorFound, .placeCar: message.text = "Auf bestätigten Boden tippen"
+        ? "iPhone langsam über Boden und Umgebung bewegen"
+        : "Eingeschränkter Modus: nur Flächenerkennung"
+    case .aiming: message.text = "Gültigen Boden anvisieren"
+    case .placing: message.text = "Auto wird platziert …"
+    case .building: message.text = "Fahrzeug wird erstellt …"
     case .ready: message.text = ""
     case .interrupted: message.text = "Tracking eingeschränkt – Fahrt pausiert"
     }
     message.isHidden = phase == .ready
+    speed.isHidden = phase != .ready
+    throttleButton.isHidden = phase != .ready
+    brakeButton.isHidden = phase != .ready
+    steeringPad.isHidden = true
+    scanButton.isHidden = phase != .ready
+    resetButton.isHidden = phase != .ready
   }
 
   @objc private func place(_ gesture: UITapGestureRecognizer) {
-    guard hasFloor, phase != .interrupted else { return }
-    let point = gesture.location(in: arView)
-    guard
-      let hit = arView.raycast(
-        from: point, allowing: .existingPlaneGeometry, alignment: .horizontal
-      ).first
-    else { return }
-    installCar(
-      at: SIMD3(
-        hit.worldTransform.columns.3.x, hit.worldTransform.columns.3.y,
-        hit.worldTransform.columns.3.z))
+    guard phase == .aiming, let candidate = placementCandidate else { return }
+    guard candidate.x.isFinite, candidate.y.isFinite, candidate.z.isFinite else {
+      Self.logger.error("placement.reject invalid-transform")
+      showPlacementFailure("Ungültiger Bodentreffer – bitte erneut anvisieren")
+      return
+    }
+    placementGeneration += 1
+    phase = .placing
+    installCar(at: candidate, generation: placementGeneration)
   }
 
-  private func installCar(at p: SIMD3<Float>) {
-    carAnchor?.removeFromParent()
-    wheels.removeAll()
+  private func installCar(at p: SIMD3<Float>, generation: Int) {
+    Self.logger.notice("placement.begin generation=\(generation) vehicle=\(self.vehicleID, privacy: .public)")
+    guard carAnchor == nil, phase == .placing else { return }
+    phase = .building
+    var error: NSError?
+    guard physics.prepareVehicle(at: p, heading: 0, profile: appearance.profile, error: &error) else {
+      Self.logger.error("placement.physics-failed generation=\(generation) error=\(error?.localizedDescription ?? "unknown", privacy: .public)")
+      showPlacementFailure(error?.localizedDescription ?? "Fahrzeug konnte nicht erstellt werden")
+      return
+    }
+    guard generation == placementGeneration else {
+      physics.removeVehicle()
+      Self.logger.error("placement.cancelled stale-generation=\(generation)")
+      return
+    }
     let anchor = AnchorEntity(world: p)
     let body = ModelEntity(
-      mesh: .generateBox(size: [0.15, 0.05, 0.30], cornerRadius: 0.015),
-      materials: [SimpleMaterial(color: .systemOrange, roughness: 0.35, isMetallic: true)])
+      mesh: .generateBox(size: appearance.bodySize, cornerRadius: 0.015),
+      materials: [SimpleMaterial(color: appearance.color, roughness: 0.35, isMetallic: true)])
     anchor.addChild(body)
     let positions: [SIMD3<Float>] = [
       SIMD3(0.075, -0.025, 0.105),
@@ -244,9 +300,20 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     arView.scene.addAnchor(anchor)
     carAnchor = anchor
     chassis = body
-    physics.reset(at: p, heading: 0)
     physics.setPaused(false)
+    setScanVisible(false)
     phase = .ready
+    Self.logger.notice("placement.ready generation=\(generation)")
+  }
+
+  private func showPlacementFailure(_ text: String) {
+    physics.removeVehicle()
+    carAnchor?.removeFromParent()
+    carAnchor = nil
+    wheels.removeAll()
+    phase = hasFloor ? .aiming : .scanning
+    message.text = text
+    message.isHidden = false
   }
 
   private func wheelMesh() -> MeshResource {
@@ -260,14 +327,40 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
 
   @objc private func resetCar() {
+    placementGeneration += 1
     releaseInputs()
+    physics.setPaused(true)
+    physics.removeVehicle()
     carAnchor?.removeFromParent()
     carAnchor = nil
-    phase = hasFloor ? .placeCar : .scanning
+    wheels.removeAll()
+    setScanVisible(true)
+    phase = hasFloor ? .aiming : .scanning
   }
   @objc private func toggleDebug() {
-    debugVisible.toggle()
+    setScanVisible(!debugVisible)
+  }
+  private func setScanVisible(_ visible: Bool) {
+    debugVisible = visible
+    if hasSceneReconstruction {
+      if visible { arView.debugOptions.insert(.showSceneUnderstanding) }
+      else { arView.debugOptions.remove(.showSceneUnderstanding) }
+    }
     for entity in debugEntities.values { entity.isEnabled = debugVisible }
+    for entity in floorEntities.values { entity.isEnabled = debugVisible }
+    scanButton.setTitle(visible ? "Scan ausblenden" : "Scan anzeigen", for: .normal)
+  }
+
+  private func startMotionSteering() {
+    guard motion.isDeviceMotionAvailable else { return }
+    motion.deviceMotionUpdateInterval = 1.0 / 60.0
+    motion.startDeviceMotionUpdates(to: .main) { [weak self] sample, _ in
+      guard let self, let sample, self.phase == .ready else { return }
+      let target = Float(sample.gravity.x * 1.45)
+      self.steering += (min(1, max(-1, target)) - self.steering) * 0.22
+      if abs(self.steering) < 0.04 { self.steering = 0 }
+      self.sendInput()
+    }
   }
   @objc private func throttleDown() {
     throttle = 1
@@ -315,6 +408,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     displayLink = link
   }
   @objc private func frame(_ link: CADisplayLink) {
+    updatePlacementCandidate()
     guard phase == .ready, let anchor = carAnchor else {
       previousTime = link.timestamp
       return
@@ -332,12 +426,45 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     if state.collided { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
   }
 
+  private func updatePlacementCandidate() {
+    guard phase == .aiming || phase == .scanning else {
+      placementMarker?.isEnabled = false
+      return
+    }
+    let center = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
+    guard let hit = arView.raycast(
+      from: center, allowing: .existingPlaneGeometry, alignment: .horizontal
+    ).first else {
+      placementCandidate = nil
+      placementMarker?.isEnabled = false
+      if hasFloor { phase = .aiming }
+      return
+    }
+    let position = SIMD3(
+      hit.worldTransform.columns.3.x, hit.worldTransform.columns.3.y,
+      hit.worldTransform.columns.3.z)
+    guard position.x.isFinite, position.y.isFinite, position.z.isFinite else { return }
+    placementCandidate = position
+    if placementMarker == nil {
+      let marker = ModelEntity(
+        mesh: .generateBox(size: [0.12, 0.002, 0.12], cornerRadius: 0.02),
+        materials: [SimpleMaterial(color: .systemTeal.withAlphaComponent(0.72), isMetallic: false)])
+      let anchor = AnchorEntity(world: position)
+      anchor.addChild(marker)
+      arView.scene.addAnchor(anchor)
+      placementMarker = marker
+    }
+    placementMarker?.isEnabled = true
+    placementMarker?.setPosition(position + SIMD3(0, 0.003, 0), relativeTo: nil)
+    phase = .aiming
+  }
+
   func session(_ session: ARSession, cameraDidChangeTrackingState camera: ARCamera) {
     DispatchQueue.main.async {
       switch camera.trackingState {
       case .normal:
         self.physics.setPaused(false)
-        self.phase = self.carAnchor == nil ? (self.hasFloor ? .placeCar : .scanning) : .ready
+        self.phase = self.carAnchor == nil ? (self.hasFloor ? .aiming : .scanning) : .ready
       default: self.interrupted()
       }
     }
@@ -365,20 +492,53 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       DispatchQueue.main.async {
         self.physics.removeStaticMesh(anchor.identifier)
         self.debugEntities.removeValue(forKey: anchor.identifier)?.removeFromParent()
+        self.floorEntities.removeValue(forKey: anchor.identifier)?.removeFromParent()
+        self.floorAnchors.removeValue(forKey: anchor.identifier)?.removeFromParent()
       }
     }
   }
 
   private func process(_ anchors: [ARAnchor]) {
+    if !Thread.isMainThread {
+      DispatchQueue.main.async { [weak self] in self?.process(anchors) }
+      return
+    }
     for anchor in anchors {
       if let plane = anchor as? ARPlaneAnchor, plane.alignment == .horizontal, plane.extent.x > 0.3,
         plane.extent.z > 0.3
       {
         hasFloor = true
-        DispatchQueue.main.async { if self.carAnchor == nil { self.phase = .placeCar } }
+        if carAnchor == nil { phase = .aiming }
         installPlaneCollider(plane)
+        visualizeFloor(plane)
       }
       if #available(iOS 13.4, *), let mesh = anchor as? ARMeshAnchor { schedule(mesh) }
+    }
+  }
+  private func visualizeFloor(_ plane: ARPlaneAnchor) {
+    let size = SIMD3<Float>(max(0.01, plane.extent.x), 0.001, max(0.01, plane.extent.z))
+    let isNew = floorEntities[plane.identifier] == nil
+    let entity = floorEntities[plane.identifier] ?? ModelEntity(
+      mesh: .generateBox(size: size),
+      materials: [SimpleMaterial(color: .systemTeal.withAlphaComponent(0.12), isMetallic: false)])
+    entity.model?.mesh = .generateBox(size: size)
+    let anchor = floorAnchors[plane.identifier] ?? AnchorEntity(world: plane.transform)
+    anchor.transform.matrix = plane.transform
+    entity.position = plane.center + SIMD3(0, 0.002, 0)
+    entity.isEnabled = debugVisible
+    entity.model?.materials = [
+      SimpleMaterial(color: .systemTeal.withAlphaComponent(isNew ? 0.28 : 0.20), isMetallic: false)
+    ]
+    if entity.parent == nil {
+      anchor.addChild(entity)
+      arView.scene.addAnchor(anchor)
+    }
+    floorAnchors[plane.identifier] = anchor
+    floorEntities[plane.identifier] = entity
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { [weak entity] in
+      entity?.model?.materials = [
+        SimpleMaterial(color: .systemTeal.withAlphaComponent(0.12), isMetallic: false)
+      ]
     }
   }
   private func installPlaneCollider(_ plane: ARPlaneAnchor) {
