@@ -69,3 +69,19 @@ builds a signed release IPA without changing bundle ID/signing, and uploads it
 to TestFlight. After processing, assign the build to an internal tester group,
 install it on the LiDAR device, grant camera access, rotate to landscape, open
 AR Racing and follow the checklist above.
+
+### Native build boundary
+
+`DriveBotJolt` exposes only `Sources/DriveBotJolt.h` to Swift. The implementation
+is Objective-C++ and includes `Jolt/Jolt.h` before every other Jolt header. Jolt's
+own `.cpp` files are compiled as C++17 against libc++; its headers are deliberately
+not registered as CocoaPods source headers. Instead, they are resolved through the
+single non-recursive include root `Vendor/Jolt`, which supports includes such as
+`<Jolt/Jolt.h>` without putting `Jolt/Math/Math.h` in CocoaPods' case-insensitive
+header map (where it could shadow the Apple SDK's `<math.h>`).
+
+The pod uses Jolt's default feature configuration. In particular, disabled Jolt
+features must not be expressed as `JPH_*_ENABLED=0`: upstream tests those switches
+with `#ifdef`, so defining them to zero still enables them. Codemagic first builds
+the unsigned `DriveBotJolt` scheme for a generic ARM64 iOS device and only then
+continues with the signed Flutter archive.

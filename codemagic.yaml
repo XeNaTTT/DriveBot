@@ -94,6 +94,18 @@ workflows:
           pod install
           cd ..
 
+      - name: Build native Jolt component
+        script: |
+          set -e
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme DriveBotJolt \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
       - name: Set up iOS code signing
         script: |
           set -e

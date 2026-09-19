@@ -15,14 +15,17 @@ Pod::Spec.new do |s|
     fi
     test "$(git -C Vendor/Jolt rev-parse HEAD)" = "e77f175595e64cb44218cc9d9d56fc365ad0e36a"
   CMD
-  s.source_files = 'Sources/**/*.{h,mm}', 'Vendor/Jolt/Jolt/**/*.{h,cpp}'
+  # Keep Jolt headers out of CocoaPods' header map. Header maps are
+  # case-insensitive, so exporting Jolt/Math/Math.h there can shadow the SDK's
+  # <math.h>. The headers remain available through the single, non-recursive
+  # Jolt include root below.
+  s.source_files = 'Sources/**/*.{h,mm}', 'Vendor/Jolt/Jolt/**/*.cpp'
   s.public_header_files = 'Sources/DriveBotJolt.h'
-  s.header_mappings_dir = '.'
-  s.preserve_paths = 'Vendor/Jolt/LICENSE'
+  s.preserve_paths = 'Vendor/Jolt/LICENSE', 'Vendor/Jolt/Jolt/**/*.{h,inl}'
   s.pod_target_xcconfig = {
     'HEADER_SEARCH_PATHS' => '"${PODS_TARGET_SRCROOT}/Vendor/Jolt"',
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
-    'GCC_PREPROCESSOR_DEFINITIONS' => '$(inherited) JPH_OBJECT_STREAM=0 JPH_DEBUG_RENDERER=0 JPH_PROFILE_ENABLED=0 JPH_FLOATING_POINT_EXCEPTIONS_ENABLED=0'
+    'CLANG_CXX_LIBRARY' => 'libc++'
   }
   s.frameworks = 'Foundation'
 end
