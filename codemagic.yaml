@@ -67,6 +67,15 @@ workflows:
           set -e
           flutter clean
 
+      - name: Select CocoaPods dependency integration
+        script: |
+          set -e
+
+          # flutter_compass does not provide a Swift Package Manager manifest.
+          # Keep all iOS plugins on the CocoaPods path instead of letting a
+          # runner-wide Flutter setting attempt a mixed SPM/CocoaPods build.
+          flutter config --no-enable-swift-package-manager
+
       - name: Resolve Flutter dependencies
         script: |
           set -e

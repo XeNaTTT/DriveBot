@@ -71,6 +71,7 @@ The workflow uses:
 
 1. Start workflow: **ios-testflight**.
 2. Codemagic runs:
+   - explicit selection of CocoaPods for iOS plugin integration
    - `flutter pub get`
    - CocoaPods dependency installation
    - iOS code-signing setup
@@ -84,6 +85,21 @@ that user-facing version and overrides only the unique build number for each run
 The generated build number uses the `yyyyMMddHHmmss` UTC format. This keeps
 `CFBundleVersion` increasing across workflow runs and prevents App Store Connect
 from rejecting an upload because its build number was already used.
+
+### Why Swift Package Manager is disabled in CI
+
+The app currently depends on `flutter_compass`, which does not expose Swift
+Package Manager support for iOS. Flutter can otherwise inherit an SPM setting
+from the Codemagic runner and warn that this plugin is unsupported while
+preparing the archive. The workflow therefore runs
+`flutter config --no-enable-swift-package-manager` before dependency resolution
+and consistently installs every iOS plugin through the existing `ios/Podfile`.
+
+The message about `flutter_compass` shown during a build is a compatibility
+warning, not the actual `status code 1` error. If a build still fails after this
+configuration is active, expand the final lines of **Build iOS IPA** and use the
+first `Error`/`Xcode build failed` entry as the root cause; the warning itself no
+longer obscures which dependency integration Flutter uses.
 
 ## 9) Find the build in App Store Connect > TestFlight
 
