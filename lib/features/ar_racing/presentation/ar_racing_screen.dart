@@ -5,18 +5,23 @@ import 'package:flutter/material.dart';
 import '../application/motion_steering_service.dart';
 import '../domain/caravan_model.dart';
 import '../domain/race_session.dart';
+import 'ar_race_background.dart';
 import 'caravan_art.dart';
 import 'racing_caravan_art.dart';
+
+typedef ArRaceBackgroundBuilder = Widget Function(BuildContext context);
 
 class ArRacingScreen extends StatefulWidget {
   const ArRacingScreen({
     this.motionService = const MockMotionSteeringService(),
     this.accountEntryPoint,
+    this.backgroundBuilder,
     super.key,
   });
 
   final MotionSteeringService motionService;
   final Widget? accountEntryPoint;
+  final ArRaceBackgroundBuilder? backgroundBuilder;
 
   @override
   State<ArRacingScreen> createState() => _ArRacingScreenState();
@@ -68,6 +73,7 @@ class _ArRacingScreenState extends State<ArRacingScreen> {
               onImpact: () =>
                   setState(() => _session = _session.collide(impact: .8)),
               onClose: _finishRace,
+              backgroundBuilder: widget.backgroundBuilder,
             )
           : _GarageView(
               selected: _selected,
@@ -419,19 +425,19 @@ class _RaceView extends StatelessWidget {
     required this.session,
     required this.onImpact,
     required this.onClose,
+    this.backgroundBuilder,
   });
   final CaravanModel model;
   final RaceSession session;
   final VoidCallback onImpact;
   final VoidCallback onClose;
+  final ArRaceBackgroundBuilder? backgroundBuilder;
   @override
   Widget build(BuildContext context) => Stack(
     key: const Key('ar-race-view'),
     fit: StackFit.expand,
     children: [
-      CustomPaint(
-        painter: _RoomPainter(steering: session.steering, accent: model.accent),
-      ),
+      backgroundBuilder?.call(context) ?? const ArRaceBackground(),
       LayoutBuilder(
         builder: (context, constraints) {
           final scale = session.perspectiveScale;
@@ -475,36 +481,7 @@ class _RaceView extends StatelessWidget {
                     icon: const Icon(Icons.close),
                   ),
                   const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 13,
-                      vertical: 9,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: model.accent.withValues(alpha: .5),
-                      ),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(
-                          Icons.view_in_ar,
-                          size: 16,
-                          color: Color(0xFFD8FF3E),
-                        ),
-                        SizedBox(width: 7),
-                        Text(
-                          'LIDAR  •  LIVE',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  const SizedBox(width: 150, height: 42),
                 ],
               ),
               const Spacer(),
@@ -591,71 +568,4 @@ class _RaceView extends StatelessWidget {
       ),
     ],
   );
-}
-
-class _RoomPainter extends CustomPainter {
-  const _RoomPainter({required this.steering, required this.accent});
-  final double steering;
-  final Color accent;
-  @override
-  void paint(Canvas canvas, Size size) {
-    final bg = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFF48525B), Color(0xFF171B21)],
-      ).createShader(Offset.zero & size);
-    canvas.drawRect(Offset.zero & size, bg);
-    final vanishing = Offset(
-      size.width * (.5 - steering * .09),
-      size.height * .34,
-    );
-    final grid = Paint()
-      ..color = accent.withValues(alpha: .22)
-      ..strokeWidth = 1;
-    for (var x = -2; x < 8; x++) {
-      canvas.drawLine(vanishing, Offset(size.width * x / 5, size.height), grid);
-    }
-    for (var y = .48; y < .9; y += .09) {
-      canvas.drawLine(
-        Offset(0, size.height * y),
-        Offset(size.width, size.height * y),
-        grid,
-      );
-    }
-    final obstacle = RRect.fromRectAndRadius(
-      Rect.fromLTWH(
-        size.width * .68,
-        size.height * .39,
-        size.width * .22,
-        size.height * .22,
-      ),
-      const Radius.circular(8),
-    );
-    canvas.drawRRect(obstacle, Paint()..color = const Color(0xFF75523C));
-    canvas.drawRRect(
-      obstacle,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = accent.withValues(alpha: .7),
-    );
-    canvas.drawCircle(
-      Offset(size.width * .23, size.height * .42),
-      28,
-      Paint()..color = const Color(0xFF263D30),
-    );
-    canvas.drawCircle(
-      Offset(size.width * .23, size.height * .42),
-      31,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = accent.withValues(alpha: .55),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _RoomPainter oldDelegate) =>
-      oldDelegate.steering != steering || oldDelegate.accent != accent;
 }
