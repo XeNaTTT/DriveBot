@@ -20,6 +20,23 @@ void main() {
     expect(advanced.perspectiveScale, lessThan(session.perspectiveScale));
   });
 
+  test('steering changes lateral position while driving', () {
+    final driven = const RaceSession(
+      speedKmh: 40,
+    ).steer(1).drive(elapsedSeconds: 1, accelerating: true, braking: false);
+
+    expect(driven.lateralPosition, greaterThan(0));
+    expect(driven.speedKmh, greaterThan(40));
+  });
+
+  test('brake reduces speed', () {
+    final stopped = const RaceSession(
+      speedKmh: 50,
+    ).drive(elapsedSeconds: .5, accelerating: false, braking: true);
+
+    expect(stopped.speedKmh, lessThan(50));
+  });
+
   testWidgets('three caravans can be selected and race can start', (
     tester,
   ) async {
@@ -51,6 +68,8 @@ void main() {
     expect(find.byKey(const Key('injected-ar-camera')), findsOneWidget);
     expect(find.byKey(const Key('racing-caravan-3d')), findsOneWidget);
     expect(find.byKey(const Key('fleeing-caravan')), findsOneWidget);
+    expect(find.byKey(const Key('brake-pedal')), findsOneWidget);
+    expect(find.byKey(const Key('gas-pedal')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('simulate-impact')));
     await tester.pump();

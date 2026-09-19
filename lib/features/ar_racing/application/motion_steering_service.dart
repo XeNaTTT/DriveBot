@@ -8,9 +8,16 @@ abstract interface class MotionSteeringService {
 
 final class PhoneMotionSteeringService implements MotionSteeringService {
   @override
-  Stream<double> get steering => gyroscopeEventStream(
-    samplingPeriod: SensorInterval.gameInterval,
-  ).map((event) => (event.y / 3).clamp(-1.0, 1.0));
+  Stream<double> get steering {
+    var smoothed = 0.0;
+    return accelerometerEventStream(
+      samplingPeriod: SensorInterval.gameInterval,
+    ).map((event) {
+      final target = (event.x / 5.2).clamp(-1.0, 1.0);
+      smoothed += (target - smoothed) * .22;
+      return smoothed.abs() < .04 ? 0.0 : smoothed;
+    });
+  }
 }
 
 final class MockMotionSteeringService implements MotionSteeringService {
