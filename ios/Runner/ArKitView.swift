@@ -84,7 +84,7 @@ private struct GeoAnchorRecord {
   var lastRecalibratedAt: Date
 }
 
-final class ArKitView: NSObject, FlutterPlatformView, ARSessionDelegate {
+final class ArKitView: NSObject, FlutterPlatformView, ARSCNViewDelegate, ARSessionDelegate {
   private let sceneView: ARSCNView
   private var sessionStarted = false
   private var anchorsById: [String: GeoAnchorRecord] = [:]
@@ -120,6 +120,7 @@ final class ArKitView: NSObject, FlutterPlatformView, ARSessionDelegate {
     super.init()
     sceneView.backgroundColor = UIColor.black
     sceneView.automaticallyUpdatesLighting = false
+    sceneView.delegate = self
     sceneView.session.delegate = self
     ArKitRuntimeController.shared.attach(self)
   }
@@ -144,9 +145,6 @@ final class ArKitView: NSObject, FlutterPlatformView, ARSessionDelegate {
     configuration.planeDetection = [.horizontal, .vertical]
     if #available(iOS 13.4, *), ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification) {
       configuration.sceneReconstruction = .meshWithClassification
-      sceneView.debugOptions.insert(.showSceneUnderstanding)
-    } else {
-      sceneView.debugOptions.remove(.showSceneUnderstanding)
     }
     sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
     anchorsById.removeAll()
@@ -468,6 +466,62 @@ final class ArKitView: NSObject, FlutterPlatformView, ARSessionDelegate {
   func session(_ session: ARSession, didFailWithError error: Error) {
     trackingQuality = "limited"
     sessionStarted = false
+  }
+
+  func renderer(_ renderer: SCNSceneRenderer, nodeFor anchor: ARAnchor) -> SCNNode? {
+    guard #available(iOS 13.4, *), let meshAnchor = anchor as? ARMeshAnchor else {
+      return nil
+    }
+    return roomMeshNode(for: meshAnchor.geometry)
+  }
+
+  func renderer(_ renderer: SCNSceneRenderer, didUpdate node: SCNNode, for anchor: ARAnchor) {
+    guard #available(iOS 13.4, *), let meshAnchor = anchor as? ARMeshAnchor else {
+      return
+    }
+    node.geometry = roomMeshGeometry(from: meshAnchor.geometry)
+  }
+
+  @available(iOS 13.4, *)
+  private func roomMeshNode(for mesh: ARMeshGeometry) -> SCNNode {
+    SCNNode(geometry: roomMeshGeometry(from: mesh))
+  }
+
+  @available(iOS 13.4, *)
+  private func roomMeshGeometry(from mesh: ARMeshGeometry) -> SCNGeometry {
+    let vertices = SCNGeometrySource(
+      buffer: mesh.vertices.buffer,
+      vertexFormat: mesh.vertices.format,
+      semantic: .vertex,
+      vertexCount: mesh.vertices.count,
+      dataOffset: mesh.vertices.offset,
+      dataStride: mesh.vertices.stride
+    )
+    let normals = SCNGeometrySource(
+      buffer: mesh.normals.buffer,
+      vertexFormat: mesh.normals.format,
+      semantic: .normal,
+      vertexCount: mesh.normals.count,
+      dataOffset: mesh.normals.offset,
+      dataStride: mesh.normals.stride
+    )
+    let faceData = Data(
+      bytes: mesh.faces.buffer.contents(),
+      count: mesh.faces.count * mesh.faces.indexCountPerPrimitive * mesh.faces.bytesPerIndex
+    )
+    let faces = SCNGeometryElement(
+      data: faceData,
+      primitiveType: .triangles,
+      primitiveCount: mesh.faces.count,
+      bytesPerIndex: mesh.faces.bytesPerIndex
+    )
+    let geometry = SCNGeometry(sources: [vertices, normals], elements: [faces])
+    let material = SCNMaterial()
+    material.diffuse.contents = UIColor.systemTeal.withAlphaComponent(0.35)
+    material.fillMode = .lines
+    material.isDoubleSided = true
+    geometry.materials = [material]
+    return geometry
   }
 
   private static func normalizedAngle(_ degrees: Double) -> Double {
