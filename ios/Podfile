@@ -37,6 +37,10 @@ target 'Runner' do
   use_frameworks!
   use_modular_headers!
 
+  # Native AR racing physics. The local pod owns the narrow Objective-C++
+  # boundary and fetches the exact, audited Jolt revision declared there.
+  pod 'DriveBotJolt', :path => 'DriveBotJolt'
+
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
 

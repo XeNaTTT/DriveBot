@@ -29,7 +29,7 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSCameraUsageDescription</key>
-	<string>DriveBot nutzt die Kamera, um kameraunterstützte AR-Hinweise im HUD einzublenden.</string>
+	<string>DriveBot nutzt die Kamera für AR-Tracking, Bodenerkennung und – auf unterstützten LiDAR-Geräten – statische Hindernisse des AR-Rennspiels.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>DriveBot nutzt deinen Standort während der App-Nutzung, um nahe Straßen- und Sicherheitshinweise auszurichten.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

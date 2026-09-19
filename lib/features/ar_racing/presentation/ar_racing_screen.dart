@@ -1,13 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../application/motion_steering_service.dart';
 import '../domain/caravan_model.dart';
-import '../domain/race_session.dart';
-import 'ar_race_background.dart';
 import 'caravan_art.dart';
-import 'racing_caravan_art.dart';
 
 typedef ArRaceBackgroundBuilder = Widget Function(BuildContext context);
 
@@ -30,47 +26,11 @@ class ArRacingScreen extends StatefulWidget {
 class _ArRacingScreenState extends State<ArRacingScreen> {
   int _selected = 0;
   bool _racing = false;
-  RaceSession _session = const RaceSession();
-  StreamSubscription<double>? _motionSubscription;
-  Timer? _driveTimer;
-  bool _accelerating = false;
-  bool _braking = false;
-
-  CaravanModel get _model => caravanModels[_selected];
-
-  @override
-  void dispose() {
-    _motionSubscription?.cancel();
-    _driveTimer?.cancel();
-    super.dispose();
-  }
-
   void _startRace() {
-    setState(() {
-      _racing = true;
-      _session = const RaceSession(speedKmh: 34);
-    });
-    _motionSubscription = widget.motionService.steering.listen((value) {
-      if (mounted) setState(() => _session = _session.steer(value));
-    });
-    _driveTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
-      if (mounted) {
-        setState(
-          () => _session = _session.drive(
-            elapsedSeconds: .05,
-            accelerating: _accelerating,
-            braking: _braking,
-          ),
-        );
-      }
-    });
+    setState(() => _racing = true);
   }
 
   void _finishRace() {
-    _motionSubscription?.cancel();
-    _driveTimer?.cancel();
-    _accelerating = false;
-    _braking = false;
     setState(() => _racing = false);
   }
 
@@ -80,13 +40,7 @@ class _ArRacingScreenState extends State<ArRacingScreen> {
       duration: const Duration(milliseconds: 450),
       child: _racing
           ? _RaceView(
-              model: _model,
-              session: _session,
-              onImpact: () =>
-                  setState(() => _session = _session.collide(impact: .8)),
               onClose: _finishRace,
-              onAcceleratingChanged: (value) => _accelerating = value,
-              onBrakingChanged: (value) => _braking = value,
               backgroundBuilder: widget.backgroundBuilder,
             )
           : _GarageView(
@@ -434,240 +388,38 @@ class _ModelChoice extends StatelessWidget {
 }
 
 class _RaceView extends StatelessWidget {
-  const _RaceView({
-    required this.model,
-    required this.session,
-    required this.onImpact,
-    required this.onClose,
-    required this.onAcceleratingChanged,
-    required this.onBrakingChanged,
-    this.backgroundBuilder,
-  });
-  final CaravanModel model;
-  final RaceSession session;
-  final VoidCallback onImpact;
+  const _RaceView({required this.onClose, this.backgroundBuilder});
+
   final VoidCallback onClose;
-  final ValueChanged<bool> onAcceleratingChanged;
-  final ValueChanged<bool> onBrakingChanged;
   final ArRaceBackgroundBuilder? backgroundBuilder;
+
   @override
   Widget build(BuildContext context) => Stack(
     key: const Key('ar-race-view'),
     fit: StackFit.expand,
     children: [
-      backgroundBuilder?.call(context) ?? const ArRaceBackground(),
-      LayoutBuilder(
-        builder: (context, constraints) {
-          final scale = session.perspectiveScale;
-          final travel = session.runProgress * constraints.maxHeight * .42;
-          return Stack(
-            children: [
-              AnimatedPositioned(
-                key: const Key('fleeing-caravan'),
-                duration: const Duration(milliseconds: 760),
-                curve: Curves.easeInCubic,
-                left:
-                    (constraints.maxWidth - (190 * scale)) / 2 +
-                    (session.lateralPosition * constraints.maxWidth * .32),
-                bottom: 190 + travel,
-                width: 190 * scale,
-                height: 132 * scale,
-                child: Transform(
-                  alignment: Alignment.bottomCenter,
-                  transform: Matrix4.identity()
-                    ..setEntry(3, 2, .0015)
-                    ..rotateY(session.steering * -.22),
-                  child: FittedBox(
-                    fit: BoxFit.contain,
-                    child: RacingCaravanArt(model: model),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+      if (backgroundBuilder != null)
+        backgroundBuilder!(context)
+      else
+        const UiKitView(
+          key: Key('native-ar-racing-view'),
+          viewType: 'drivebot/ar_racing_view',
+          creationParamsCodec: StandardMessageCodec(),
+        ),
       SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  IconButton.filledTonal(
-                    onPressed: onClose,
-                    icon: const Icon(Icons.close),
-                  ),
-                  const Spacer(),
-                  const SizedBox(width: 150, height: 42),
-                ],
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(
-                  color: const Color(0xE6111319),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: Colors.white12),
-                ),
-                child: Row(
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${session.speedKmh.round()}',
-                          style: const TextStyle(
-                            fontSize: 36,
-                            fontWeight: FontWeight.w900,
-                            height: .9,
-                          ),
-                        ),
-                        const Text(
-                          'KM/H',
-                          style: TextStyle(
-                            color: Colors.white54,
-                            fontSize: 10,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          'SCHADEN  ${session.damage}%',
-                          style: TextStyle(
-                            color: session.damage > 40
-                                ? const Color(0xFFFF5A36)
-                                : Colors.white,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 7),
-                        SizedBox(
-                          width: 120,
-                          height: 7,
-                          child: LinearProgressIndicator(
-                            value: session.damage / 100,
-                            backgroundColor: Colors.white12,
-                            color: const Color(0xFFFF5A36),
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  _PedalControl(
-                    key: const Key('brake-pedal'),
-                    label: 'BREMSE',
-                    icon: Icons.stop_rounded,
-                    color: const Color(0xFFFF5A36),
-                    onPressedChanged: onBrakingChanged,
-                  ),
-                  const Spacer(),
-                  _PedalControl(
-                    key: const Key('gas-pedal'),
-                    label: 'GAS',
-                    icon: Icons.speed_rounded,
-                    color: model.accent,
-                    onPressedChanged: onAcceleratingChanged,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: OutlinedButton.icon(
-                  key: const Key('simulate-impact'),
-                  onPressed: onImpact,
-                  icon: const Icon(Icons.warning_amber_rounded),
-                  label: const Text('KOLLISION SIMULIEREN'),
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: Colors.black45,
-                    foregroundColor: Colors.white,
-                    side: BorderSide(
-                      color: model.accent.withValues(alpha: .55),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: IconButton.filledTonal(
+              key: const Key('close-ar-race'),
+              onPressed: onClose,
+              icon: const Icon(Icons.close),
+              tooltip: 'Rennen schließen',
+            ),
           ),
         ),
       ),
     ],
-  );
-}
-
-class _PedalControl extends StatefulWidget {
-  const _PedalControl({
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.onPressedChanged,
-    super.key,
-  });
-
-  final String label;
-  final IconData icon;
-  final Color color;
-  final ValueChanged<bool> onPressedChanged;
-
-  @override
-  State<_PedalControl> createState() => _PedalControlState();
-}
-
-class _PedalControlState extends State<_PedalControl> {
-  bool _pressed = false;
-
-  void _setPressed(bool value) {
-    if (_pressed == value) return;
-    setState(() => _pressed = value);
-    widget.onPressedChanged(value);
-  }
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    label: widget.label,
-    child: Listener(
-      onPointerDown: (_) => _setPressed(true),
-      onPointerUp: (_) => _setPressed(false),
-      onPointerCancel: (_) => _setPressed(false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 90),
-        width: 108,
-        height: 72,
-        decoration: BoxDecoration(
-          color: _pressed ? widget.color : Colors.black.withValues(alpha: .72),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: widget.color, width: 2),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(widget.icon, color: _pressed ? Colors.black : widget.color),
-            const SizedBox(height: 3),
-            Text(
-              widget.label,
-              style: TextStyle(
-                color: _pressed ? Colors.black : Colors.white,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.2,
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
   );
 }
