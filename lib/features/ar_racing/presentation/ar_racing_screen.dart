@@ -6,6 +6,7 @@ import '../application/motion_steering_service.dart';
 import '../domain/caravan_model.dart';
 import '../domain/race_session.dart';
 import 'caravan_art.dart';
+import 'racing_caravan_art.dart';
 
 class ArRacingScreen extends StatefulWidget {
   const ArRacingScreen({
@@ -261,19 +262,22 @@ class _GarageView extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(18),
                               ),
                             ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.view_in_ar_rounded),
-                                SizedBox(width: 10),
-                                Text(
-                                  'RAUM SCANNEN & STARTEN',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w900,
+                            child: const FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.view_in_ar_rounded),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    'RAUM SCANNEN & STARTEN',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w900,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -428,6 +432,37 @@ class _RaceView extends StatelessWidget {
       CustomPaint(
         painter: _RoomPainter(steering: session.steering, accent: model.accent),
       ),
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final scale = session.perspectiveScale;
+          final travel = session.runProgress * constraints.maxHeight * .42;
+          return Stack(
+            children: [
+              AnimatedPositioned(
+                key: const Key('fleeing-caravan'),
+                duration: const Duration(milliseconds: 760),
+                curve: Curves.easeInCubic,
+                left:
+                    (constraints.maxWidth - (190 * scale)) / 2 +
+                    (session.steering * 38),
+                bottom: 190 + travel,
+                width: 190 * scale,
+                height: 132 * scale,
+                child: Transform(
+                  alignment: Alignment.bottomCenter,
+                  transform: Matrix4.identity()
+                    ..setEntry(3, 2, .0015)
+                    ..rotateY(session.steering * -.22),
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    child: RacingCaravanArt(model: model),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
       SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(18),
@@ -473,11 +508,6 @@ class _RaceView extends StatelessWidget {
                 ],
               ),
               const Spacer(),
-              Transform.rotate(
-                angle: session.steering * .14,
-                child: CaravanArt(model: model, compact: true),
-              ),
-              const SizedBox(height: 4),
               Container(
                 padding: const EdgeInsets.all(15),
                 decoration: BoxDecoration(
