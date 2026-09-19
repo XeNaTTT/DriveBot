@@ -19,4 +19,17 @@ class ArRacingIosCompatibilityTest < Minitest::Test
     assert_includes SOURCE, 'byteOffset < classifications.buffer.length'
     assert_includes SOURCE, 'ARMeshClassification(rawValue: Int(rawValue)) ?? .none'
   end
+
+  def test_mesh_indices_use_the_geometry_helper_and_checked_width_conversion
+    assert_includes SOURCE, 'UInt32(exactly: faceIndex)'
+    assert_includes SOURCE, 'geometry.vertexIndex('
+    refute_includes SOURCE, 'geometry.faces.index(of:'
+  end
+
+  def test_mesh_index_reader_checks_layout_and_buffer_bounds
+    assert_includes SOURCE, 'faces.bytesPerIndex == MemoryLayout<UInt16>.size'
+    assert_includes SOURCE, 'bufferEnd <= faces.buffer.length'
+    assert_includes SOURCE, 'let vertexCount32 = UInt32(exactly: geometry.vertices.count)'
+    assert_includes SOURCE, 'vertexIndex < vertexCount32'
+  end
 end
