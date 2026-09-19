@@ -7,11 +7,14 @@ and increase its visible damage value.
 
 ## MVP architecture
 
-- `features/ar_racing/domain` contains UI-independent caravan and race state.
+- `features/ar_racing/domain` contains UI-independent caravan and race state,
+  including normalized forward progress and perspective scaling.
 - `features/ar_racing/application` abstracts phone motion input behind
   `MotionSteeringService`; widget tests use the mock implementation.
 - `features/ar_racing/presentation` contains the garage, model selection and AR
-  race composition. The current room mesh is a high-contrast mock visualization.
+  race composition. A rear three-quarter vehicle view shrinks and travels toward
+  the room's vanishing point as it accelerates. The current room mesh is a
+  high-contrast mock visualization.
 - Authentication remains optional and wraps the game through `AuthGate`.
 
 The MVP uses real gyroscope input on iOS and Android. LiDAR room meshing,

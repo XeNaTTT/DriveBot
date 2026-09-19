@@ -12,6 +12,14 @@ void main() {
     expect(collided.speedKmh, lessThan(session.speedKmh));
   });
 
+  test('acceleration advances the vehicle into the room perspective', () {
+    const session = RaceSession(speedKmh: 34);
+    final advanced = session.accelerate();
+
+    expect(advanced.runProgress, .12);
+    expect(advanced.perspectiveScale, lessThan(session.perspectiveScale));
+  });
+
   testWidgets('three caravans can be selected and race can start', (
     tester,
   ) async {
@@ -33,6 +41,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('ar-race-view')), findsOneWidget);
     expect(find.text('LIDAR  •  LIVE'), findsOneWidget);
+    expect(find.byKey(const Key('racing-caravan-3d')), findsOneWidget);
+    expect(find.byKey(const Key('fleeing-caravan')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('simulate-impact')));
     await tester.pump();
