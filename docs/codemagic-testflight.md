@@ -79,6 +79,11 @@ The workflow uses:
    - `flutter build ipa --release --build-number=<timestamp>`
 3. On success, an IPA is uploaded to App Store Connect/TestFlight.
 
+The separate native Jolt build writes its complete combined `xcodebuild` output
+to the `build/native-logs/jolt-xcodebuild.log` artifact. The pipeline still exits
+with the original `xcodebuild` status, so the log is retained without hiding a
+native compiler failure.
+
 The app version is read from `pubspec.yaml` (currently `1.1.1`). Codemagic keeps
 that user-facing version and overrides only the unique build number for each run.
 
