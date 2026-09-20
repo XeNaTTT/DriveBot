@@ -53,4 +53,17 @@ class DriveBotJoltIntegrationTest < Minitest::Test
     assert_includes wrapper, 'inputIndices[index] >= vertexCount'
     assert_includes wrapper, 'if (!IsFinite(inputVertices[index])) return;'
   end
+
+  def test_step_validates_jolt_state_and_foundation_values_before_insertion
+    wrapper = File.read(WRAPPER)
+
+    assert_includes wrapper, '_vehicle->GetWheels().size() != 4'
+    assert_includes wrapper, 'if (wheels[index] == nullptr)'
+    assert_includes wrapper, 'updateError != EPhysicsUpdateError::None'
+    assert_includes wrapper, 'if (!IsValidRigidTransform(matrix))'
+    assert_match(/NSValue \*value = .*initWithBytes/, wrapper)
+    assert_match(/if \(value == nil\).*?return failure/m, wrapper)
+    assert_match(/if \(value == nil\).*?\[wheelTransforms addObject:value\]/m, wrapper)
+    assert_includes wrapper, '} @catch (NSException *exception) {'
+  end
 end

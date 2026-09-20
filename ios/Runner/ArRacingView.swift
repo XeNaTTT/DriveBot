@@ -45,6 +45,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private var displayLink: CADisplayLink?
   private var previousTime: CFTimeInterval = 0
   private var physicsStepPending = false
+  private var physicsFailed = false
   private var throttle: Float = 0, brake: Float = 0, steering: Float = 0
   private var meshWork: [UUID: DispatchWorkItem] = [:]
   private let meshQueue = DispatchQueue(label: "de.drivebot.mesh", qos: .utility)
@@ -346,6 +347,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
         anchor.transform.matrix = state.chassisTransform
         Self.logger.notice("[Placement] 09 initial transform applied")
         self.physics.setPaused(false)
+        self.physicsFailed = false
         self.setScanVisible(false)
         self.phase = .ready
         Self.logger.notice("[Placement] 10 driving started")
@@ -380,6 +382,10 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     releaseInputs()
     physics.setPaused(true)
     physics.removeVehicle()
+    physicsFailed = false
+    physicsStepPending = false
+    previousTime = 0
+    displayLink?.isPaused = false
     carAnchor?.removeFromParent()
     carAnchor = nil
     wheels.removeAll()
@@ -464,14 +470,25 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     }
     let dt = previousTime == 0 ? 0 : link.timestamp - previousTime
     previousTime = link.timestamp
-    guard placementPhysicsMode == .fullJolt, !physicsStepPending else { return }
+    guard placementPhysicsMode == .fullJolt, !physicsStepPending, !physicsFailed else { return }
     physicsStepPending = true
-    physics.step(dt) { [weak self, weak anchor] state in
+    physics.step(dt) { [weak self, weak anchor] result in
       guard let self else { return }
       self.physicsStepPending = false
-      guard let anchor, self.phase == .ready,
-        isFiniteTransform(state.chassisTransform)
-      else { return }
+      guard case .success(let state) = result else {
+        if case .failure(let error) = result { self.stopAfterPhysicsFailure(error) }
+        return
+      }
+      guard let anchor, self.phase == .ready else { return }
+      guard isFiniteTransform(state.chassisTransform),
+        state.wheelTransforms.count == self.wheels.count,
+        state.wheelTransforms.count == 4
+      else {
+        self.stopAfterPhysicsFailure(NSError(
+          domain: "de.drivebot.jolt", code: 15,
+          userInfo: [NSLocalizedDescriptionKey: "Jolt lieferte einen unvollständigen Fahrzeugzustand."]))
+        return
+      }
       anchor.transform.matrix = state.chassisTransform
       self.speed.text = String(format: "%.1f m/s", state.speedMetersPerSecond)
       for (i, value) in state.wheelTransforms.enumerated() where i < self.wheels.count {
@@ -483,6 +500,18 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       }
       if state.collided { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
     }
+  }
+
+  private func stopAfterPhysicsFailure(_ error: Error) {
+    guard !physicsFailed else { return }
+    physicsFailed = true
+    releaseInputs()
+    physics.setPaused(true)
+    displayLink?.isPaused = true
+    phase = .interrupted
+    message.text = "Physikfehler – Fahrzeug bitte zurücksetzen"
+    message.isHidden = false
+    Self.logger.error("Physics paused: \(error.localizedDescription, privacy: .public)")
   }
 
   private func updatePlacementCandidate() {
@@ -522,6 +551,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     DispatchQueue.main.async {
       switch camera.trackingState {
       case .normal:
+        guard !self.physicsFailed else { return }
         self.physics.setPaused(false)
         self.phase = self.carAnchor == nil ? (self.hasFloor ? .aiming : .scanning) : .ready
       default: self.interrupted()
@@ -734,10 +764,18 @@ private final class SerializedJoltWorld {
       world.setThrottle(throttle, brake: brake, steering: steering)
     }
   }
-  func step(_ elapsed: Double, completion: @escaping (DBJoltVehicleState) -> Void) {
+  func step(_ elapsed: Double, completion: @escaping (Result<DBJoltVehicleState, Error>) -> Void) {
     queue.async { [world] in
       let state = world.step(elapsed)
-      DispatchQueue.main.async { completion(state) }
+      let result: Result<DBJoltVehicleState, Error>
+      if state.success, state.wheelTransforms.count == 4 {
+        result = .success(state)
+      } else {
+        result = .failure(NSError(
+          domain: "de.drivebot.jolt", code: state.errorCode,
+          userInfo: [NSLocalizedDescriptionKey: state.errorMessage ?? "Unbekannter Physikfehler."]))
+      }
+      DispatchQueue.main.async { completion(result) }
     }
   }
   func replaceStaticMesh(_ id: UUID, vertices: Data, indices: Data) {
