@@ -778,22 +778,34 @@ private struct PhysicsFailure: LocalizedError {
 private enum PhysicsDiagnostics {
   private static let key = "DriveBot.lastPhysicsDiagnostic"
   static func make(vehicleID: String, error: Error, failure: PhysicsFailure?, lastSuccessfulOperation: String) -> String {
-    let info = Bundle.main.infoDictionary ?? [:]
+    let bundle = Bundle.main
+    let appVersion = bundle.object(
+      forInfoDictionaryKey: "CFBundleShortVersionString"
+    ) as? String ?? "unbekannt"
+    let buildNumber = bundle.object(
+      forInfoDictionaryKey: "CFBundleVersion"
+    ) as? String ?? "unbekannt"
+    let commit = bundle.object(
+      forInfoDictionaryKey: "DriveBotCommit"
+    ) as? String ?? "unbekannt"
     let nsError = error as NSError
+    let operation = failure?.operation ?? "unbekannt"
+    let transformsFinite = failure?.transformsFinite ?? false
+    let transformsFiniteDescription = transformsFinite ? "ja" : "nein"
     return [
       "DriveBot Physikdiagnose",
-      "App-Version: \(info[\"CFBundleShortVersionString\"] ?? \"unbekannt\")",
-      "Buildnummer: \(info[\"CFBundleVersion\"] ?? \"unbekannt\")",
-      "Commit: \(info[\"DriveBotCommit\"] ?? \"unbekannt\")",
+      "App-Version: " + appVersion,
+      "Buildnummer: " + buildNumber,
+      "Commit: " + commit,
       "Fahrzeug-ID: \(vehicleID)",
       "Fehlercode: \(failure?.code ?? nsError.code)",
       "Fehlerbeschreibung: \(error.localizedDescription)",
-      "Operation: \(failure?.operation ?? \"unbekannt\")",
+      "Operation: " + operation,
       "Letzte erfolgreiche Operation: \(lastSuccessfulOperation)",
       "Simulationsschritt: \(failure?.simulationStep ?? -1)",
       "Zeitschritt: \(failure?.timeStep ?? 0)",
       "Räder erwartet/ausgegeben: \(failure?.expectedWheels ?? 4)/\(failure?.outputWheels ?? 0)",
-      "Transformationen endlich: \(failure?.transformsFinite == true ? \"ja\" : \"nein\")",
+      "Transformationen endlich: " + transformsFiniteDescription,
     ].joined(separator: "\n")
   }
   static func save(_ report: String) { UserDefaults.standard.set(report, forKey: key) }

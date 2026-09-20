@@ -140,6 +140,11 @@ workflows:
         script: |
           set -e
 
+          echo "=== Source revision used for the iOS build ==="
+          git rev-parse HEAD
+          echo "=== Physics diagnostics source ==="
+          nl -ba ios/Runner/ArRacingView.swift | sed -n '775,815p'
+
           echo "Building with build number: $NEXT_BUILD_NUMBER"
 
           # Persist the exact source revision in the archived app so an
