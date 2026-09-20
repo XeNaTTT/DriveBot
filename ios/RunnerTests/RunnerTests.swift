@@ -1,4 +1,5 @@
 import Flutter
+import DriveBotJolt
 import UIKit
 import XCTest
 @testable import Runner
@@ -24,6 +25,31 @@ class RunnerTests: XCTestCase {
     XCTAssertGreaterThan(offset.east, 200)
     XCTAssertLessThan(offset.east, 230)
     XCTAssertEqual(distance, offset.east, accuracy: 0.01)
+  }
+
+  func testJoltVehicleProducesFourFiniteWheelTransformsForTenSteps() throws {
+    let world = DBJoltWorld()
+    XCTAssertTrue(world.isOperational())
+    try world.prepareVehicle(at: SIMD3<Float>(0, 1, 0), heading: 0, profile: "compact")
+    world.setPaused(false)
+
+    for _ in 0..<10 {
+      let state = world.step(1.0 / 60.0)
+      XCTAssertTrue(state.success, state.errorMessage ?? "Jolt step failed")
+      XCTAssertTrue(isFiniteMatrix(state.chassisTransform))
+      XCTAssertEqual(state.wheelTransforms.count, 4)
+      for value in state.wheelTransforms {
+        var transform = matrix_identity_float4x4
+        value.getValue(&transform)
+        XCTAssertTrue(isFiniteMatrix(transform))
+      }
+    }
+  }
+
+  private func isFiniteMatrix(_ matrix: simd_float4x4) -> Bool {
+    (0..<4).allSatisfy { column in
+      (0..<4).allSatisfy { row in matrix[column][row].isFinite }
+    }
   }
 
 }

@@ -5,6 +5,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Objective-C value type keeps all C++ ownership inside the pod.
 @interface DBJoltVehicleState : NSObject
+@property(nonatomic) BOOL success;
+@property(nonatomic) NSInteger errorCode;
+@property(nonatomic, copy, nullable) NSString *errorMessage;
 @property(nonatomic) simd_float4x4 chassisTransform;
 @property(nonatomic, copy) NSArray<NSValue *> *wheelTransforms;
 @property(nonatomic) float speedMetersPerSecond;

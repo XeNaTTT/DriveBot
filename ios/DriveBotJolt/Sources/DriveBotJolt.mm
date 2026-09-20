@@ -51,6 +51,31 @@ static simd_float4x4 Matrix(RMat44 matrix) {
 static bool IsFinite(simd_float3 value) {
   return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
 }
+static bool IsFinite(Vec3Arg value) {
+  return std::isfinite(value.GetX()) && std::isfinite(value.GetY()) &&
+         std::isfinite(value.GetZ());
+}
+static bool IsFiniteMatrix(const simd_float4x4 &matrix) {
+  for (int column = 0; column < 4; ++column)
+    for (int row = 0; row < 4; ++row)
+      if (!std::isfinite(matrix.columns[column][row])) return false;
+  return true;
+}
+static bool IsValidRigidTransform(const simd_float4x4 &matrix) {
+  if (!IsFiniteMatrix(matrix)) return false;
+  const simd_float3 x = simd_make_float3(matrix.columns[0]);
+  const simd_float3 y = simd_make_float3(matrix.columns[1]);
+  const simd_float3 z = simd_make_float3(matrix.columns[2]);
+  constexpr float tolerance = 0.02f;
+  return std::abs(simd_length(x) - 1.f) < tolerance &&
+         std::abs(simd_length(y) - 1.f) < tolerance &&
+         std::abs(simd_length(z) - 1.f) < tolerance &&
+         std::abs(simd_dot(x, y)) < tolerance &&
+         std::abs(simd_dot(x, z)) < tolerance &&
+         std::abs(simd_dot(y, z)) < tolerance &&
+         simd_dot(simd_cross(x, y), z) > 0.98f &&
+         std::abs(matrix.columns[3].w - 1.f) < tolerance;
+}
 static void SetError(NSError **error, NSInteger code, NSString *message) {
   if (error) *error = [NSError errorWithDomain:DBJoltErrorDomain code:code
     userInfo:@{NSLocalizedDescriptionKey: message}];
@@ -70,6 +95,7 @@ static Profile ProfileNamed(NSString *name) {
   if ((self = [super init])) {
     _chassisTransform = matrix_identity_float4x4;
     _wheelTransforms = @[];
+    _success = NO;
   }
   return self;
 }
@@ -232,7 +258,7 @@ static Profile ProfileNamed(NSString *name) {
 }
 - (void)setPaused:(BOOL)paused {
   _paused = paused;
-  if (paused) [self setThrottle:0 brake:1 steering:0];
+  if (paused) [self setThrottle:0 brake:0 steering:0];
 }
 - (void)replaceStaticMesh:(NSUUID *)identifier vertices:(NSData *)vertexData
                   indices:(NSData *)indexData {
@@ -272,8 +298,33 @@ static Profile ProfileNamed(NSString *name) {
   _meshes.erase(iterator);
 }
 - (DBJoltVehicleState *)step:(double)elapsed {
-  DBJoltVehicleState *state = [DBJoltVehicleState new];
-  if (![self isReady]) return state;
+  static constexpr NSInteger kInvalidWorld = 10;
+  static constexpr NSInteger kInvalidVehicle = 11;
+  static constexpr NSInteger kUpdateFailed = 12;
+  static constexpr NSInteger kInvalidTransform = 13;
+  static constexpr NSInteger kBridgeFailed = 14;
+  DBJoltVehicleState *(^failure)(NSInteger, NSString *) =
+    ^DBJoltVehicleState *(NSInteger code, NSString *message) {
+      _paused = YES;
+      [self setThrottle:0 brake:0 steering:0];
+      DBJoltVehicleState *state = [DBJoltVehicleState new];
+      state.errorCode = code;
+      state.errorMessage = message;
+      NSLog(@"DriveBot Jolt step failed (%ld): %@", (long)code, message);
+      return state;
+    };
+  @try {
+  if (![self isOperational])
+    return failure(kInvalidWorld, @"Die Jolt-Welt ist nicht vollständig initialisiert.");
+  if (![self isReady] || _vehicle->GetController() == nullptr ||
+      _vehicle->GetWheels().size() != 4)
+    return failure(kInvalidVehicle, @"Fahrzeug, Controller oder vier Räder fehlen.");
+
+  {
+    BodyLockRead initialBodyLock(_physics->GetBodyLockInterface(), _car);
+    if (!initialBodyLock.Succeeded())
+      return failure(kInvalidVehicle, @"Der Fahrzeugkörper existiert nicht mehr.");
+  }
   if (!_paused && std::isfinite(elapsed) && elapsed > 0) {
     _accumulator += std::min(elapsed, .1);
     constexpr float timeStep = 1.f / 60.f;
@@ -283,24 +334,50 @@ static Profile ProfileNamed(NSString *name) {
       controller->SetDriverInput(_throttle, _steering, _brake, _brake);
       if (_throttle != 0 || _steering != 0 || _brake != 0)
         _physics->GetBodyInterface().ActivateBody(_car);
-      _physics->Update(timeStep, 1, _temp, _jobs);
+      const EPhysicsUpdateError updateError = _physics->Update(timeStep, 1, _temp, _jobs);
+      if (updateError != EPhysicsUpdateError::None)
+        return failure(kUpdateFailed, @"Jolt konnte den Physikschritt nicht abschließen.");
       _accumulator -= timeStep;
     }
   }
   BodyInterface &bodies = _physics->GetBodyInterface();
   const RMat44 transform = bodies.GetWorldTransform(_car);
   const Vec3 velocity = bodies.GetLinearVelocity(_car);
-  state.chassisTransform = Matrix(transform);
+  const simd_float4x4 chassisMatrix = Matrix(transform);
+  if (!IsValidRigidTransform(chassisMatrix) || !IsFinite(velocity))
+    return failure(kInvalidTransform, @"Fahrzeugtransformation oder Geschwindigkeit ist ungültig.");
+  DBJoltVehicleState *state = [DBJoltVehicleState new];
+  state.chassisTransform = chassisMatrix;
   state.speedMetersPerSecond = velocity.Length();
   state.collided = (velocity - _lastVelocity).Length() > 1.5f;
   _lastVelocity = velocity;
   NSMutableArray *wheelTransforms = [NSMutableArray arrayWithCapacity:4];
-  for (uint index = 0; index < _vehicle->GetWheels().size(); ++index) {
+  if (wheelTransforms == nil)
+    return failure(kBridgeFailed, @"Der Ergebniscontainer für Räder konnte nicht erstellt werden.");
+  const auto &wheels = _vehicle->GetWheels();
+  if (wheels.size() != 4)
+    return failure(kInvalidVehicle, @"Jolt liefert nicht genau vier Räder.");
+  for (uint index = 0; index < 4; ++index) {
+    if (wheels[index] == nullptr)
+      return failure(kInvalidVehicle, [NSString stringWithFormat:@"Jolt-Rad %u fehlt.", index]);
     simd_float4x4 matrix = Matrix(
       _vehicle->GetWheelWorldTransform(index, Vec3::sAxisY(), Vec3::sAxisX()));
-    [wheelTransforms addObject:[NSValue valueWithBytes:&matrix objCType:@encode(simd_float4x4)]];
+    if (!IsValidRigidTransform(matrix))
+      return failure(kInvalidTransform,
+        [NSString stringWithFormat:@"Transformation von Jolt-Rad %u ist ungültig.", index]);
+    NSValue *value = [[NSValue alloc] initWithBytes:&matrix objCType:@encode(simd_float4x4)];
+    if (value == nil)
+      return failure(kBridgeFailed,
+        [NSString stringWithFormat:@"Transformation von Jolt-Rad %u konnte nicht übertragen werden.", index]);
+    [wheelTransforms addObject:value];
   }
   state.wheelTransforms = wheelTransforms;
+  state.success = YES;
   return state;
+  } @catch (NSException *exception) {
+    NSString *reason = exception.reason ?: @"Unbekannte Objective-C-Bridge-Exception.";
+    return failure(kBridgeFailed,
+      [NSString stringWithFormat:@"Objective-C-Bridge fehlgeschlagen: %@", reason]);
+  }
 }
 @end
