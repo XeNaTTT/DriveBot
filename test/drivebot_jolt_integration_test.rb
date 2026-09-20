@@ -40,7 +40,8 @@ class DriveBotJoltIntegrationTest < Minitest::Test
 
     assert_includes wrapper, 'shapeResult.HasError()'
     assert_includes wrapper, 'Body *createdBody = bodies.CreateBody(body)'
-    assert_includes wrapper, 'if (!lock.Succeeded())'
+    assert_includes wrapper, 'if (lock.Succeeded())'
+    assert_match(/}\n  if \(_vehicle == nullptr/, wrapper)
     assert_includes wrapper, '- (void)removeVehicle'
     refute_includes wrapper, 'Create().Get()'
   end

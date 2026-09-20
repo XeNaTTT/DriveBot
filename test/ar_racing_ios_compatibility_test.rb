@@ -38,7 +38,19 @@ class ArRacingIosCompatibilityTest < Minitest::Test
     assert_includes SOURCE, 'physics.prepareVehicle('
     assert_includes SOURCE, 'physics.removeVehicle()'
     assert_includes SOURCE, 'placementGeneration += 1'
-    assert_includes SOURCE, 'Self.logger.notice("placement.ready'
+    (1..10).each do |step|
+      assert_match(/\[Placement\] #{format('%02d', step)} /, SOURCE)
+    end
+    assert_includes SOURCE, 'private let placementPhysicsMode: PlacementPhysicsMode = .fullJolt'
+    assert_includes SOURCE, 'DRIVEBOT_VISUAL_ONLY_PLACEMENT'
+    refute_includes SOURCE, 'generateCollisionShapes(recursive: true)'
+  end
+
+  def test_jolt_calls_are_serialized_away_from_realitykit
+    assert_includes SOURCE, 'private final class SerializedJoltWorld'
+    assert_includes SOURCE, 'DispatchQueue(label: "de.drivebot.physics"'
+    assert_includes SOURCE, 'DispatchQueue.main.async { completion(.success(state)) }'
+    assert_includes SOURCE, 'guard placementPhysicsMode == .fullJolt, !physicsStepPending'
   end
 
   def test_scan_and_driving_hud_follow_real_state

@@ -62,14 +62,26 @@ cause. The old boundary did, however, call `Create().Get()`, use a body lock and
 start the first step without checking shape creation, body allocation or lock
 success.
 
-The replacement is transactional: it rejects non-finite transforms, checks
-shape/body/lock creation, keeps the vehicle paused until all constraints and
-visible entities exist, and removes partial resources on every error. All world
-mutation and stepping is dispatched on the main thread. Unified logging under
-subsystem `de.drivebot`, category `ARPlacement`, records begin, rejection,
-native failure, stale generation and ready stages. A symbolicated `.ips` report
-and the matching `ARPlacement` device log are still required to identify the
-original exception class and failing frame conclusively.
+The replacement is transactional: it rejects non-finite transforms, attaches
+the visual fallback on the main thread, and only then asks Jolt to create the
+vehicle. It checks shape/body/lock creation, keeps the vehicle paused until the
+initial transform is applied, and removes partial resources on every error.
+RealityKit does not generate or inspect collision shapes during placement;
+Jolt owns collision independently. Every Jolt mutation, mesh update, input and
+step now runs on the single `de.drivebot.physics` queue, while completion blocks
+return to the main thread before touching RealityKit or UIKit. A back-pressure
+guard prevents display frames from queuing overlapping physics steps.
+
+Unified logging under subsystem `de.drivebot`, category `ARPlacement`, emits
+the numbered checkpoints `[Placement] 01` through `[Placement] 10`. The last
+checkpoint from a device run therefore separates raycast/configuration/model
+work (01–06) from Jolt setup (07–09) and driving activation (10), without
+logging pointers or mesh payloads. Debug builds can set
+`DRIVEBOT_VISUAL_ONLY_PLACEMENT=1` to place the fallback without Jolt; Release
+always uses `fullJolt`. Runner Release/Profile and the native Jolt pod generate
+DWARF-with-dSYM output for symbolication. A symbolicated `.ips` report is still
+required to identify the original exception class and failing frame
+conclusively.
 
 ## Scan rendering
 

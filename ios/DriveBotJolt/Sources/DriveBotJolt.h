@@ -13,6 +13,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface DBJoltWorld : NSObject
 - (instancetype)init;
+/// Confirms that the long-lived allocator, factory, jobs and physics system exist.
+- (BOOL)isOperational;
 /// Creates a complete vehicle transactionally. On failure no driveable body is
 /// left in the world and `error` describes the failed validation/creation step.
 - (BOOL)prepareVehicleAt:(simd_float3)position

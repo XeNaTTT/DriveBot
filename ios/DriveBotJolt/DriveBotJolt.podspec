@@ -34,7 +34,11 @@ Pod::Spec.new do |s|
   s.pod_target_xcconfig = {
     'HEADER_SEARCH_PATHS' => '"${PODS_TARGET_SRCROOT}/Vendor/Jolt"',
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
-    'CLANG_CXX_LIBRARY' => 'libc++'
+    'CLANG_CXX_LIBRARY' => 'libc++',
+    # Preserve native Jolt frames in Organizer/Codemagic archives so TestFlight
+    # crashes can be symbolicated together with the Runner binary.
+    'DEBUG_INFORMATION_FORMAT' => 'dwarf-with-dsym',
+    'GCC_GENERATE_DEBUGGING_SYMBOLS' => 'YES'
   }
   s.frameworks = 'Foundation'
 end

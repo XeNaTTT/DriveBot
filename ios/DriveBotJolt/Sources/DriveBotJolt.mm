@@ -125,6 +125,11 @@ static Profile ProfileNamed(NSString *name) {
   delete _objectBroad; delete _pairs; delete _broad;
 }
 - (BOOL)isReady { return _vehicle != nullptr && !_car.IsInvalid(); }
+- (BOOL)isOperational {
+  return Factory::sInstance != nullptr && _temp != nullptr && _jobs != nullptr &&
+         _broad != nullptr && _pairs != nullptr && _objectBroad != nullptr &&
+         _physics != nullptr;
+}
 - (void)removeVehicle {
   if (!_vehicle) return;
   _paused = YES;
@@ -142,6 +147,10 @@ static Profile ProfileNamed(NSString *name) {
 - (BOOL)prepareVehicleAt:(simd_float3)p heading:(float)heading profile:(NSString *)name
                    error:(NSError **)error {
   [self removeVehicle];
+  if (![self isOperational]) {
+    SetError(error, 1, @"Die Jolt-Welt ist nicht vollständig initialisiert.");
+    return NO;
+  }
   if (!IsFinite(p) || !std::isfinite(heading)) {
     SetError(error, 1, @"Die Platzierungstransformation ist nicht endlich.");
     return NO;
@@ -191,14 +200,25 @@ static Profile ProfileNamed(NSString *name) {
   controller->mDifferentials[0].mLeftWheel = 2;
   controller->mDifferentials[0].mRightWheel = 3;
   settings.mController = controller;
-
-  BodyLockWrite lock(_physics->GetBodyLockInterface(), _car);
-  if (!lock.Succeeded()) {
+  if (settings.mWheels.size() != 4 || settings.mController == nullptr) {
     bodies.RemoveBody(_car); bodies.DestroyBody(_car); _car = BodyID();
-    SetError(error, 4, @"Der Fahrzeugkörper konnte nicht gesperrt werden.");
+    SetError(error, 5, @"Räder oder Fahrzeugcontroller sind unvollständig.");
     return NO;
   }
-  _vehicle = new VehicleConstraint(lock.GetBody(), settings);
+
+  {
+    BodyLockWrite lock(_physics->GetBodyLockInterface(), _car);
+    if (lock.Succeeded()) {
+      _vehicle = new VehicleConstraint(lock.GetBody(), settings);
+    }
+  }
+  if (_vehicle == nullptr || _vehicle->GetController() == nullptr ||
+      _vehicle->GetWheels().size() != 4) {
+    _vehicle = nullptr;
+    bodies.RemoveBody(_car); bodies.DestroyBody(_car); _car = BodyID();
+    SetError(error, 4, @"Der Fahrzeugkörper oder das Constraint konnte nicht gesperrt und erstellt werden.");
+    return NO;
+  }
   _vehicle->SetVehicleCollisionTester(
     new VehicleCollisionTesterCastSphere(Layers::MOVING, .009f));
   _physics->AddConstraint(_vehicle);
