@@ -62,6 +62,11 @@ workflows:
           echo "App Store Apple ID: $APP_STORE_APPLE_ID"
           echo "altool args: $APP_STORE_CONNECT_ALTOOL_ADDITIONAL_ARGUMENTS"
 
+          echo "=== Checked-out source ==="
+          echo "Commit: $(git rev-parse HEAD)"
+          echo "Branch: ${CM_BRANCH:-unknown}"
+          echo "Codemagic revision: ${CM_COMMIT:-unknown}"
+
       - name: Flutter clean
         script: |
           set -e

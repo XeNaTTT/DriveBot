@@ -288,16 +288,18 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       builtWheels.append(wheel)
     }
     anchor.generateCollisionShapes(recursive: true)
-    guard anchor.findEntityWithCollisionComponent() != nil else {
+    guard containsCollisionComponent(anchor) else {
       Self.logger.error("placement.collision-shapes-failed generation=\(generation)")
       showPlacementFailure(
         "Für das ausgewählte Fahrzeug konnte keine Kollisionsgeometrie erzeugt werden.")
       return
     }
-    var error: NSError?
-    guard physics.prepareVehicle(at: p, heading: 0, profile: appearance.profile, error: &error) else {
-      Self.logger.error("placement.physics-failed generation=\(generation) error=\(error?.localizedDescription ?? "unknown", privacy: .public)")
-      showPlacementFailure(error?.localizedDescription ?? "Fahrzeug konnte nicht erstellt werden")
+    do {
+      try physics.prepareVehicle(at: p, heading: 0, profile: appearance.profile)
+    } catch {
+      Self.logger.error(
+        "placement.physics-failed generation=\(generation) error=\(error.localizedDescription, privacy: .public)")
+      showPlacementFailure(error.localizedDescription)
       return
     }
     guard generation == placementGeneration else {
@@ -633,13 +635,13 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
 }
 
-private extension Entity {
-  func findEntityWithCollisionComponent() -> Entity? {
-    if components[CollisionComponent.self] != nil { return self }
-    for child in children {
-      if let entity = child.findEntityWithCollisionComponent() { return entity }
-    }
-    return nil
+private func containsCollisionComponent(_ entity: Entity) -> Bool {
+  if entity.components[CollisionComponent.self] != nil {
+    return true
+  }
+
+  return entity.children.contains { child in
+    containsCollisionComponent(child)
   }
 }
 
