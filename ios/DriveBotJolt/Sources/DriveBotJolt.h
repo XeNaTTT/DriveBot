@@ -3,15 +3,34 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+/// Explicit scalar transport avoids relying on NSValue's unsupported encoding
+/// of simd_float4x4 (a C struct containing vector fields).
+@interface DBJoltTransform : NSObject
+@property(nonatomic) NSInteger wheelIndex; // -1 for the chassis
+@property(nonatomic) float positionX;
+@property(nonatomic) float positionY;
+@property(nonatomic) float positionZ;
+@property(nonatomic) float rotationX;
+@property(nonatomic) float rotationY;
+@property(nonatomic) float rotationZ;
+@property(nonatomic) float rotationW;
+@end
+
 /// Objective-C value type keeps all C++ ownership inside the pod.
 @interface DBJoltVehicleState : NSObject
 @property(nonatomic) BOOL success;
 @property(nonatomic) NSInteger errorCode;
 @property(nonatomic, copy, nullable) NSString *errorMessage;
-@property(nonatomic) simd_float4x4 chassisTransform;
-@property(nonatomic, copy) NSArray<NSValue *> *wheelTransforms;
+@property(nonatomic, strong, nullable) DBJoltTransform *chassis;
+@property(nonatomic, copy) NSArray<DBJoltTransform *> *wheels;
 @property(nonatomic) float speedMetersPerSecond;
 @property(nonatomic) BOOL collided;
+@property(nonatomic, copy) NSString *operation;
+@property(nonatomic) NSInteger simulationStep;
+@property(nonatomic) double timeStep;
+@property(nonatomic) NSInteger expectedWheelCount;
+@property(nonatomic) NSInteger outputWheelCount;
+@property(nonatomic) BOOL transformsFinite;
 @end
 
 @interface DBJoltWorld : NSObject

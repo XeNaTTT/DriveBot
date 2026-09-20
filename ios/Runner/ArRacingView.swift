@@ -32,6 +32,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private let message = UILabel()
   private let speed = UILabel()
   private let resetButton = UIButton(type: .system)
+  private let diagnosisButton = UIButton(type: .system)
   private let debugButton = UIButton(type: .system)
   private let scanButton = UIButton(type: .system)
   private let steeringPad = UIView()
@@ -60,6 +61,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private let motion = CMMotionManager()
   private let vehicleID: String
   private var placementGeneration = 0
+  private var lastSuccessfulOperation = "initialization"
 
   private var appearance: VehicleAppearance {
     switch vehicleID {
@@ -166,12 +168,14 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     speed.clipsToBounds = true
     speed.translatesAutoresizingMaskIntoConstraints = false
     root.addSubview(speed)
-    style(resetButton, title: "↻")
+    style(resetButton, title: "Fahrzeug zurücksetzen")
+    style(diagnosisButton, title: "Diagnose kopieren")
     style(debugButton, title: "⚙︎")
     style(scanButton, title: "Scan anzeigen")
     style(throttleButton, title: "GAS")
     style(brakeButton, title: "BREMSE")
     resetButton.addTarget(self, action: #selector(resetCar), for: .touchUpInside)
+    diagnosisButton.addTarget(self, action: #selector(shareDiagnosis), for: .touchUpInside)
     debugButton.addTarget(self, action: #selector(toggleDebug), for: .touchUpInside)
     scanButton.addTarget(self, action: #selector(toggleDebug), for: .touchUpInside)
     throttleButton.addTarget(
@@ -213,8 +217,12 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       scanButton.heightAnchor.constraint(equalToConstant: 44),
       resetButton.centerYAnchor.constraint(equalTo: debugButton.centerYAnchor),
       resetButton.trailingAnchor.constraint(equalTo: debugButton.leadingAnchor, constant: -8),
-      resetButton.widthAnchor.constraint(equalToConstant: 44),
+      resetButton.widthAnchor.constraint(equalToConstant: 190),
       resetButton.heightAnchor.constraint(equalToConstant: 44),
+      diagnosisButton.topAnchor.constraint(equalTo: resetButton.bottomAnchor, constant: 8),
+      diagnosisButton.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -8),
+      diagnosisButton.widthAnchor.constraint(equalToConstant: 190),
+      diagnosisButton.heightAnchor.constraint(equalToConstant: 44),
       speed.centerYAnchor.constraint(equalTo: debugButton.centerYAnchor),
       speed.trailingAnchor.constraint(equalTo: resetButton.leadingAnchor, constant: -8),
       speed.widthAnchor.constraint(equalToConstant: 90),
@@ -260,7 +268,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     brakeButton.isHidden = phase != .ready
     steeringPad.isHidden = true
     scanButton.isHidden = phase != .ready
-    resetButton.isHidden = phase != .ready
+    resetButton.isHidden = phase != .ready && !physicsFailed
+    diagnosisButton.isHidden = !physicsFailed
   }
 
   @objc private func place(_ gesture: UITapGestureRecognizer) {
@@ -337,14 +346,15 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       switch result {
       case .failure(let error):
         Self.logger.error("[Placement] failed: \(error.localizedDescription, privacy: .public)")
-        self.showPlacementFailure(error.localizedDescription)
+        self.stopAfterPhysicsFailure(error)
       case .success(let state):
         Self.logger.notice("[Placement] 08 Jolt vehicle created")
-        guard isFiniteTransform(state.chassisTransform) else {
+        guard let transform = state.chassis?.matrix, isFiniteTransform(transform) else {
           self.showPlacementFailure("Jolt lieferte eine ungültige Fahrzeugtransformation.")
           return
         }
-        anchor.transform.matrix = state.chassisTransform
+        anchor.transform.matrix = transform
+        self.lastSuccessfulOperation = state.operation
         Self.logger.notice("[Placement] 09 initial transform applied")
         self.physics.setPaused(false)
         self.physicsFailed = false
@@ -391,6 +401,13 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     wheels.removeAll()
     setScanVisible(true)
     phase = hasFloor ? .aiming : .scanning
+  }
+  @objc private func shareDiagnosis() {
+    guard let report = PhysicsDiagnostics.load() else { return }
+    let controller = UIActivityViewController(activityItems: [report], applicationActivities: nil)
+    controller.popoverPresentationController?.sourceView = diagnosisButton
+    controller.popoverPresentationController?.sourceRect = diagnosisButton.bounds
+    root.window?.rootViewController?.present(controller, animated: true)
   }
   @objc private func toggleDebug() {
     setScanVisible(!debugVisible)
@@ -472,32 +489,30 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     previousTime = link.timestamp
     guard placementPhysicsMode == .fullJolt, !physicsStepPending, !physicsFailed else { return }
     physicsStepPending = true
+    let generation = placementGeneration
     physics.step(dt) { [weak self, weak anchor] result in
       guard let self else { return }
       self.physicsStepPending = false
+      guard generation == self.placementGeneration else { return }
       guard case .success(let state) = result else {
         if case .failure(let error) = result { self.stopAfterPhysicsFailure(error) }
         return
       }
       guard let anchor, self.phase == .ready else { return }
-      guard isFiniteTransform(state.chassisTransform),
-        state.wheelTransforms.count == self.wheels.count,
-        state.wheelTransforms.count == 4
+      guard let chassisTransform = state.chassis?.matrix,
+        isFiniteTransform(chassisTransform), state.wheels.count == self.wheels.count,
+        state.wheels.count == 4,
+        state.wheels.enumerated().allSatisfy({ $0.offset == $0.element.wheelIndex && $0.element.matrix != nil })
       else {
-        self.stopAfterPhysicsFailure(NSError(
-          domain: "de.drivebot.jolt", code: 15,
-          userInfo: [NSLocalizedDescriptionKey: "Jolt lieferte einen unvollständigen Fahrzeugzustand."]))
+        self.stopAfterPhysicsFailure(PhysicsFailure.invalidDecodedState(state))
         return
       }
-      anchor.transform.matrix = state.chassisTransform
+      anchor.transform.matrix = chassisTransform
       self.speed.text = String(format: "%.1f m/s", state.speedMetersPerSecond)
-      for (i, value) in state.wheelTransforms.enumerated() where i < self.wheels.count {
-        var matrix = matrix_identity_float4x4
-        value.getValue(&matrix)
-        if isFiniteTransform(matrix) {
-          self.wheels[i].setTransformMatrix(matrix, relativeTo: nil)
-        }
+      for (i, value) in state.wheels.enumerated() {
+        self.wheels[i].setTransformMatrix(value.matrix!, relativeTo: nil)
       }
+      self.lastSuccessfulOperation = state.operation
       if state.collided { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
     }
   }
@@ -509,7 +524,12 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     physics.setPaused(true)
     displayLink?.isPaused = true
     phase = .interrupted
-    message.text = "Physikfehler – Fahrzeug bitte zurücksetzen"
+    let failure = error as? PhysicsFailure
+    let report = PhysicsDiagnostics.make(
+      vehicleID: vehicleID, error: error, failure: failure,
+      lastSuccessfulOperation: lastSuccessfulOperation)
+    PhysicsDiagnostics.save(report)
+    message.text = "Physikfehler \(failure?.code ?? (error as NSError).code): \(error.localizedDescription)"
     message.isHidden = false
     Self.logger.error("Physics paused: \(error.localizedDescription, privacy: .public)")
   }
@@ -725,6 +745,61 @@ private func isFiniteTransform(_ transform: simd_float4x4) -> Bool {
   }
 }
 
+private extension DBJoltTransform {
+  var matrix: simd_float4x4? {
+    let values = [positionX, positionY, positionZ, rotationX, rotationY, rotationZ, rotationW]
+    guard values.allSatisfy(\.isFinite) else { return nil }
+    let length = sqrt(rotationX * rotationX + rotationY * rotationY + rotationZ * rotationZ + rotationW * rotationW)
+    guard length > 0.999, length < 1.001 else { return nil }
+    var value = simd_float4x4(simd_quatf(ix: rotationX, iy: rotationY, iz: rotationZ, r: rotationW))
+    value.columns.3 = SIMD4(positionX, positionY, positionZ, 1)
+    return isFiniteTransform(value) ? value : nil
+  }
+}
+
+private struct PhysicsFailure: LocalizedError {
+  let code: Int
+  let description: String
+  let operation: String
+  let simulationStep: Int
+  let timeStep: Double
+  let expectedWheels: Int
+  let outputWheels: Int
+  let transformsFinite: Bool
+  var errorDescription: String? { description }
+
+  static func invalidDecodedState(_ state: DBJoltVehicleState) -> PhysicsFailure {
+    PhysicsFailure(code: 15, description: "Swift-Dekodierung ergab keinen vollständigen, eindeutig zugeordneten Fahrzeugzustand.",
+      operation: "step.decode-state", simulationStep: state.simulationStep, timeStep: state.timeStep,
+      expectedWheels: 4, outputWheels: state.wheels.count, transformsFinite: false)
+  }
+}
+
+private enum PhysicsDiagnostics {
+  private static let key = "DriveBot.lastPhysicsDiagnostic"
+  static func make(vehicleID: String, error: Error, failure: PhysicsFailure?, lastSuccessfulOperation: String) -> String {
+    let info = Bundle.main.infoDictionary ?? [:]
+    let nsError = error as NSError
+    return [
+      "DriveBot Physikdiagnose",
+      "App-Version: \(info[\"CFBundleShortVersionString\"] ?? \"unbekannt\")",
+      "Buildnummer: \(info[\"CFBundleVersion\"] ?? \"unbekannt\")",
+      "Commit: \(info[\"DriveBotCommit\"] ?? \"unbekannt\")",
+      "Fahrzeug-ID: \(vehicleID)",
+      "Fehlercode: \(failure?.code ?? nsError.code)",
+      "Fehlerbeschreibung: \(error.localizedDescription)",
+      "Operation: \(failure?.operation ?? \"unbekannt\")",
+      "Letzte erfolgreiche Operation: \(lastSuccessfulOperation)",
+      "Simulationsschritt: \(failure?.simulationStep ?? -1)",
+      "Zeitschritt: \(failure?.timeStep ?? 0)",
+      "Räder erwartet/ausgegeben: \(failure?.expectedWheels ?? 4)/\(failure?.outputWheels ?? 0)",
+      "Transformationen endlich: \(failure?.transformsFinite == true ? \"ja\" : \"nein\")",
+    ].joined(separator: "\n")
+  }
+  static func save(_ report: String) { UserDefaults.standard.set(report, forKey: key) }
+  static func load() -> String? { UserDefaults.standard.string(forKey: key) }
+}
+
 /// Owns every Jolt call on one queue. Completions return to the main thread, so
 /// the physics boundary never mutates RealityKit or UIKit objects.
 private final class SerializedJoltWorld {
@@ -746,10 +821,9 @@ private final class SerializedJoltWorld {
       ArRacingView.logger.notice("[Placement] 07 Jolt world ready")
       do {
         try world.prepareVehicle(at: position, heading: heading, profile: profile)
-        let state = DBJoltVehicleState()
-        state.chassisTransform = initialVehicleTransform(
-          groundPosition: position, heading: heading)
-        DispatchQueue.main.async { completion(.success(state)) }
+        let state = world.step(0)
+        let result = Self.decode(state)
+        DispatchQueue.main.async { completion(result) }
       } catch {
         world.removeVehicle()
         DispatchQueue.main.async { completion(.failure(error)) }
@@ -768,15 +842,21 @@ private final class SerializedJoltWorld {
     queue.async { [world] in
       let state = world.step(elapsed)
       let result: Result<DBJoltVehicleState, Error>
-      if state.success, state.wheelTransforms.count == 4 {
+      if state.success, state.wheels.count == 4, state.chassis != nil {
         result = .success(state)
       } else {
-        result = .failure(NSError(
-          domain: "de.drivebot.jolt", code: state.errorCode,
-          userInfo: [NSLocalizedDescriptionKey: state.errorMessage ?? "Unbekannter Physikfehler."]))
+        result = Self.decode(state)
       }
       DispatchQueue.main.async { completion(result) }
     }
+  }
+  private static func decode(_ state: DBJoltVehicleState) -> Result<DBJoltVehicleState, Error> {
+    if state.success, state.wheels.count == 4, state.chassis != nil { return .success(state) }
+    return .failure(PhysicsFailure(
+      code: state.errorCode, description: state.errorMessage ?? "Jolt lieferte keine Fehlerbeschreibung.",
+      operation: state.operation, simulationStep: state.simulationStep, timeStep: state.timeStep,
+      expectedWheels: state.expectedWheelCount, outputWheels: state.outputWheelCount,
+      transformsFinite: state.transformsFinite))
   }
   func replaceStaticMesh(_ id: UUID, vertices: Data, indices: Data) {
     queue.async { [world] in world.replaceStaticMesh(id, vertices: vertices, indices: indices) }
