@@ -135,6 +135,10 @@ workflows:
 
           echo "Building with build number: $NEXT_BUILD_NUMBER"
 
+          # Persist the exact source revision in the archived app so an
+          # on-device physics diagnostic identifies its code unambiguously.
+          /usr/libexec/PlistBuddy -c "Set :DriveBotCommit ${CM_COMMIT:-unknown}" ios/Runner/Info.plist
+
           flutter build ipa \
             --release \
             --build-number="$NEXT_BUILD_NUMBER" \

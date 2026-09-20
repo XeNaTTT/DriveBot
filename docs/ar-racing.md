@@ -55,12 +55,17 @@ and the legacy touch steering pad remains hidden.
 
 ## Placement diagnostics and crash status
 
-No symbolicated device crash report was available in this repository and the
-Linux build host cannot run ARKit/Jolt on an iPhone. Therefore no Swift trap,
-Objective-C exception, C++ assertion or invalid access is claimed as the proven
-cause. The old boundary did, however, call `Create().Get()`, use a body lock and
-start the first step without checking shape creation, body allocation or lock
-success.
+The TestFlight exception `-[__NSArrayM insertObject:atIndex:]: object cannot be
+nil` is on the result-packaging path, not in `PhysicsSystem::Update`. The
+failing expression was `[[NSValue alloc] initWithBytes:&matrix
+objCType:@encode(simd_float4x4)]`: Foundation does not provide a supported,
+portable `NSValue` contract for the nested SIMD-vector encoding, and the nil
+result was then inserted into the mutable wheel array. The bridge now transports
+each rigid transform as an owned `DBJoltTransform` with seven scalar values
+(position xyz and normalized quaternion xyzw) plus an explicit wheel index.
+Swift reconstructs and validates the matrix from those values. No temporary
+matrix pointer crosses the boundary, and missing/invalid wheels remain errors
+rather than being skipped or replaced.
 
 The replacement is transactional: it rejects non-finite transforms, attaches
 the visual fallback on the main thread, and only then asks Jolt to create the
@@ -71,6 +76,13 @@ Jolt owns collision independently. Every Jolt mutation, mesh update, input and
 step now runs on the single `de.drivebot.physics` queue, while completion blocks
 return to the main thread before touching RealityKit or UIKit. A back-pressure
 guard prevents display frames from queuing overlapping physics steps.
+
+Every native state also carries the operation, fixed-step number, elapsed input,
+expected/output wheel counts and finite-value result. On failure the loop pauses,
+stale completions are rejected by placement generation, and the HUD exposes
+**Fahrzeug zurücksetzen** plus **Diagnose kopieren**. The report is persisted in
+`UserDefaults` and contains app/build/commit identity and no camera or mesh data.
+Codemagic writes `CM_COMMIT` into the archived app's `DriveBotCommit` plist key.
 
 Unified logging under subsystem `de.drivebot`, category `ARPlacement`, emits
 the numbered checkpoints `[Placement] 01` through `[Placement] 10`. The last
@@ -118,7 +130,8 @@ Use a physical LiDAR iPhone/iPad via TestFlight:
    blocked and a subtle haptic occurs on the real velocity impulse.
 5. Cover the camera or background/foreground the app. Inputs must release and
    the world/car must reset consistently after interruption.
-6. Use reset and place the car again.
+6. Use reset and place the car again. If an error appears, copy/share the
+   persisted diagnosis before resetting.
 7. Run for at least ten minutes while checking frame pacing and device thermal
    state. A simulator cannot validate LiDAR reconstruction or these checks.
 
