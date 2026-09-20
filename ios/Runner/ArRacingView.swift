@@ -266,17 +266,6 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     Self.logger.notice("placement.begin generation=\(generation) vehicle=\(self.vehicleID, privacy: .public)")
     guard carAnchor == nil, phase == .placing else { return }
     phase = .building
-    var error: NSError?
-    guard physics.prepareVehicle(at: p, heading: 0, profile: appearance.profile, error: &error) else {
-      Self.logger.error("placement.physics-failed generation=\(generation) error=\(error?.localizedDescription ?? "unknown", privacy: .public)")
-      showPlacementFailure(error?.localizedDescription ?? "Fahrzeug konnte nicht erstellt werden")
-      return
-    }
-    guard generation == placementGeneration else {
-      physics.removeVehicle()
-      Self.logger.error("placement.cancelled stale-generation=\(generation)")
-      return
-    }
     let anchor = AnchorEntity(world: p)
     let body = ModelEntity(
       mesh: .generateBox(size: appearance.bodySize, cornerRadius: 0.015),
@@ -296,6 +285,24 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       wheel.position = pos
       anchor.addChild(wheel)
       wheels.append(wheel)
+    }
+    anchor.generateCollisionShapes(recursive: true)
+    guard anchor.findEntityWithCollisionComponent() != nil else {
+      Self.logger.error("placement.collision-shapes-failed generation=\(generation)")
+      showPlacementFailure(
+        "Für das ausgewählte Fahrzeug konnte keine Kollisionsgeometrie erzeugt werden.")
+      return
+    }
+    var error: NSError?
+    guard physics.prepareVehicle(at: p, heading: 0, profile: appearance.profile, error: &error) else {
+      Self.logger.error("placement.physics-failed generation=\(generation) error=\(error?.localizedDescription ?? "unknown", privacy: .public)")
+      showPlacementFailure(error?.localizedDescription ?? "Fahrzeug konnte nicht erstellt werden")
+      return
+    }
+    guard generation == placementGeneration else {
+      physics.removeVehicle()
+      Self.logger.error("placement.cancelled stale-generation=\(generation)")
+      return
     }
     arView.scene.addAnchor(anchor)
     carAnchor = anchor
@@ -611,6 +618,16 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     let vertexData = vertices.withUnsafeBytes { Data($0) }
     let indexData = indices.withUnsafeBytes { Data($0) }
     physics.replaceStaticMesh(id, vertices: vertexData, indices: indexData)
+  }
+}
+
+private extension Entity {
+  func findEntityWithCollisionComponent() -> Entity? {
+    if components[CollisionComponent.self] != nil { return self }
+    for child in children {
+      if let entity = child.findEntityWithCollisionComponent() { return entity }
+    }
+    return nil
   }
 }
 
