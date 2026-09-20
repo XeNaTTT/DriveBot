@@ -277,6 +277,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       SIMD3(0.075, -0.025, -0.105),
       SIMD3(-0.075, -0.025, -0.105),
     ]
+    var builtWheels: [ModelEntity] = []
     for pos in positions {
       let wheel = ModelEntity(
         mesh: wheelMesh(),
@@ -284,7 +285,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       wheel.orientation = simd_quatf(angle: .pi / 2, axis: [0, 0, 1])
       wheel.position = pos
       anchor.addChild(wheel)
-      wheels.append(wheel)
+      builtWheels.append(wheel)
     }
     anchor.generateCollisionShapes(recursive: true)
     guard anchor.findEntityWithCollisionComponent() != nil else {
@@ -307,6 +308,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     arView.scene.addAnchor(anchor)
     carAnchor = anchor
     chassis = body
+    wheels = builtWheels
     physics.setPaused(false)
     setScanVisible(false)
     phase = .ready
@@ -476,13 +478,21 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       }
     }
   }
-  func sessionWasInterrupted(_ session: ARSession) { interrupted() }
+  func sessionWasInterrupted(_ session: ARSession) {
+    DispatchQueue.main.async { [weak self] in self?.interrupted() }
+  }
   func sessionInterruptionEnded(_ session: ARSession) {
-    releaseInputs()
-    carAnchor?.removeFromParent()
-    carAnchor = nil
-    hasFloor = false
-    startSession()
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.releaseInputs()
+      self.physics.removeVehicle()
+      self.carAnchor?.removeFromParent()
+      self.carAnchor = nil
+      self.chassis = nil
+      self.wheels.removeAll()
+      self.hasFloor = false
+      self.startSession()
+    }
   }
   func session(_ session: ARSession, didFailWithError error: Error) {
     DispatchQueue.main.async {
@@ -493,15 +503,17 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   func session(_ session: ARSession, didAdd anchors: [ARAnchor]) { process(anchors) }
   func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) { process(anchors) }
   func session(_ session: ARSession, didRemove anchors: [ARAnchor]) {
+    if !Thread.isMainThread {
+      DispatchQueue.main.async { [weak self] in self?.session(session, didRemove: anchors) }
+      return
+    }
     for anchor in anchors {
       meshWork[anchor.identifier]?.cancel()
       meshWork.removeValue(forKey: anchor.identifier)
-      DispatchQueue.main.async {
-        self.physics.removeStaticMesh(anchor.identifier)
-        self.debugEntities.removeValue(forKey: anchor.identifier)?.removeFromParent()
-        self.floorEntities.removeValue(forKey: anchor.identifier)?.removeFromParent()
-        self.floorAnchors.removeValue(forKey: anchor.identifier)?.removeFromParent()
-      }
+      physics.removeStaticMesh(anchor.identifier)
+      debugEntities.removeValue(forKey: anchor.identifier)?.removeFromParent()
+      floorEntities.removeValue(forKey: anchor.identifier)?.removeFromParent()
+      floorAnchors.removeValue(forKey: anchor.identifier)?.removeFromParent()
     }
   }
 

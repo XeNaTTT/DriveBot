@@ -14,12 +14,21 @@ Pod::Spec.new do |s|
       git clone --depth 1 --branch v5.6.0 https://github.com/jrouwe/JoltPhysics.git Vendor/Jolt
     fi
     test "$(git -C Vendor/Jolt rev-parse HEAD)" = "e77f175595e64cb44218cc9d9d56fc365ad0e36a"
+    test -z "$(git -C Vendor/Jolt status --porcelain --untracked-files=no)"
   CMD
   # Keep Jolt headers out of CocoaPods' header map. Header maps are
   # case-insensitive, so exporting Jolt/Math/Math.h there can shadow the SDK's
   # <math.h>. The headers remain available through the single, non-recursive
   # Jolt include root below.
   s.source_files = 'Sources/**/*.{h,mm}', 'Vendor/Jolt/Jolt/**/*.cpp'
+  # The checkout is the complete pinned upstream tree, while the app target
+  # deliberately omits desktop GPU backends, debug rendering and shader tests.
+  s.exclude_files = 'Vendor/Jolt/Jolt/Compute/DX12/**/*.cpp',
+                    'Vendor/Jolt/Jolt/Compute/VK/**/*.cpp',
+                    'Vendor/Jolt/Jolt/Renderer/DebugRendererPlayback.cpp',
+                    'Vendor/Jolt/Jolt/Renderer/DebugRendererRecorder.cpp',
+                    'Vendor/Jolt/Jolt/Renderer/DebugRendererSimple.cpp',
+                    'Vendor/Jolt/Jolt/Shaders/TestComputeWrapper.cpp'
   s.public_header_files = 'Sources/DriveBotJolt.h'
   s.preserve_paths = 'Vendor/Jolt/LICENSE', 'Vendor/Jolt/Jolt/**/*.{h,inl}'
   s.pod_target_xcconfig = {
