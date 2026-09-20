@@ -102,7 +102,10 @@ workflows:
 
       - name: Build native Jolt component
         script: |
-          set -e
+          set -o pipefail
+          mkdir -p build/native-logs
+
+          set +e
           xcodebuild \
             -workspace ios/Runner.xcworkspace \
             -scheme DriveBotJolt \
@@ -110,7 +113,11 @@ workflows:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             CODE_SIGNING_ALLOWED=NO \
-            build
+            build 2>&1 | tee build/native-logs/jolt-xcodebuild.log
+          XCODEBUILD_STATUS=${PIPESTATUS[0]}
+          set -e
+
+          exit "$XCODEBUILD_STATUS"
 
       - name: Set up iOS code signing
         script: |
@@ -146,6 +153,7 @@ workflows:
 
     artifacts:
       - build/ios/ipa/*.ipa
+      - build/native-logs/*.log
       - /tmp/xcodebuild_logs/*.log
       - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
 

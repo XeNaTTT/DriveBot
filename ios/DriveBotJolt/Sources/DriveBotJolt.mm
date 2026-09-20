@@ -80,7 +80,7 @@ static DBJoltTransform *TransformValue(RMat44 matrix, NSInteger wheelIndex) {
   const simd_float4x4 checked = Matrix(matrix);
   if (!IsValidRigidTransform(checked)) return nil;
   const RVec3 position = matrix.GetTranslation();
-  const Quat rotation = matrix.GetRotation().Normalized();
+  const Quat rotation = matrix.GetQuaternion().Normalized();
   if (!std::isfinite((double)position.GetX()) || !std::isfinite((double)position.GetY()) ||
       !std::isfinite((double)position.GetZ()) || !std::isfinite(rotation.GetX()) ||
       !std::isfinite(rotation.GetY()) || !std::isfinite(rotation.GetZ()) ||

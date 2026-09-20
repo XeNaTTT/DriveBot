@@ -4,6 +4,7 @@ class DriveBotJoltIntegrationTest < Minitest::Test
   ROOT = File.expand_path('..', __dir__)
   PODSPEC = File.join(ROOT, 'ios/DriveBotJolt/DriveBotJolt.podspec')
   WRAPPER = File.join(ROOT, 'ios/DriveBotJolt/Sources/DriveBotJolt.mm')
+  CODEMAGIC = File.join(ROOT, 'codemagic.yaml')
 
   def test_vendor_headers_are_not_added_to_cocoapods_header_map
     podspec = File.read(PODSPEC)
@@ -65,6 +66,17 @@ class DriveBotJoltIntegrationTest < Minitest::Test
     assert_match(/if \(value == nil\).*?\[wheelTransforms addObject:value\]/m, wrapper)
     refute_includes wrapper, 'initWithBytes:&matrix objCType:@encode(simd_float4x4)'
     assert_includes wrapper, 'value.positionX = (float)position.GetX()'
+    assert_includes wrapper, 'matrix.GetQuaternion().Normalized()'
+    refute_includes wrapper, 'matrix.GetRotation().Normalized()'
     assert_includes wrapper, '} @catch (NSException *exception) {'
+  end
+
+  def test_native_build_log_is_preserved_without_masking_xcodebuild_status
+    codemagic = File.read(CODEMAGIC)
+
+    assert_includes codemagic, 'build 2>&1 | tee build/native-logs/jolt-xcodebuild.log'
+    assert_includes codemagic, 'XCODEBUILD_STATUS=${PIPESTATUS[0]}'
+    assert_includes codemagic, 'exit "$XCODEBUILD_STATUS"'
+    assert_includes codemagic, '- build/native-logs/*.log'
   end
 end
