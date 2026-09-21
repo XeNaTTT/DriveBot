@@ -101,9 +101,12 @@ struct Profile {
   float mass, torque, steer, clearance, suspension, frequency, damping;
 };
 static Profile ProfileNamed(NSString *name) {
-  if ([name isEqualToString:@"sport"]) return {1.55f, 2.25f, 34, .006f, .026f, 3.8f, .72f};
-  if ([name isEqualToString:@"offroad"]) return {2.1f, 1.95f, 28, .012f, .052f, 2.5f, .68f};
-  return {1.75f, 1.65f, 30, .008f, .035f, 3.1f, .72f};
+  // SI values for a 50 mm car. Suspension retains millimetres of travel so it
+  // stays above Jolt's numerical tolerances rather than being visually scaled
+  // from the former 300 mm setup.
+  if ([name isEqualToString:@"sport"]) return {.075f, .009f, 30, .0015f, .0050f, 5.0f, .78f};
+  if ([name isEqualToString:@"offroad"]) return {.095f, .008f, 26, .0020f, .0065f, 4.2f, .75f};
+  return {.085f, .0085f, 28, .0018f, .0055f, 4.6f, .76f};
 }
 }
 
@@ -179,8 +182,9 @@ static Profile ProfileNamed(NSString *name) {
          _physics != nullptr;
 }
 - (void)removeVehicle {
-  if (!_vehicle) return;
   _paused = YES;
+  [self setThrottle:0 brake:0 steering:0];
+  if (!_vehicle) return;
   _physics->RemoveStepListener(_vehicle);
   _physics->RemoveConstraint(_vehicle);
   if (!_car.IsInvalid()) {
@@ -205,14 +209,17 @@ static Profile ProfileNamed(NSString *name) {
     return NO;
   }
   const Profile profile = ProfileNamed(name);
-  constexpr float halfWidth = .075f, halfHeight = .025f, halfLength = .15f, radius = .025f;
+  // ARKit and Jolt both use metres and +Y up, with the car's longitudinal axis
+  // on Z. Visible length is 0.050 m; the simpler collider is 0.046 m long.
+  constexpr float halfWidth = .0115f, halfHeight = .0035f, halfLength = .023f;
+  constexpr float radius = .0045f, axleOffset = .0165f;
   auto shapeResult = OffsetCenterOfMassShapeSettings(
-    Vec3(0, -.018f, 0), new BoxShape(Vec3(halfWidth, halfHeight, halfLength))).Create();
+    Vec3(0, -.0015f, 0), new BoxShape(Vec3(halfWidth, halfHeight, halfLength))).Create();
   if (shapeResult.HasError()) {
     SetError(error, 2, @"Die Kollisionsform des Fahrzeugs konnte nicht erstellt werden.");
     return NO;
   }
-  BodyCreationSettings body(shapeResult.Get(), RVec3(p.x, p.y + .075f, p.z),
+  BodyCreationSettings body(shapeResult.Get(), RVec3(p.x, p.y + .011f, p.z),
     Quat::sRotation(Vec3::sAxisY(), heading), EMotionType::Dynamic, Layers::MOVING);
   body.mOverrideMassProperties = EOverrideMassProperties::CalculateInertia;
   body.mMassPropertiesOverride.mMass = profile.mass;
@@ -228,8 +235,8 @@ static Profile ProfileNamed(NSString *name) {
   VehicleConstraintSettings settings;
   settings.mMaxPitchRollAngle = DegreesToRadians(65.f);
   const Vec3 positions[] = {
-    {halfWidth, -halfHeight, .105f}, {-halfWidth, -halfHeight, .105f},
-    {halfWidth, -halfHeight, -.105f}, {-halfWidth, -halfHeight, -.105f}};
+    {halfWidth, -halfHeight, axleOffset}, {-halfWidth, -halfHeight, axleOffset},
+    {halfWidth, -halfHeight, -axleOffset}, {-halfWidth, -halfHeight, -axleOffset}};
   for (int index = 0; index < 4; ++index) {
     auto *wheel = new WheelSettingsWV;
     wheel->mPosition = positions[index]; wheel->mRadius = radius; wheel->mWidth = .018f;
@@ -238,7 +245,8 @@ static Profile ProfileNamed(NSString *name) {
     wheel->mSuspensionSpring.mFrequency = profile.frequency;
     wheel->mSuspensionSpring.mDamping = profile.damping;
     wheel->mMaxSteerAngle = index < 2 ? DegreesToRadians(profile.steer) : 0;
-    wheel->mMaxBrakeTorque = 2.2f; wheel->mMaxHandBrakeTorque = index >= 2 ? 3.f : 0;
+    wheel->mMaxBrakeTorque = .018f;
+    wheel->mMaxHandBrakeTorque = index >= 2 ? .022f : 0;
     settings.mWheels.push_back(wheel);
   }
   auto *controller = new WheeledVehicleControllerSettings;
@@ -269,7 +277,7 @@ static Profile ProfileNamed(NSString *name) {
     return NO;
   }
   _vehicle->SetVehicleCollisionTester(
-    new VehicleCollisionTesterCastSphere(Layers::MOVING, .009f));
+    new VehicleCollisionTesterCastSphere(Layers::MOVING, .002f));
   _physics->AddConstraint(_vehicle);
   _physics->AddStepListener(_vehicle);
   _lastVelocity = Vec3::sZero(); _accumulator = 0; _paused = YES;
@@ -278,6 +286,9 @@ static Profile ProfileNamed(NSString *name) {
 - (void)setThrottle:(float)t brake:(float)b steering:(float)s {
   _throttle = std::clamp(t, 0.f, 1.f); _brake = std::clamp(b, 0.f, 1.f);
   _steering = std::clamp(s, -1.f, 1.f);
+  if (_brake > 0.f) _throttle = 0.f;
+  if ([self isReady] && (_throttle > 0.f || _brake > 0.f || _steering != 0.f))
+    _physics->GetBodyInterface().ActivateBody(_car);
 }
 - (void)setPaused:(BOOL)paused {
   _paused = paused;
@@ -364,7 +375,9 @@ static Profile ProfileNamed(NSString *name) {
     int count = 0;
     while (_accumulator >= timeStep && count++ < 4) {
       auto *controller = static_cast<WheeledVehicleController *>(_vehicle->GetController());
-      controller->SetDriverInput(_throttle, _steering, _brake, _brake);
+      const float speed = _physics->GetBodyInterface().GetLinearVelocity(_car).Length();
+      const float steeringLimit = std::max(.45f, 1.f - speed / 2.f);
+      controller->SetDriverInput(_throttle, _steering * steeringLimit, _brake, _brake);
       if (_throttle != 0 || _steering != 0 || _brake != 0)
         _physics->GetBodyInterface().ActivateBody(_car);
       const EPhysicsUpdateError updateError = _physics->Update(timeStep, 1, _temp, _jobs);
@@ -393,6 +406,10 @@ static Profile ProfileNamed(NSString *name) {
   if (state.chassis == nil)
     return failure(kBridgeFailed, @"Chassis konnte nicht in skalare Bridge-Werte konvertiert werden.");
   state.speedMetersPerSecond = velocity.Length();
+  state.appliedThrottle = _throttle;
+  state.appliedBrake = _brake;
+  const float steeringLimit = std::max(.45f, 1.f - state.speedMetersPerSecond / 2.f);
+  state.appliedSteering = _steering * steeringLimit;
   state.collided = (velocity - _lastVelocity).Length() > 1.5f;
   _lastVelocity = velocity;
   NSMutableArray<DBJoltTransform *> *wheelTransforms = [NSMutableArray arrayWithCapacity:4];

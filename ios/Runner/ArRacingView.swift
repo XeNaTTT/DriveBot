@@ -31,6 +31,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   #endif
   private let message = UILabel()
   private let speed = UILabel()
+  private let inputDiagnostics = UILabel()
   private let resetButton = UIButton(type: .system)
   private let diagnosisButton = UIButton(type: .system)
   private let debugButton = UIButton(type: .system)
@@ -40,6 +41,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private let throttleButton = UIButton(type: .system)
   private let brakeButton = UIButton(type: .system)
   private var carAnchor: AnchorEntity?
+  private var vehicleVisualRoot: Entity?
   private var chassis: ModelEntity?
   private var wheels: [ModelEntity] = []
   private var phase: Phase = .scanning { didSet { updateMessage() } }
@@ -59,15 +61,18 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private var floorEntities: [UUID: ModelEntity] = [:]
   private var floorAnchors: [UUID: AnchorEntity] = [:]
   private let motion = CMMotionManager()
+  private var neutralTilt: Double?
   private let vehicleID: String
   private var placementGeneration = 0
   private var lastSuccessfulOperation = "initialization"
 
   private var appearance: VehicleAppearance {
     switch vehicleID {
-    case "sport": return VehicleAppearance(bodySize: [0.14, 0.035, 0.30], color: .systemRed, profile: "sport")
-    case "offroad": return VehicleAppearance(bodySize: [0.17, 0.075, 0.28], color: .systemGreen, profile: "offroad")
-    default: return VehicleAppearance(bodySize: [0.15, 0.055, 0.25], color: .systemBlue, profile: "compact")
+    // These are model-space proportions. The assembled hierarchy is measured
+    // and normalized to exactly five centimetres below.
+    case "sport": return VehicleAppearance(bodySize: [0.48, 0.14, 1.0], color: .systemRed, profile: "sport")
+    case "offroad": return VehicleAppearance(bodySize: [0.54, 0.23, 1.0], color: .systemGreen, profile: "offroad")
+    default: return VehicleAppearance(bodySize: [0.50, 0.18, 1.0], color: .systemBlue, profile: "compact")
     }
   }
 
@@ -168,16 +173,25 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     speed.clipsToBounds = true
     speed.translatesAutoresizingMaskIntoConstraints = false
     root.addSubview(speed)
+    inputDiagnostics.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
+    inputDiagnostics.textColor = .white
+    inputDiagnostics.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+    inputDiagnostics.textAlignment = .center
+    inputDiagnostics.layer.cornerRadius = 8
+    inputDiagnostics.clipsToBounds = true
+    inputDiagnostics.translatesAutoresizingMaskIntoConstraints = false
+    root.addSubview(inputDiagnostics)
     style(resetButton, title: "Fahrzeug zurücksetzen")
     style(diagnosisButton, title: "Diagnose kopieren")
     style(debugButton, title: "⚙︎")
+    debugButton.accessibilityLabel = "Lenkung kalibrieren und Diagnose umschalten"
     style(scanButton, title: "Scan anzeigen")
     style(throttleButton, title: "GAS")
     style(brakeButton, title: "BREMSE")
     resetButton.addTarget(self, action: #selector(resetCar), for: .touchUpInside)
     diagnosisButton.addTarget(self, action: #selector(shareDiagnosis), for: .touchUpInside)
     debugButton.addTarget(self, action: #selector(toggleDebug), for: .touchUpInside)
-    scanButton.addTarget(self, action: #selector(toggleDebug), for: .touchUpInside)
+    scanButton.addTarget(self, action: #selector(toggleScan), for: .touchUpInside)
     throttleButton.addTarget(
       self, action: #selector(throttleDown), for: [.touchDown, .touchDragEnter])
     throttleButton.addTarget(
@@ -227,6 +241,10 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       speed.trailingAnchor.constraint(equalTo: resetButton.leadingAnchor, constant: -8),
       speed.widthAnchor.constraint(equalToConstant: 90),
       speed.heightAnchor.constraint(equalToConstant: 36),
+      inputDiagnostics.topAnchor.constraint(equalTo: speed.bottomAnchor, constant: 6),
+      inputDiagnostics.centerXAnchor.constraint(equalTo: speed.centerXAnchor),
+      inputDiagnostics.widthAnchor.constraint(equalToConstant: 210),
+      inputDiagnostics.heightAnchor.constraint(equalToConstant: 24),
       steeringPad.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 20),
       steeringPad.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -16),
       steeringPad.widthAnchor.constraint(equalToConstant: 120),
@@ -270,6 +288,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     scanButton.isHidden = phase != .ready
     resetButton.isHidden = phase != .ready && !physicsFailed
     diagnosisButton.isHidden = !physicsFailed
+    inputDiagnostics.isHidden = phase != .ready || !debugVisible
   }
 
   @objc private func place(_ gesture: UITapGestureRecognizer) {
@@ -295,37 +314,47 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     let selectedAppearance = appearance
     Self.logger.notice("[Placement] 04 vehicle configuration found")
 
-    // No USDZ files are bundled yet. This validated, programmatic model is the
-    // deliberate fallback for all three configurations.
+    // No USDZ files are bundled yet. Never fail to "wheels only": this opaque,
+    // high-contrast body is the deliberate diagnostic fallback.
+    let visualRoot = Entity()
     let body = ModelEntity(
       mesh: .generateBox(size: selectedAppearance.bodySize, cornerRadius: 0.015),
       materials: [SimpleMaterial(color: selectedAppearance.color, roughness: 0.35, isMetallic: true)])
+    visualRoot.addChild(body)
+    let halfTrack = selectedAppearance.bodySize.x * 0.52
+    let axleOffset = selectedAppearance.bodySize.z * 0.33
+    let wheelRadius = selectedAppearance.bodySize.z * 0.09
     let positions: [SIMD3<Float>] = [
-      SIMD3(0.075, -0.025, 0.105),
-      SIMD3(-0.075, -0.025, 0.105),
-      SIMD3(0.075, -0.025, -0.105),
-      SIMD3(-0.075, -0.025, -0.105),
+      SIMD3(halfTrack, -selectedAppearance.bodySize.y * 0.42, axleOffset),
+      SIMD3(-halfTrack, -selectedAppearance.bodySize.y * 0.42, axleOffset),
+      SIMD3(halfTrack, -selectedAppearance.bodySize.y * 0.42, -axleOffset),
+      SIMD3(-halfTrack, -selectedAppearance.bodySize.y * 0.42, -axleOffset),
     ]
     var builtWheels: [ModelEntity] = []
     for pos in positions {
       let wheel = ModelEntity(
-        mesh: wheelMesh(),
+        mesh: wheelMesh(radius: wheelRadius, width: selectedAppearance.bodySize.x * 0.12),
         materials: [SimpleMaterial(color: .darkGray, isMetallic: false)])
       wheel.orientation = simd_quatf(angle: .pi / 2, axis: [0, 0, 1])
       wheel.position = pos
-      body.addChild(wheel)
+      visualRoot.addChild(wheel)
       builtWheels.append(wheel)
     }
-    guard isFiniteTransform(body.transform.matrix), builtWheels.count == 4 else {
+    let bounds = visualRoot.visualBounds(relativeTo: visualRoot)
+    let modelLength = bounds.extents.z
+    guard modelLength.isFinite, modelLength > 0, builtWheels.count == 4 else {
       showPlacementFailure("Das Fahrzeugmodell enthält ungültige Geometrie.")
       return
     }
+    let uniformScale = Float(0.05) / modelLength
+    visualRoot.scale = SIMD3(repeating: uniformScale)
     Self.logger.notice("[Placement] 05 visual model loaded")
 
     let anchor = AnchorEntity(world: initialVehicleTransform(groundPosition: p, heading: 0))
-    anchor.addChild(body)
+    anchor.addChild(visualRoot)
     arView.scene.addAnchor(anchor)
     carAnchor = anchor
+    vehicleVisualRoot = visualRoot
     chassis = body
     wheels = builtWheels
     Self.logger.notice("[Placement] 06 model attached")
@@ -369,6 +398,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     physics.removeVehicle()
     carAnchor?.removeFromParent()
     carAnchor = nil
+    vehicleVisualRoot = nil
     chassis = nil
     wheels.removeAll()
     setScanVisible(true)
@@ -377,14 +407,15 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     message.isHidden = false
   }
 
-  private func wheelMesh() -> MeshResource {
+  private func wheelMesh(radius: Float, width: Float) -> MeshResource {
     if #available(iOS 18.0, *) {
-      return .generateCylinder(height: 0.018, radius: 0.025)
+      return .generateCylinder(height: width, radius: radius)
     }
 
     // Before iOS 18 RealityKit has no synchronous cylinder generator. A rounded
-    // 18 x 50 x 50 mm mesh preserves the wheel envelope and the common rotation.
-    return .generateBox(size: [0.05, 0.018, 0.05], cornerRadius: 0.0125)
+    // model-space box preserves the wheel envelope and is normalized
+    // together with the complete hierarchy (never independently).
+    return .generateBox(size: [radius * 2, width, radius * 2], cornerRadius: radius * 0.5)
   }
 
   @objc private func resetCar() {
@@ -398,6 +429,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     displayLink?.isPaused = false
     carAnchor?.removeFromParent()
     carAnchor = nil
+    vehicleVisualRoot = nil
     wheels.removeAll()
     setScanVisible(true)
     phase = hasFloor ? .aiming : .scanning
@@ -411,7 +443,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
   @objc private func toggleDebug() {
     setScanVisible(!debugVisible)
+    calibrateSteering()
   }
+  @objc private func toggleScan() { setScanVisible(!debugVisible) }
   private func setScanVisible(_ visible: Bool) {
     debugVisible = visible
     if hasSceneReconstruction {
@@ -420,6 +454,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     }
     for entity in debugEntities.values { entity.isEnabled = debugVisible }
     for entity in floorEntities.values { entity.isEnabled = debugVisible }
+    inputDiagnostics.isHidden = !visible || phase != .ready
     scanButton.setTitle(visible ? "Scan ausblenden" : "Scan anzeigen", for: .normal)
   }
 
@@ -428,9 +463,10 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     motion.deviceMotionUpdateInterval = 1.0 / 60.0
     motion.startDeviceMotionUpdates(to: .main) { [weak self] sample, _ in
       guard let self, let sample, self.phase == .ready else { return }
-      let target = Float(sample.gravity.x * 1.45)
-      self.steering += (min(1, max(-1, target)) - self.steering) * 0.22
-      if abs(self.steering) < 0.04 { self.steering = 0 }
+      let rawTilt = self.landscapeTilt(gravity: sample.gravity)
+      if self.neutralTilt == nil { self.neutralTilt = rawTilt }
+      let target = SteeringInput.normalizedTilt(rawTilt - (self.neutralTilt ?? rawTilt))
+      self.steering += (target - self.steering) * 0.28
       self.sendInput()
     }
   }
@@ -459,7 +495,21 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     steeringKnob.transform = CGAffineTransform(translationX: CGFloat(steering) * 32, y: 0)
     sendInput()
   }
-  private func sendInput() { physics.setThrottle(throttle, brake: brake, steering: steering) }
+  private func sendInput() {
+    // Brake has deterministic priority without destroying the independently
+    // tracked throttle finger state.
+    physics.setThrottle(brake > 0 ? 0 : throttle, brake: brake, steering: steering)
+    inputDiagnostics.text = String(
+      format: "Gas %.1f | Bremse %.1f | Lenkung %+.2f", throttle, brake, steering)
+  }
+  private func calibrateSteering() { neutralTilt = nil }
+  private func landscapeTilt(gravity: CMAcceleration) -> Double {
+    switch root.window?.windowScene?.interfaceOrientation {
+    case .landscapeLeft: return -gravity.y
+    case .landscapeRight: return gravity.y
+    default: return gravity.x
+    }
+  }
   private func releaseInputs() {
     throttle = 0
     brake = 0
@@ -498,7 +548,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
         if case .failure(let error) = result { self.stopAfterPhysicsFailure(error) }
         return
       }
-      guard let anchor, self.phase == .ready else { return }
+      guard let anchor, let visualRoot = self.vehicleVisualRoot, self.phase == .ready else { return }
       guard let chassisTransform = state.chassis?.matrix,
         isFiniteTransform(chassisTransform), state.wheels.count == self.wheels.count,
         state.wheels.count == 4,
@@ -509,8 +559,12 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       }
       anchor.transform.matrix = chassisTransform
       self.speed.text = String(format: "%.1f m/s", state.speedMetersPerSecond)
+      let inverseChassis = chassisTransform.inverse
+      let inverseVisualScale = visualRoot.transform.matrix.inverse
       for (i, value) in state.wheels.enumerated() {
-        self.wheels[i].setTransformMatrix(value.matrix!, relativeTo: nil)
+        // Jolt reports wheel world transforms. Convert into chassis-local space;
+        // never feed an unfiltered world transform into a visual child.
+        self.wheels[i].transform.matrix = inverseVisualScale * inverseChassis * value.matrix!
       }
       self.lastSuccessfulOperation = state.operation
       if state.collided { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
@@ -670,7 +724,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       let w = plane.transform * p
       return [w.x, w.y, w.z]
     }
-    replaceCollider(id: plane.identifier, vertices: v, indices: [0, 1, 2, 0, 2, 3])
+    // Clockwise from above: Jolt mesh triangles then expose their collidable
+    // face towards the vehicle, matching the native bridge test ground.
+    replaceCollider(id: plane.identifier, vertices: v, indices: [0, 2, 1, 0, 3, 2])
   }
   @available(iOS 13.4, *) private func schedule(_ anchor: ARMeshAnchor) {
     meshWork[anchor.identifier]?.cancel()
@@ -735,7 +791,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
 
 private func initialVehicleTransform(groundPosition: SIMD3<Float>, heading: Float) -> simd_float4x4 {
   var transform = simd_float4x4(simd_quatf(angle: heading, axis: [0, 1, 0]))
-  transform.columns.3 = SIMD4(groundPosition.x, groundPosition.y + 0.075, groundPosition.z, 1)
+  transform.columns.3 = SIMD4(groundPosition.x, groundPosition.y + 0.011, groundPosition.z, 1)
   return transform
 }
 
@@ -924,5 +980,16 @@ private final class SerializedJoltWorld {
 
     let rawValue = classifications.buffer.contents().advanced(by: byteOffset).load(as: UInt8.self)
     return ARMeshClassification(rawValue: Int(rawValue)) ?? .none
+  }
+}
+
+enum SteeringInput {
+  static let deadZone = sin(3.0 * .pi / 180.0)
+
+  static func normalizedTilt(_ tilt: Double) -> Float {
+    let magnitude = abs(tilt)
+    guard magnitude > deadZone else { return 0 }
+    let normalized = (magnitude - deadZone) / (sin(35.0 * .pi / 180.0) - deadZone)
+    return Float(min(1, normalized)) * (tilt < 0 ? -1 : 1)
   }
 }
