@@ -24,6 +24,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, strong, nullable) DBJoltTransform *chassis;
 @property(nonatomic, copy) NSArray<DBJoltTransform *> *wheels;
 @property(nonatomic) float speedMetersPerSecond;
+@property(nonatomic) float appliedThrottle;
+@property(nonatomic) float appliedBrake;
+@property(nonatomic) float appliedSteering;
 @property(nonatomic) BOOL collided;
 @property(nonatomic, copy) NSString *operation;
 @property(nonatomic) NSInteger simulationStep;

@@ -30,12 +30,40 @@ cross a Flutter channel.
 ## Scale and configuration
 
 All values use SI units and the ARKit coordinate system: one AR unit is one
-metre. The cars are approximately 0.30 m long and have 0.025 m radius wheels.
-Sport, off-road and compact profiles vary mass, engine torque, steering and
-suspension inside the native physics boundary. The HUD reports actual metres per second from Jolt linear velocity;
+metre. Each complete visual hierarchy is measured after assembly and receives
+one uniform `0.05 / bounds.extents.z` scale, so every profile is exactly 0.050 m
+long. Body and wheels share that root. Physics uses a 0.046 m long, 0.023 m wide
+box collider, 0.0045 m wheel radius, 0.033 m wheelbase, 0.023 m track and a
+0.011 m initial chassis-centre height. Profile masses are 0.075–0.095 kg;
+engine torque is 0.008–0.009 N·m and suspension travel is 0.005–0.0065 m.
+Sport, off-road and compact profiles vary these parameters only inside the
+native physics boundary. The HUD reports actual metres per second from Jolt linear velocity;
 it does not apply a full-size-car multiplier. Vehicle shape, wheel positions,
 suspension, mass and drive values are centralized in `DBJoltWorld.prepareVehicle` so a
 future USDZ presentation can be swapped without changing physics ownership.
+
+## Root-cause record (five-centimetre repair)
+
+- No vehicle USDZ exists in the repository. The previous fallback did contain
+  an opaque body, but it was built at 0.25–0.30 m while every wheel was 0.05 m
+  across. There was no bounds normalization. More importantly, Jolt wheel-world
+  matrices were assigned individually to entities parented under that moving
+  visual chassis. That mixed world and local spaces and separated the wheels.
+  The replacement uses a distinct common visual root, always-visible fallback
+  body, one bounds-derived scale, and explicit world-to-chassis-to-model-local
+  conversion.
+- The AR plane collider used the opposite triangle winding from the verified
+  native test ground. Its collidable face pointed away from the car, so wheel
+  casts could miss the floor. Together with full 30 cm mass, torque, suspension,
+  radius and spawn-height constants, engine/brake input could not produce a
+  valid small-car contact response. The winding and the complete coherent
+  physical parameter set are now corrected; non-zero input also activates the
+  body immediately and brake has explicit priority.
+- Motion steering previously used absolute `gravity.x` in both landscape
+  orientations, without a neutral reference. Depending on rotation this was
+  the wrong screen axis and could settle near zero. Steering now uses calibrated
+  signed gravity-Y in both landscape orientations, a three-degree deadzone,
+  smoothing, and a speed-dependent limit.
 
 An Object Capture USDZ still requires an explicit preparation record (model
 orientation/scale, four wheel pivots/radii, simplified body collider, mass and
@@ -48,7 +76,10 @@ Limited/interrupted tracking and app resignation release all inputs and pause
 Jolt. Interruption recovery resets the AR origin, environment colliders and car
 instead of mixing coordinate systems. Throttle/brake controls handle touch exit
 and cancellation independently, so steering and throttle support multitouch.
-The scan overlay starts visible, is hidden for driving and remains independently
+Core Motion is the sole steering source in this native view. The first ready
+sample (and the gear/debug action) captures neutral tilt. Landscape-left and
+landscape-right use opposite gravity-Y signs, followed by a three-degree
+deadzone and a low-latency smoothing filter. The scan overlay starts visible, is hidden for driving and remains independently
 toggleable without adding colliders. Speed and pedals only exist in the ready
 state; scan instructions only exist before it. Motion steering is the default,
 and the legacy touch steering pad remains hidden.
@@ -101,7 +132,9 @@ On LiDAR devices RealityKit's `showSceneUnderstanding` renderer displays the
 session's real reconstructed mesh. Confirmed plane anchors get a subtle teal
 surface and the valid centre raycast gets a teal marker. These entities have no
 RealityKit physics components; collision remains exclusively in Jolt. Mesh
-collider conversion is coalesced for 350 ms. The scan is hidden after successful
+collider conversion is coalesced for 350 ms and sent as indexed 3D triangles to
+the serialized Jolt world. This is the race track representation; no invented
+remote upload API is involved. The scan is hidden after successful
 placement and can be restored with **Scan anzeigen**. Without scene
 reconstruction the UI explicitly reports limited plane-only mode; it never
 invents a completion percentage.
@@ -123,8 +156,8 @@ Use a physical LiDAR iPhone/iPad via TestFlight:
 
 1. Slowly scan a textured floor and nearby wall/furniture until the placement
    prompt appears.
-2. Tap the highlighted/confirmed real floor and confirm that all wheels sit on
-   it at the expected 30 cm scale.
+2. Tap the highlighted/confirmed real floor and confirm that the complete body
+   and four attached wheels sit on it at exactly 5 cm overall length.
 3. Hold gas while steering, then brake. Verify the speed is labelled `m/s`.
 4. Drive into scanned furniture/wall and verify that motion is physically
    blocked and a subtle haptic occurs on the real velocity impulse.

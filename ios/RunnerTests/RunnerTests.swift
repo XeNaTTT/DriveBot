@@ -37,10 +37,29 @@ class RunnerTests: XCTestCase {
     assertCompleteFiniteState(first, expectedStep: 0)
     world.setPaused(false)
 
+    world.setThrottle(1, brake: 0, steering: 0)
+    var peakSpeed: Float = 0
     for step in 1...120 {
       let state = world.step(1.0 / 60.0)
       assertCompleteFiniteState(state, expectedStep: step)
+      peakSpeed = max(peakSpeed, state.speedMetersPerSecond)
     }
+    XCTAssertGreaterThan(peakSpeed, 0.001, "Throttle must move the real Jolt vehicle")
+
+    world.setThrottle(1, brake: 0, steering: -1)
+    let left = world.step(1.0 / 60.0)
+    XCTAssertLessThan(left.appliedSteering, 0)
+    world.setThrottle(1, brake: 0, steering: 1)
+    let right = world.step(1.0 / 60.0)
+    XCTAssertGreaterThan(right.appliedSteering, 0)
+
+    let speedBeforeBrake = right.speedMetersPerSecond
+    world.setThrottle(1, brake: 1, steering: 0)
+    var braking = right
+    for _ in 0..<60 { braking = world.step(1.0 / 60.0) }
+    XCTAssertEqual(braking.appliedThrottle, 0)
+    XCTAssertEqual(braking.appliedBrake, 1)
+    XCTAssertLessThan(braking.speedMetersPerSecond, speedBeforeBrake)
 
     world.removeVehicle()
     let missing = world.step(1.0 / 60.0)
@@ -50,6 +69,26 @@ class RunnerTests: XCTestCase {
 
     try world.prepareVehicle(at: SIMD3<Float>(0, 0, 0), heading: 0, profile: "compact")
     assertCompleteFiniteState(world.step(0), expectedStep: 0)
+  }
+
+  func testFiveCentimetreVehicleHasOneChassisAndPlausibleWheelLayout() throws {
+    let world = DBJoltWorld()
+    installGround(in: world)
+    try world.prepareVehicle(at: .zero, heading: 0, profile: "compact")
+    let state = world.step(0)
+    XCTAssertNotNil(state.chassis)
+    XCTAssertEqual(state.wheels.count, 4)
+    let xs = state.wheels.map(\.positionX)
+    let zs = state.wheels.map(\.positionZ)
+    XCTAssertLessThanOrEqual((xs.max() ?? 0) - (xs.min() ?? 0), 0.03)
+    XCTAssertLessThanOrEqual((zs.max() ?? 0) - (zs.min() ?? 0), 0.04)
+  }
+
+  func testSteeringMappingDeadZoneAndBothLandscapeSigns() {
+    XCTAssertEqual(SteeringInput.normalizedTilt(0), 0)
+    XCTAssertEqual(SteeringInput.normalizedTilt(SteeringInput.deadZone * 0.5), 0)
+    XCTAssertLessThan(SteeringInput.normalizedTilt(-0.3), 0)
+    XCTAssertGreaterThan(SteeringInput.normalizedTilt(0.3), 0)
   }
 
   private func installGround(in world: DBJoltWorld) {
