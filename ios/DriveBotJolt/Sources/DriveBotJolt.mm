@@ -232,6 +232,7 @@ static Profile ProfileNamed(NSString *name) {
     Quat::sRotation(Vec3::sAxisY(), heading), EMotionType::Dynamic, Layers::MOVING);
   body.mOverrideMassProperties = EOverrideMassProperties::CalculateInertia;
   body.mMotionQuality = EMotionQuality::LinearCast;
+  body.mLinearDamping = .65f;
   body.mMassPropertiesOverride.mMass = profile.mass;
   BodyInterface &bodies = _physics->GetBodyInterface();
   Body *createdBody = bodies.CreateBody(body);
@@ -261,6 +262,9 @@ static Profile ProfileNamed(NSString *name) {
   }
   auto *controller = new WheeledVehicleControllerSettings;
   controller->mEngine.mMaxTorque = profile.torque;
+  // Full-size engine inertia and clutch strength are disproportionate at 50 mm.
+  controller->mEngine.mInertia = .00002f;
+  controller->mTransmission.mClutchStrength = .0003f;
   controller->mEngine.mMinRPM = 200; controller->mEngine.mMaxRPM = 6000;
   controller->mTransmission.mShiftUpRPM = 4500;
   controller->mDifferentials.resize(1);
@@ -397,7 +401,7 @@ static Profile ProfileNamed(NSString *name) {
   if (!_paused && std::isfinite(elapsed) && elapsed > 0) {
     operation = @"step.jolt-update";
     _accumulator += std::min(elapsed, .1);
-    constexpr float timeStep = 1.f / 60.f;
+    constexpr double timeStep = 1.0 / 60.0;
     int count = 0;
     while (_accumulator >= timeStep && count++ < 4) {
       auto *controller = static_cast<WheeledVehicleController *>(_vehicle->GetController());
@@ -406,7 +410,7 @@ static Profile ProfileNamed(NSString *name) {
       controller->SetDriverInput(_throttle, _steering * steeringLimit, _brake, _brake);
       if (_throttle != 0 || _steering != 0 || _brake != 0)
         _physics->GetBodyInterface().ActivateBody(_car);
-      const EPhysicsUpdateError updateError = _physics->Update(timeStep, 1, _temp, _jobs);
+      const EPhysicsUpdateError updateError = _physics->Update((float)timeStep, 1, _temp, _jobs);
       if (updateError != EPhysicsUpdateError::None)
         return failure(kUpdateFailed, [NSString stringWithFormat:
           @"Jolt Update meldete EPhysicsUpdateError=%u.", (unsigned)updateError]);
@@ -431,7 +435,7 @@ static Profile ProfileNamed(NSString *name) {
   state.chassis = TransformValue(transform, -1);
   if (state.chassis == nil)
     return failure(kBridgeFailed, @"Chassis konnte nicht in skalare Bridge-Werte konvertiert werden.");
-  state.speedMetersPerSecond = velocity.Length();
+  state.speedMetersPerSecond = std::hypot(velocity.GetX(), velocity.GetZ());
   state.appliedThrottle = _throttle;
   state.appliedBrake = _brake;
   const float steeringLimit = std::max(.45f, 1.f - state.speedMetersPerSecond / 2.f);

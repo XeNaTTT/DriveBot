@@ -12,7 +12,7 @@ workflows:
         - Backend
 
       flutter: stable
-      xcode: 26.6
+      xcode: "27.1"
       cocoapods: default
 
       vars:
@@ -56,6 +56,10 @@ workflows:
 
           echo "=== Xcode ==="
           xcodebuild -version
+          IOS_SDK_VERSION=$(xcrun --sdk iphoneos --show-sdk-version)
+          echo "iPhoneOS SDK: $IOS_SDK_VERSION"
+          test "${IOS_SDK_VERSION%%.*}" -ge 27
+          pod --version
 
           echo "=== App configuration ==="
           echo "Bundle ID: $BUNDLE_ID"

@@ -16,7 +16,7 @@ cross a Flutter channel.
   placement hit's plane is installed on the physics queue before vehicle
   creation. The unloaded vehicle must report four upward wheel contacts
   before driving starts. A vehicle that falls below its placement height
-  without contact returns to placement. AR mesh anchors
+  without contact pauses at the last accepted pose and offers an explicit reset. AR mesh anchors
   are converted from anchor-local coordinates to AR world coordinates. Changes
   are coalesced for 350 ms, keyed by anchor UUID, and removals delete both the
   pending update and the Jolt body.
@@ -31,6 +31,8 @@ cross a Flutter channel.
 - Jolt is the only dynamic authority. RealityKit entities have no dynamic
   physics body and only consume Jolt transforms. Simulation runs at 60 Hz with
   at most four catch-up steps and display updates follow `CADisplayLink`.
+  The timestamp advances when a physics step is submitted. The AR anchor
+  remains fixed while a child entity receives the Jolt world pose.
   The miniature chassis uses linear-cast collision detection with a 0.5 mm
   penetration allowance.
 
@@ -80,8 +82,8 @@ drive parameters). Object Capture cannot infer those vehicle semantics.
 
 Camera denial, unsupported tracking and AR errors are presented honestly.
 Limited/interrupted tracking and app resignation release all inputs and pause
-Jolt. Interruption recovery resets the AR origin, environment colliders and car
-instead of mixing coordinate systems. Throttle/brake controls handle touch exit
+Jolt. ARKit relocalizes into the existing world on recovery. Flutter hands
+race-view pointers to UIKit on touch-down. Throttle/brake controls handle touch exit
 and cancellation independently, so steering and throttle support multitouch.
 Core Motion is the sole steering source in this native view. The first ready
 sample (and the gear/debug action) captures neutral tilt. Landscape-left and

@@ -7,6 +7,43 @@ import XCTest
 @testable import Runner
 
 class RunnerTests: XCTestCase {
+  func testHeldPedalsAccelerateCoastAndBrakeOnDetectedFloor() throws {
+    let world = DBJoltWorld()
+    let ground: SIMD3<Float> = [0.8, -1.1, -0.6]
+    world.replaceFloor(at: ground, extent: [6, 6], heading: 0.4, identifier: UUID())
+    try world.prepareVehicle(at: ground, heading: 0, profile: "compact")
+    world.setPaused(false)
+    func advance(_ frames: Int) -> DBJoltVehicleState {
+      var state = world.step(0)
+      for _ in 0..<frames { state = world.step(1.0 / 60.0) }
+      return state
+    }
+    let parked = advance(60)
+    XCTAssertEqual(parked.groundedWheelCount, 4)
+    XCTAssertLessThan(parked.speedMetersPerSecond, 0.01)
+    world.setThrottle(1, brake: 0, steering: 0)
+    let early = advance(12)
+    let accelerating = advance(24)
+    XCTAssertEqual(accelerating.appliedThrottle, 1)
+    XCTAssertGreaterThan(accelerating.speedMetersPerSecond, early.speedMetersPerSecond + 0.01)
+    XCTAssertGreaterThan(try XCTUnwrap(accelerating.chassis).positionZ, ground.z + 0.01)
+    world.setThrottle(0, brake: 0, steering: 0)
+    let coasting = advance(12)
+    XCTAssertEqual(coasting.appliedThrottle, 0)
+    XCTAssertGreaterThan(coasting.speedMetersPerSecond, 0.01)
+    XCTAssertLessThan(coasting.speedMetersPerSecond, accelerating.speedMetersPerSecond)
+    world.setThrottle(1, brake: 1, steering: 0)
+    let stopped = advance(30)
+    XCTAssertEqual(stopped.appliedThrottle, 0)
+    XCTAssertEqual(stopped.appliedBrake, 1)
+    XCTAssertLessThan(stopped.speedMetersPerSecond, coasting.speedMetersPerSecond * 0.5)
+    world.setThrottle(0, brake: 0, steering: 0)
+    let released = advance(30)
+    XCTAssertEqual(released.appliedBrake, 0)
+    XCTAssertLessThan(released.speedMetersPerSecond, 0.01)
+    XCTAssertEqual(released.groundedWheelCount, 4)
+  }
+
   func testDetectedFloorSupportsAllMiniaturesAndCanBeRefined() throws {
     // A nonzero world origin and rotated finite surface match the AR path.
     let floor = SIMD3<Float>(0.82, -1.15, -0.63)

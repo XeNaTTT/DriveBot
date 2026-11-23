@@ -16,6 +16,19 @@ class ArRacingIosCompatibilityTest < Minitest::Test
     refute_includes SOURCE, 'wheels[i].setTransformMatrix(value.matrix!, relativeTo: nil)'
   end
 
+  def test_vehicle_moves_under_a_fixed_anchor_and_relocalizes
+    assert_includes SOURCE, 'anchor.addChild(pose)'
+    assert_includes SOURCE, 'pose.setTransformMatrix(chassisTransform, relativeTo: nil)'
+    refute_includes SOURCE, 'anchor.transform.matrix = chassisTransform'
+    recovery = SOURCE.split('func sessionInterruptionEnded', 2).last.split('func session(', 2).first
+    refute_includes recovery, 'startSession()'
+    refute_includes recovery, 'removeVehicle()'
+  end
+
+  def test_busy_display_frames_keep_elapsed_time
+    assert_match(/!physicsStepPending.*let dt = previousTime.*previousTime = link.timestamp/m, SOURCE)
+  end
+
   def test_mesh_classification_reads_the_optional_source_safely
     assert_includes SOURCE, 'let classifications = classification'
     assert_includes SOURCE, 'classifications.format == .uchar'

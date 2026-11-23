@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -477,6 +479,9 @@ class _RaceView extends StatelessWidget {
           viewType: 'drivebot/ar_racing_view',
           creationParams: <String, Object>{'vehicleID': vehicleID},
           creationParamsCodec: const StandardMessageCodec(),
+          gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+            Factory<EagerGestureRecognizer>(EagerGestureRecognizer.new),
+          },
         ),
       SafeArea(
         child: Align(

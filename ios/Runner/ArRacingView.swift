@@ -10,6 +10,18 @@ import os
 /// Entire simulation stays native: Flutter only creates/disposes this view.
 /// ARKit/RealityKit use metres and Jolt receives the same world coordinates.
 final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
+  private final class DisplayLinkTarget: NSObject {
+    weak var view: ArRacingView?
+
+    @objc func tick(_ link: CADisplayLink) {
+      guard let view else {
+        link.invalidate()
+        return
+      }
+      view.frame(link)
+    }
+  }
+
   private enum Phase { case scanning, aiming, placing, building, ready, interrupted }
   private enum PlacementPhysicsMode { case fullJolt, visualOnly }
   fileprivate static let logger = Logger(subsystem: "de.drivebot", category: "ARPlacement")
@@ -36,6 +48,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private let throttleButton = UIButton(type: .system)
   private let brakeButton = UIButton(type: .system)
   private var carAnchor: AnchorEntity?
+  private var vehiclePose: Entity?
   private var vehicleVisualRoot: Entity?
   private var wheels: [Entity] = []
   private var phase: Phase = .scanning { didSet { updateMessage() } }
@@ -318,10 +331,14 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     visualRoot.scale = SIMD3(repeating: uniformScale)
     Self.logger.notice("[Placement] 05 visual model loaded")
 
-    let anchor = AnchorEntity(world: initialVehicleTransform(groundPosition: p, heading: 0))
-    anchor.addChild(visualRoot)
+    let anchor = AnchorEntity(world: p)
+    let pose = Entity()
+    pose.position.y = 0.011
+    pose.addChild(visualRoot)
+    anchor.addChild(pose)
     arView.scene.addAnchor(anchor)
     carAnchor = anchor
+    vehiclePose = pose
     vehicleVisualRoot = visualRoot
     wheels = builtWheels
     Self.logger.notice("[Placement] 06 model attached")
@@ -352,7 +369,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
           self.showPlacementFailure("Jolt lieferte eine ungültige Fahrzeugtransformation.")
           return
         }
-        self.applyVehicleTransforms(state, chassisTransform: transform, anchor: anchor,
+        self.applyVehicleTransforms(state, chassisTransform: transform, pose: pose,
                                     visualRoot: visualRoot)
         self.lastSuccessfulOperation = state.operation
         Self.logger.notice("[Placement] 09 initial transform applied")
@@ -366,9 +383,11 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
 
   private func showPlacementFailure(_ text: String) {
+    Self.logger.error("Placement rejected: \(text, privacy: .public)")
     physics.removeVehicle()
-    carAnchor?.removeFromParent()
+    if let carAnchor { arView.scene.removeAnchor(carAnchor) }
     carAnchor = nil
+    vehiclePose = nil
     vehicleVisualRoot = nil
     placementFloorY = nil
     wheels.removeAll()
@@ -387,8 +406,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     physicsStepPending = false
     previousTime = 0
     displayLink?.isPaused = false
-    carAnchor?.removeFromParent()
+    if let carAnchor { arView.scene.removeAnchor(carAnchor) }
     carAnchor = nil
+    vehiclePose = nil
     vehicleVisualRoot = nil
     placementFloorY = nil
     wheels.removeAll()
@@ -432,6 +452,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     }
   }
   @objc private func throttleDown() {
+    guard phase == .ready else { return }
     throttle = 1
     sendInput()
   }
@@ -442,6 +463,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
 
   @objc private func brakeDown() {
+    guard phase == .ready else { return }
     brake = 1
     sendInput()
   }
@@ -482,35 +504,38 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     if phase == .building || phase == .placing { resetCar() }
     releaseInputs()
     physics.setPaused(true)
+    previousTime = 0
     phase = .interrupted
   }
 
   private func startDisplayLink() {
     displayLink?.invalidate()
-    let link = CADisplayLink(target: self, selector: #selector(frame(_:)))
+    let target = DisplayLinkTarget()
+    target.view = self
+    let link = CADisplayLink(target: target, selector: #selector(DisplayLinkTarget.tick(_:)))
     link.add(to: .main, forMode: .common)
     displayLink = link
   }
-  @objc private func frame(_ link: CADisplayLink) {
+  private func frame(_ link: CADisplayLink) {
     updatePlacementCandidate()
-    guard phase == .ready, let anchor = carAnchor else {
-      previousTime = link.timestamp
+    guard phase == .ready, let pose = vehiclePose else {
+      previousTime = 0
       return
     }
+    guard placementPhysicsMode == .fullJolt, !physicsStepPending, !physicsFailed else { return }
     let dt = previousTime == 0 ? 0 : link.timestamp - previousTime
     previousTime = link.timestamp
-    guard placementPhysicsMode == .fullJolt, !physicsStepPending, !physicsFailed else { return }
     physicsStepPending = true
     let generation = placementGeneration
-    physics.step(dt) { [weak self, weak anchor] result in
+    physics.step(dt) { [weak self, weak pose] result in
       guard let self else { return }
-      self.physicsStepPending = false
       guard generation == self.placementGeneration else { return }
+      self.physicsStepPending = false
+      guard let pose, let visualRoot = self.vehicleVisualRoot, self.phase == .ready else { return }
       guard case .success(let state) = result else {
         if case .failure(let error) = result { self.stopAfterPhysicsFailure(error) }
         return
       }
-      guard let anchor, let visualRoot = self.vehicleVisualRoot, self.phase == .ready else { return }
       guard let chassisTransform = state.chassis?.matrix,
         isFiniteTransform(chassisTransform), state.wheels.count == self.wheels.count,
         state.wheels.count == 4,
@@ -522,12 +547,15 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       if let floorY = self.placementFloorY,
         state.groundedWheelCount == 0, chassisTransform.columns.3.y < floorY - 0.025
       {
-        self.showPlacementFailure("Bodenkontakt verloren. Bitte erneut auf dem Boden platzieren.")
+        Self.logger.error("Lost floor contact at physics step \(state.simulationStep)")
+        self.stopAfterPhysicsFailure(NSError(domain: "de.drivebot.jolt", code: 16, userInfo: [
+          NSLocalizedDescriptionKey: "Bodenkontakt verloren. Fahrzeug bitte zurücksetzen."
+        ]))
         return
       }
-      self.applyVehicleTransforms(state, chassisTransform: chassisTransform, anchor: anchor,
+      self.applyVehicleTransforms(state, chassisTransform: chassisTransform, pose: pose,
                                   visualRoot: visualRoot)
-      self.speed.text = String(format: "%.1f m/s", state.speedMetersPerSecond)
+      self.speed.text = String(format: "%.2f m/s", state.speedMetersPerSecond)
       self.lastSuccessfulOperation = state.operation
       if state.collided { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
     }
@@ -535,9 +563,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
 
   private func applyVehicleTransforms(
     _ state: DBJoltVehicleState, chassisTransform: simd_float4x4,
-    anchor: AnchorEntity, visualRoot: Entity
+    pose: Entity, visualRoot: Entity
   ) {
-    anchor.transform.matrix = chassisTransform
+    pose.setTransformMatrix(chassisTransform, relativeTo: nil)
     let inverseChassis = chassisTransform.inverse
     let scale = visualRoot.scale.x
     for (wheel, value) in zip(wheels, state.wheels) {
@@ -617,20 +645,10 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     DispatchQueue.main.async { [weak self] in self?.interrupted() }
   }
   func sessionInterruptionEnded(_ session: ARSession) {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      self.releaseInputs()
-      self.physics.removeVehicle()
-      self.carAnchor?.removeFromParent()
-      self.carAnchor = nil
-      self.vehicleVisualRoot = nil
-      self.placementFloorY = nil
-      self.placementCandidate = nil
-      self.placementPlane = nil
-      self.wheels.removeAll()
-      self.hasFloor = false
-      self.startSession()
-    }
+    Self.logger.notice("AR interruption ended; waiting for tracking recovery")
+  }
+  func sessionShouldAttemptRelocalization(_ session: ARSession) -> Bool {
+    true
   }
   func session(_ session: ARSession, didFailWithError error: Error) {
     DispatchQueue.main.async {
@@ -776,12 +794,6 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
 }
 
-private func initialVehicleTransform(groundPosition: SIMD3<Float>, heading: Float) -> simd_float4x4 {
-  var transform = simd_float4x4(simd_quatf(angle: heading, axis: [0, 1, 0]))
-  transform.columns.3 = SIMD4(groundPosition.x, groundPosition.y + 0.011, groundPosition.z, 1)
-  return transform
-}
-
 private func isFiniteTransform(_ transform: simd_float4x4) -> Bool {
   (0..<4).allSatisfy { column in
     (0..<4).allSatisfy { row in transform[column][row].isFinite }
@@ -885,8 +897,7 @@ private final class SerializedJoltWorld {
         // The zero-step snapshot cannot prove suspension contact. Let the
         // unloaded vehicle settle before handing control to the player.
         world.setPaused(false)
-        // Match the bridge's Float fixed step exactly.
-        let step = Double(Float(1.0 / 60.0))
+        let step = 1.0 / 60.0
         var state = world.step(step)
         for _ in 1..<30 where state.success && state.groundedWheelCount < 4 {
           state = world.step(step)

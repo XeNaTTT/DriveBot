@@ -135,3 +135,9 @@ How to change:
 1. Update `PRODUCT_BUNDLE_IDENTIFIER` in `ios/Runner.xcodeproj/project.pbxproj` for Debug/Profile/Release.
 2. Set Codemagic environment variable `BUNDLE_ID` to the same explicit identifier and align signing assets/profiles with that ID.
 3. Keep the Apple Developer Identifier and App Store Connect App record in sync with the same bundle identifier.
+## iOS toolchain
+
+The `ios-testflight` workflow uses Xcode 27.1 on Codemagic's Mac mini M2
+image. Its toolchain step checks that the active iPhoneOS SDK is at least
+27 and logs the installed CocoaPods version. Stable Flutter and CocoaPods
+continue to build the existing Runner and Jolt workspace.
