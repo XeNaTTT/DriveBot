@@ -5,28 +5,41 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets(
-      'landscape garage shows every vehicle and start without scrolling', (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(568, 320);
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(
-        MaterialApp(theme: buildAppTheme(), home: const ArRacingScreen()));
+    'landscape garage shows every vehicle and start without scrolling',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(568, 320);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(theme: buildAppTheme(), home: const ArRacingScreen()),
+      );
 
-    final scroll = tester.state<ScrollableState>(find.byType(Scrollable));
-    expect(scroll.position.maxScrollExtent, 0);
-    final choices = find.byWidgetPredicate(
-      (widget) =>
-          widget.key is ValueKey<String> &&
-          (widget.key as ValueKey<String>).value.startsWith('caravan-'),
-    );
-    expect(choices.hitTestable(), findsNWidgets(3));
-    expect(
-        find.byKey(const Key('start-ar-race')).hitTestable(), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+      final scroll = tester.state<ScrollableState>(find.byType(Scrollable));
+      expect(scroll.position.maxScrollExtent, 0);
+      final choices = find.byWidgetPredicate(
+        (widget) =>
+            widget.key is ValueKey<String> &&
+            (widget.key as ValueKey<String>).value.startsWith('caravan-'),
+      );
+      expect(choices.hitTestable(), findsNWidgets(3));
+      expect(
+        find.byKey(const Key('start-ar-race')).hitTestable(),
+        findsOneWidget,
+      );
+      for (final entry in const {
+        'compact': 'URBAN CAMPER',
+        'sport': 'FAMILY CRUISER',
+        'offroad': 'EXPEDITION BEAST',
+      }.entries) {
+        await tester.tap(find.byKey(Key('caravan-${entry.key}')));
+        await tester.pumpAndSettle();
+        expect(find.text(entry.value), findsOneWidget);
+        expect(scroll.position.maxScrollExtent, 0);
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'garage opens the native race surface without simulated controls',

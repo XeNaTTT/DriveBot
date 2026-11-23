@@ -1,10 +1,45 @@
 import Flutter
 import DriveBotJolt
+import RealityKit
+import simd
 import UIKit
 import XCTest
 @testable import Runner
 
 class RunnerTests: XCTestCase {
+  func testRallyWheelModelTransformScalesOffsetWithoutScalingWheelBasis() {
+    var local = matrix_identity_float4x4
+    local.columns.3 = SIMD4(0.0115, -0.006, 0.0165, 1)
+    let model = rallyWheelModelTransform(chassisLocal: local, visualScale: 0.05)
+    XCTAssertEqual(model.columns.0, local.columns.0)
+    XCTAssertEqual(model.columns.1, local.columns.1)
+    XCTAssertEqual(model.columns.2, local.columns.2)
+    XCTAssertEqual(model.columns.3.x, 0.23, accuracy: 0.0001)
+    XCTAssertEqual(model.columns.3.y, -0.12, accuracy: 0.0001)
+    XCTAssertEqual(model.columns.3.z, 0.33, accuracy: 0.0001)
+  }
+  @MainActor
+  func testRallyVehicleVisualsHaveDistinctBodiesAndFourWheelPivots() {
+    let variants = [
+      ("compact", "camper shell"),
+      ("sport", "overcab berth"),
+      ("offroad", "roof rack crossbar"),
+    ]
+    for (profile, feature) in variants {
+      let visual = RallyVehicleVisual.build(profile: profile)
+      XCTAssertNotNil(visual.root.findEntity(named: feature))
+      XCTAssertEqual(visual.wheels.map(\.name),
+                     ["front right", "front left", "rear right", "rear left"])
+      for wheel in visual.wheels {
+        XCTAssertTrue(wheel.parent === visual.root)
+        XCTAssertGreaterThanOrEqual(wheel.children.count, 2)
+      }
+      let bounds = visual.root.visualBounds(relativeTo: visual.root)
+      XCTAssertEqual(bounds.extents.z, 1, accuracy: 0.025)
+      XCTAssertGreaterThan(bounds.max.y, 0.24)
+      XCTAssertEqual(bounds.min.y, -0.22, accuracy: 0.005)
+    }
+  }
 
   func testAppleGeoProjectionUsesEastNorthAxes() throws {
     let projection = try XCTUnwrap(AppleGeoProjection(latitude: 52.52, longitude: 13.405))

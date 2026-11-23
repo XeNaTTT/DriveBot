@@ -33,28 +33,29 @@ class _CaravanPainter extends CustomPainter {
       ),
       shadow,
     );
-    final body = Path()
-      ..moveTo(size.width * .12, size.height * .66)
-      ..quadraticBezierTo(
-        size.width * .13,
-        size.height * .25,
-        size.width * .34,
-        size.height * .18,
-      )
-      ..lineTo(size.width * .75, size.height * .18)
-      ..quadraticBezierTo(
-        size.width * .89,
-        size.height * .26,
-        size.width * .9,
-        size.height * .65,
-      )
-      ..quadraticBezierTo(
-        size.width * .88,
-        size.height * .76,
-        size.width * .78,
-        size.height * .78,
-      )
-      ..lineTo(size.width * .2, size.height * .78)
+    final w = size.width;
+    final h = size.height;
+    final expedition = model.id == 'offroad';
+    final overcab = model.id == 'sport';
+    final body = Path()..moveTo(w * .12, h * .76);
+    if (overcab) {
+      body
+        ..lineTo(w * .12, h * .22)
+        ..quadraticBezierTo(w * .12, h * .17, w * .19, h * .17)
+        ..lineTo(w * .82, h * .17)
+        ..quadraticBezierTo(w * .88, h * .17, w * .88, h * .31)
+        ..lineTo(w * .76, h * .36);
+    } else {
+      body
+        ..lineTo(w * .12, h * .31)
+        ..quadraticBezierTo(w * .12, h * .22, w * .23, h * .22)
+        ..lineTo(w * .66, h * .22)
+        ..quadraticBezierTo(w * .72, h * .22, w * .76, h * .36);
+    }
+    body
+      ..lineTo(w * .83, h * .51)
+      ..lineTo(w * .91, h * .56)
+      ..lineTo(w * .91, h * .76)
       ..close();
     canvas.drawPath(body, Paint()..color = model.color);
     canvas.drawPath(
@@ -74,14 +75,32 @@ class _CaravanPainter extends CustomPainter {
       const Radius.circular(6),
     );
     canvas.drawRRect(window, Paint()..color = const Color(0xFF15202C));
+    final cabGlass = Path()
+      ..moveTo(w * .67, h * .38)
+      ..lineTo(w * .745, h * .38)
+      ..lineTo(w * .805, h * .51)
+      ..lineTo(w * .67, h * .51)
+      ..close();
+    canvas.drawPath(cabGlass, Paint()..color = const Color(0xFF15202C));
     canvas.drawRect(
-      Rect.fromLTWH(size.width * .12, size.height * .62, size.width * .78, 7),
+      Rect.fromLTWH(w * .12, h * .62, w * .78, h * .048),
       Paint()..color = model.accent,
     );
+    if (expedition) {
+      final rack = Paint()..color = const Color(0xFF8D989D);
+      canvas.drawRect(Rect.fromLTWH(w * .2, h * .17, w * .44, h * .045), rack);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(w * .26, h * .095, w * .23, h * .075),
+          const Radius.circular(3),
+        ),
+        rack,
+      );
+    }
     for (final x in [.28, .73]) {
       canvas.drawCircle(
         Offset(size.width * x, size.height * .79),
-        size.height * .13,
+        h * (expedition ? .15 : .12),
         Paint()..color = const Color(0xFF111419),
       );
       canvas.drawCircle(

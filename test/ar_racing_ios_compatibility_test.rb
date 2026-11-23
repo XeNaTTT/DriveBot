@@ -2,15 +2,17 @@ require 'minitest/autorun'
 
 class ArRacingIosCompatibilityTest < Minitest::Test
   SOURCE = File.read(File.expand_path('../ios/Runner/ArRacingView.swift', __dir__))
+  VEHICLE = File.read(File.expand_path('../ios/Runner/RallyVehicleVisual.swift', __dir__))
 
-  def test_ios_18_cylinder_has_an_older_system_fallback
-    assert_match(/if #available\(iOS 18\.0, \*\).*generateCylinder/m, SOURCE)
-    assert_match(/return \.generateBox\(size: \[radius \* 2, width, radius \* 2\]/, SOURCE)
+  def test_wheels_use_ios_15_mesh_generation
+    assert_includes VEHICLE, 'MeshResource.generate(from: [descriptor])'
+    refute_includes VEHICLE, '.generateCylinder'
   end
 
   def test_wheel_world_transform_is_converted_to_chassis_local_space
     assert_includes SOURCE, 'let inverseChassis = chassisTransform.inverse'
-    assert_includes SOURCE, 'wheels[i].transform.matrix = inverseVisualScale * inverseChassis * value.matrix!'
+    assert_includes SOURCE, 'chassisLocal: inverseChassis * matrix, visualScale: scale'
+    assert_includes VEHICLE, 'chassisLocal.columns.3.x / visualScale'
     refute_includes SOURCE, 'wheels[i].setTransformMatrix(value.matrix!, relativeTo: nil)'
   end
 

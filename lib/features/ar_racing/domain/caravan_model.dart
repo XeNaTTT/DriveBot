@@ -26,9 +26,9 @@ class CaravanModel {
 const caravanModels = <CaravanModel>[
   CaravanModel(
     id: 'sport',
-    name: 'SPRINT SPORT',
+    name: 'FAMILY CRUISER',
     subtitle: 'Direkte Lenkung & kräftiger Antrieb',
-    color: Color(0xFFD8DDD8),
+    color: Color(0xFFDAD6C9),
     accent: Color(0xFFFF5A36),
     speed: 92,
     handling: 88,
@@ -36,9 +36,9 @@ const caravanModels = <CaravanModel>[
   ),
   CaravanModel(
     id: 'offroad',
-    name: 'TRAIL OFFROAD',
+    name: 'EXPEDITION BEAST',
     subtitle: 'Mehr Bodenfreiheit & Federweg',
-    color: Color(0xFFCFD3C8),
+    color: Color(0xFF626A45),
     accent: Color(0xFFD8FF3E),
     speed: 74,
     handling: 72,
@@ -46,9 +46,9 @@ const caravanModels = <CaravanModel>[
   ),
   CaravanModel(
     id: 'compact',
-    name: 'CITY COMPACT',
+    name: 'URBAN CAMPER',
     subtitle: 'Gutmütig & kontrollierbar',
-    color: Color(0xFFD7DBE2),
+    color: Color(0xFF567C89),
     accent: Color(0xFF8A6CFF),
     speed: 84,
     handling: 82,

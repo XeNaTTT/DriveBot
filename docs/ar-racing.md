@@ -99,7 +99,7 @@ matrix pointer crosses the boundary, and missing/invalid wheels remain errors
 rather than being skipped or replaced.
 
 The replacement is transactional: it rejects non-finite transforms, attaches
-the visual fallback on the main thread, and only then asks Jolt to create the
+the selected model on the main thread, and only then asks Jolt to create the
 vehicle. It checks shape/body/lock creation, keeps the vehicle paused until the
 initial transform is applied, and removes partial resources on every error.
 RealityKit does not generate or inspect collision shapes during placement;
@@ -120,7 +120,7 @@ the numbered checkpoints `[Placement] 01` through `[Placement] 10`. The last
 checkpoint from a device run therefore separates raycast/configuration/model
 work (01–06) from Jolt setup (07–09) and driving activation (10), without
 logging pointers or mesh payloads. Debug builds can set
-`DRIVEBOT_VISUAL_ONLY_PLACEMENT=1` to place the fallback without Jolt; Release
+`DRIVEBOT_VISUAL_ONLY_PLACEMENT=1` to place the model without Jolt; Release
 always uses `fullJolt`. Runner Release/Profile and the native Jolt pod generate
 DWARF-with-dSYM output for symbolication. A symbolicated `.ips` report is still
 required to identify the original exception class and failing frame
@@ -139,7 +139,34 @@ placement and can be restored with **Scan anzeigen**. Without scene
 reconstruction the UI explicitly reports limited plane-only mode; it never
 invents a completion percentage.
 
-## Bundled model limitation
+## Vehicle rendering and asset sources
+
+The garage IDs still select the same physics profiles. In RealityKit,
+`RallyVehicleVisual` assembles three reusable model hierarchies:
+
+- Urban Camper (`compact`) uses the proportions of the
+  [Campground camper van](https://1designtool.com/3d/models/campground-camper-van)
+  as a visual reference.
+- Family Cruiser (`sport`) uses the overcab silhouette of the
+  [Class C RV](https://www.fab.com/listings/1e7683dc-0f7d-4cac-84d2-e9a1af88523f).
+- Expedition Beast (`offroad`) uses the supplied overland reference for its
+  roof rack, cargo, rock sliders and wider treaded tyres.
+
+The models are built locally with RealityKit meshes and lit materials. Paint,
+opaque glass, metal and rubber have separate surface finishes. ARView provides
+grounding shadows on physical surfaces and ARKit environment texturing supplies
+scene reflections. LiDAR occlusion and scanned furniture colliders use the
+existing paths. Each wheel mesh has a Y-axis pivot matching the Jolt bridge;
+its world matrix carries suspension position, wheel spin and steering. The
+four wheels share mesh resources and each uses three material groups.
+
+GLB is useful as a source format, but the native RealityKit loading path uses
+USD/USDZ. Replacing an authored model with a licensed export requires the same
+axes and wheel pivots and a check of the five-centimetre bounds. This build
+ships no third-party vehicle files. Verify shadows, occlusion, wheel motion
+and frame pacing on a physical iPhone using the device checklist below.
+
+### Earlier asset experiment
 
 The repository does **not** yet contain the Kenney Car Kit archive or three
 converted USDZ assets. The official host rejected downloads from this build

@@ -12,11 +12,6 @@ import os
 final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private enum Phase { case scanning, aiming, placing, building, ready, interrupted }
   private enum PlacementPhysicsMode { case fullJolt, visualOnly }
-  private struct VehicleAppearance {
-    let bodySize: SIMD3<Float>
-    let color: UIColor
-    let profile: String
-  }
   fileprivate static let logger = Logger(subsystem: "de.drivebot", category: "ARPlacement")
   private let root = UIView()
   private let arView: ARView
@@ -42,8 +37,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private let brakeButton = UIButton(type: .system)
   private var carAnchor: AnchorEntity?
   private var vehicleVisualRoot: Entity?
-  private var chassis: ModelEntity?
-  private var wheels: [ModelEntity] = []
+  private var wheels: [Entity] = []
   private var phase: Phase = .scanning { didSet { updateMessage() } }
   private var displayLink: CADisplayLink?
   private var previousTime: CFTimeInterval = 0
@@ -65,16 +59,6 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private let vehicleID: String
   private var placementGeneration = 0
   private var lastSuccessfulOperation = "initialization"
-
-  private var appearance: VehicleAppearance {
-    switch vehicleID {
-    // These are model-space proportions. The assembled hierarchy is measured
-    // and normalized to exactly five centimetres below.
-    case "sport": return VehicleAppearance(bodySize: [0.48, 0.14, 1.0], color: .systemRed, profile: "sport")
-    case "offroad": return VehicleAppearance(bodySize: [0.54, 0.23, 1.0], color: .systemGreen, profile: "offroad")
-    default: return VehicleAppearance(bodySize: [0.50, 0.18, 1.0], color: .systemBlue, profile: "compact")
-    }
-  }
 
   init(frame: CGRect, viewIdentifier: Int64, vehicleID: String) {
     self.vehicleID = vehicleID
@@ -291,7 +275,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     inputDiagnostics.isHidden = phase != .ready || !debugVisible
   }
 
-  @objc private func place(_ gesture: UITapGestureRecognizer) {
+  @MainActor @objc private func place(_ gesture: UITapGestureRecognizer) {
     Self.logger.notice("[Placement] 01 tap received")
     guard phase == .aiming, let candidate = placementCandidate else { return }
     guard candidate.x.isFinite, candidate.y.isFinite, candidate.z.isFinite else {
@@ -308,38 +292,15 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     installCar(at: candidate, generation: placementGeneration)
   }
 
-  private func installCar(at p: SIMD3<Float>, generation: Int) {
+  @MainActor private func installCar(at p: SIMD3<Float>, generation: Int) {
     guard carAnchor == nil, phase == .placing else { return }
     phase = .building
-    let selectedAppearance = appearance
+    let profile = ["sport", "offroad"].contains(vehicleID) ? vehicleID : "compact"
     Self.logger.notice("[Placement] 04 vehicle configuration found")
 
-    // No USDZ files are bundled yet. Never fail to "wheels only": this opaque,
-    // high-contrast body is the deliberate diagnostic fallback.
-    let visualRoot = Entity()
-    let body = ModelEntity(
-      mesh: .generateBox(size: selectedAppearance.bodySize, cornerRadius: 0.015),
-      materials: [SimpleMaterial(color: selectedAppearance.color, roughness: 0.35, isMetallic: true)])
-    visualRoot.addChild(body)
-    let halfTrack = selectedAppearance.bodySize.x * 0.52
-    let axleOffset = selectedAppearance.bodySize.z * 0.33
-    let wheelRadius = selectedAppearance.bodySize.z * 0.09
-    let positions: [SIMD3<Float>] = [
-      SIMD3(halfTrack, -selectedAppearance.bodySize.y * 0.42, axleOffset),
-      SIMD3(-halfTrack, -selectedAppearance.bodySize.y * 0.42, axleOffset),
-      SIMD3(halfTrack, -selectedAppearance.bodySize.y * 0.42, -axleOffset),
-      SIMD3(-halfTrack, -selectedAppearance.bodySize.y * 0.42, -axleOffset),
-    ]
-    var builtWheels: [ModelEntity] = []
-    for pos in positions {
-      let wheel = ModelEntity(
-        mesh: wheelMesh(radius: wheelRadius, width: selectedAppearance.bodySize.x * 0.12),
-        materials: [SimpleMaterial(color: .darkGray, isMetallic: false)])
-      wheel.orientation = simd_quatf(angle: .pi / 2, axis: [0, 0, 1])
-      wheel.position = pos
-      visualRoot.addChild(wheel)
-      builtWheels.append(wheel)
-    }
+    let vehicle = RallyVehicleVisual.build(profile: profile)
+    let visualRoot = vehicle.root
+    let builtWheels = vehicle.wheels
     let bounds = visualRoot.visualBounds(relativeTo: visualRoot)
     let modelLength = bounds.extents.z
     guard modelLength.isFinite, modelLength > 0, builtWheels.count == 4 else {
@@ -355,7 +316,6 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     arView.scene.addAnchor(anchor)
     carAnchor = anchor
     vehicleVisualRoot = visualRoot
-    chassis = body
     wheels = builtWheels
     Self.logger.notice("[Placement] 06 model attached")
 
@@ -365,7 +325,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       Self.logger.notice("[Placement] visual-only ready (Jolt intentionally skipped)")
       return
     }
-    physics.prepareVehicle(at: p, heading: 0, profile: selectedAppearance.profile) {
+    physics.prepareVehicle(at: p, heading: 0, profile: profile) {
       [weak self] result in
       guard let self else { return }
       guard generation == self.placementGeneration, self.phase == .building else {
@@ -382,7 +342,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
           self.showPlacementFailure("Jolt lieferte eine ungültige Fahrzeugtransformation.")
           return
         }
-        anchor.transform.matrix = transform
+        self.applyVehicleTransforms(state, chassisTransform: transform, anchor: anchor,
+                                    visualRoot: visualRoot)
         self.lastSuccessfulOperation = state.operation
         Self.logger.notice("[Placement] 09 initial transform applied")
         self.physics.setPaused(false)
@@ -399,23 +360,11 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     carAnchor?.removeFromParent()
     carAnchor = nil
     vehicleVisualRoot = nil
-    chassis = nil
     wheels.removeAll()
     setScanVisible(true)
     phase = hasFloor ? .aiming : .scanning
     message.text = text
     message.isHidden = false
-  }
-
-  private func wheelMesh(radius: Float, width: Float) -> MeshResource {
-    if #available(iOS 18.0, *) {
-      return .generateCylinder(height: width, radius: radius)
-    }
-
-    // Before iOS 18 RealityKit has no synchronous cylinder generator. A rounded
-    // model-space box preserves the wheel envelope and is normalized
-    // together with the complete hierarchy (never independently).
-    return .generateBox(size: [radius * 2, width, radius * 2], cornerRadius: radius * 0.5)
   }
 
   @objc private func resetCar() {
@@ -557,17 +506,25 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
         self.stopAfterPhysicsFailure(PhysicsFailure.invalidDecodedState(state))
         return
       }
-      anchor.transform.matrix = chassisTransform
+      self.applyVehicleTransforms(state, chassisTransform: chassisTransform, anchor: anchor,
+                                  visualRoot: visualRoot)
       self.speed.text = String(format: "%.1f m/s", state.speedMetersPerSecond)
-      let inverseChassis = chassisTransform.inverse
-      let inverseVisualScale = visualRoot.transform.matrix.inverse
-      for (i, value) in state.wheels.enumerated() {
-        // Jolt reports wheel world transforms. Convert into chassis-local space;
-        // never feed an unfiltered world transform into a visual child.
-        self.wheels[i].transform.matrix = inverseVisualScale * inverseChassis * value.matrix!
-      }
       self.lastSuccessfulOperation = state.operation
       if state.collided { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+    }
+  }
+
+  private func applyVehicleTransforms(
+    _ state: DBJoltVehicleState, chassisTransform: simd_float4x4,
+    anchor: AnchorEntity, visualRoot: Entity
+  ) {
+    anchor.transform.matrix = chassisTransform
+    let inverseChassis = chassisTransform.inverse
+    let scale = visualRoot.scale.x
+    for (wheel, value) in zip(wheels, state.wheels) {
+      guard let matrix = value.matrix else { continue }
+      wheel.transform.matrix = rallyWheelModelTransform(
+        chassisLocal: inverseChassis * matrix, visualScale: scale)
     }
   }
 
@@ -645,7 +602,6 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       self.physics.removeVehicle()
       self.carAnchor?.removeFromParent()
       self.carAnchor = nil
-      self.chassis = nil
       self.wheels.removeAll()
       self.hasFloor = false
       self.startSession()

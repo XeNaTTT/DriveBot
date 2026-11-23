@@ -57,22 +57,22 @@ class _ArRacingScreenState extends State<ArRacingScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 450),
-          child: _racing
-              ? _RaceView(
-                  onClose: _finishRace,
-                  vehicleID: caravanModels[_selected].id,
-                  backgroundBuilder: widget.backgroundBuilder,
-                )
-              : _GarageView(
-                  selected: _selected,
-                  onSelect: (value) => setState(() => _selected = value),
-                  onStart: _startRace,
-                  accountEntryPoint: widget.accountEntryPoint,
-                ),
-        ),
-      );
+    body: AnimatedSwitcher(
+      duration: const Duration(milliseconds: 450),
+      child: _racing
+          ? _RaceView(
+              onClose: _finishRace,
+              vehicleID: caravanModels[_selected].id,
+              backgroundBuilder: widget.backgroundBuilder,
+            )
+          : _GarageView(
+              selected: _selected,
+              onSelect: (value) => setState(() => _selected = value),
+              onStart: _startRace,
+              accountEntryPoint: widget.accountEntryPoint,
+            ),
+    ),
+  );
 }
 
 class _GarageView extends StatelessWidget {
@@ -105,7 +105,7 @@ class _GarageView extends StatelessWidget {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(22, 10, 12, 0),
+              padding: EdgeInsets.fromLTRB(22, landscape ? 4 : 10, 12, 0),
               child: Row(
                 children: [
                   Container(
@@ -199,8 +199,9 @@ class _GarageView extends StatelessWidget {
                             ),
                           ),
                           child: Flex(
-                            direction:
-                                landscape ? Axis.horizontal : Axis.vertical,
+                            direction: landscape
+                                ? Axis.horizontal
+                                : Axis.vertical,
                             children: [
                               CaravanArt(model: model, compact: landscape),
                               SizedBox(width: landscape ? 12 : 0, height: 2),
@@ -212,16 +213,25 @@ class _GarageView extends StatelessWidget {
                                     Text(
                                       model.name,
                                       textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        fontSize: 25,
+                                      maxLines: landscape ? 1 : null,
+                                      overflow: landscape
+                                          ? TextOverflow.ellipsis
+                                          : null,
+                                      style: TextStyle(
+                                        fontSize: landscape ? 18 : 25,
                                         fontWeight: FontWeight.w900,
                                       ),
                                     ),
                                     Text(
                                       model.subtitle,
                                       textAlign: TextAlign.center,
+                                      maxLines: landscape ? 1 : null,
+                                      overflow: landscape
+                                          ? TextOverflow.ellipsis
+                                          : null,
                                       style: TextStyle(
                                         color: model.accent,
+                                        fontSize: landscape ? 12 : null,
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
@@ -260,8 +270,9 @@ class _GarageView extends StatelessWidget {
                             (index) => Expanded(
                               child: Padding(
                                 padding: EdgeInsets.only(
-                                  right:
-                                      index == caravanModels.length - 1 ? 0 : 8,
+                                  right: index == caravanModels.length - 1
+                                      ? 0
+                                      : 8,
                                 ),
                                 child: _ModelChoice(
                                   model: caravanModels[index],
@@ -348,41 +359,41 @@ class _Stat extends StatelessWidget {
   final Color color;
   @override
   Widget build(BuildContext context) => Column(
-        children: [
-          Text(
-            '$value',
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 4),
-          Container(
-            width: 56,
-            height: 4,
+    children: [
+      Text(
+        '$value',
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+      ),
+      const SizedBox(height: 4),
+      Container(
+        width: 56,
+        height: 4,
+        decoration: BoxDecoration(
+          color: Colors.white12,
+          borderRadius: BorderRadius.circular(2),
+        ),
+        alignment: Alignment.centerLeft,
+        child: FractionallySizedBox(
+          widthFactor: value / 100,
+          child: DecoratedBox(
             decoration: BoxDecoration(
-              color: Colors.white12,
+              color: color,
               borderRadius: BorderRadius.circular(2),
             ),
-            alignment: Alignment.centerLeft,
-            child: FractionallySizedBox(
-              widthFactor: value / 100,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
           ),
-          const SizedBox(height: 5),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFF9296A0),
-              fontSize: 8,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      );
+        ),
+      ),
+      const SizedBox(height: 5),
+      Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFF9296A0),
+          fontSize: 8,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    ],
+  );
 }
 
 class _ModelChoice extends StatelessWidget {
@@ -398,48 +409,48 @@ class _ModelChoice extends StatelessWidget {
   final bool compact;
   @override
   Widget build(BuildContext context) => Semantics(
-        button: true,
-        selected: selected,
-        label: model.name,
-        child: InkWell(
-          key: Key('caravan-${model.id}'),
-          onTap: onTap,
+    button: true,
+    selected: selected,
+    label: model.name,
+    child: InkWell(
+      key: Key('caravan-${model.id}'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(15),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        height: compact ? 48 : 72,
+        decoration: BoxDecoration(
+          color: selected
+              ? model.accent.withValues(alpha: .14)
+              : const Color(0xFF17191F),
           borderRadius: BorderRadius.circular(15),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            height: compact ? 48 : 72,
-            decoration: BoxDecoration(
-              color: selected
-                  ? model.accent.withValues(alpha: .14)
-                  : const Color(0xFF17191F),
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(
-                color: selected ? model.accent : Colors.white10,
-                width: selected ? 2 : 1,
-              ),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.airport_shuttle_rounded,
-                  size: compact ? 18 : 24,
-                  color: selected ? model.accent : Colors.white54,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  model.name.split(' ').first,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: selected ? Colors.white : Colors.white54,
-                  ),
-                ),
-              ],
-            ),
+          border: Border.all(
+            color: selected ? model.accent : Colors.white10,
+            width: selected ? 2 : 1,
           ),
         ),
-      );
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.airport_shuttle_rounded,
+              size: compact ? 18 : 24,
+              color: selected ? model.accent : Colors.white54,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              model.name.split(' ').first,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: selected ? Colors.white : Colors.white54,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _RaceView extends StatelessWidget {
@@ -455,32 +466,32 @@ class _RaceView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Stack(
-        key: const Key('ar-race-view'),
-        fit: StackFit.expand,
-        children: [
-          if (backgroundBuilder != null)
-            backgroundBuilder!(context)
-          else
-            UiKitView(
-              key: const Key('native-ar-racing-view'),
-              viewType: 'drivebot/ar_racing_view',
-              creationParams: <String, Object>{'vehicleID': vehicleID},
-              creationParamsCodec: const StandardMessageCodec(),
-            ),
-          SafeArea(
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: IconButton.filledTonal(
-                  key: const Key('close-ar-race'),
-                  onPressed: onClose,
-                  icon: const Icon(Icons.close),
-                  tooltip: 'Rennen schließen',
-                ),
-              ),
+    key: const Key('ar-race-view'),
+    fit: StackFit.expand,
+    children: [
+      if (backgroundBuilder != null)
+        backgroundBuilder!(context)
+      else
+        UiKitView(
+          key: const Key('native-ar-racing-view'),
+          viewType: 'drivebot/ar_racing_view',
+          creationParams: <String, Object>{'vehicleID': vehicleID},
+          creationParamsCodec: const StandardMessageCodec(),
+        ),
+      SafeArea(
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: IconButton.filledTonal(
+              key: const Key('close-ar-race'),
+              onPressed: onClose,
+              icon: const Icon(Icons.close),
+              tooltip: 'Rennen schließen',
             ),
           ),
-        ],
-      );
+        ),
+      ),
+    ],
+  );
 }
