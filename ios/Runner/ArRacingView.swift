@@ -51,6 +51,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private var hasFloor = false
   private var hasSceneReconstruction = false
   private var placementCandidate: SIMD3<Float>?
+  private var placementPlane: ARPlaneAnchor?
+  private var placementFloorY: Float?
   private var placementMarker: ModelEntity?
   private var floorEntities: [UUID: ModelEntity] = [:]
   private var floorAnchors: [UUID: AnchorEntity] = [:]
@@ -277,7 +279,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
 
   @MainActor @objc private func place(_ gesture: UITapGestureRecognizer) {
     Self.logger.notice("[Placement] 01 tap received")
-    guard phase == .aiming, let candidate = placementCandidate else { return }
+    guard phase == .aiming, let candidate = placementCandidate,
+      let plane = placementPlane else { return }
     guard candidate.x.isFinite, candidate.y.isFinite, candidate.z.isFinite else {
       Self.logger.error("placement.reject invalid-transform")
       showPlacementFailure("Ungültiger Bodentreffer – bitte erneut anvisieren")
@@ -287,8 +290,11 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     placementGeneration += 1
     phase = .placing
     placementCandidate = nil
+    placementPlane = nil
     placementMarker?.isEnabled = false
     Self.logger.notice("[Placement] 03 placement locked")
+    // Both operations are queued in order on the same Jolt world.
+    installPlaneCollider(plane)
     installCar(at: candidate, generation: placementGeneration)
   }
 
@@ -296,6 +302,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     guard carAnchor == nil, phase == .placing else { return }
     phase = .building
     let profile = ["sport", "offroad"].contains(vehicleID) ? vehicleID : "compact"
+    placementFloorY = p.y
     Self.logger.notice("[Placement] 04 vehicle configuration found")
 
     let vehicle = RallyVehicleVisual.build(profile: profile)
@@ -329,13 +336,16 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       [weak self] result in
       guard let self else { return }
       guard generation == self.placementGeneration, self.phase == .building else {
-        self.physics.removeVehicle()
         return
       }
       switch result {
       case .failure(let error):
         Self.logger.error("[Placement] failed: \(error.localizedDescription, privacy: .public)")
-        self.stopAfterPhysicsFailure(error)
+        if error is PlacementContactError {
+          self.showPlacementFailure(error.localizedDescription)
+        } else {
+          self.stopAfterPhysicsFailure(error)
+        }
       case .success(let state):
         Self.logger.notice("[Placement] 08 Jolt vehicle created")
         guard let transform = state.chassis?.matrix, isFiniteTransform(transform) else {
@@ -360,6 +370,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     carAnchor?.removeFromParent()
     carAnchor = nil
     vehicleVisualRoot = nil
+    placementFloorY = nil
     wheels.removeAll()
     setScanVisible(true)
     phase = hasFloor ? .aiming : .scanning
@@ -379,6 +390,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     carAnchor?.removeFromParent()
     carAnchor = nil
     vehicleVisualRoot = nil
+    placementFloorY = nil
     wheels.removeAll()
     setScanVisible(true)
     phase = hasFloor ? .aiming : .scanning
@@ -467,6 +479,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     sendInput()
   }
   @objc private func interrupted() {
+    if phase == .building || phase == .placing { resetCar() }
     releaseInputs()
     physics.setPaused(true)
     phase = .interrupted
@@ -504,6 +517,12 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
         state.wheels.enumerated().allSatisfy({ $0.offset == $0.element.wheelIndex && $0.element.matrix != nil })
       else {
         self.stopAfterPhysicsFailure(PhysicsFailure.invalidDecodedState(state))
+        return
+      }
+      if let floorY = self.placementFloorY,
+        state.groundedWheelCount == 0, chassisTransform.columns.3.y < floorY - 0.025
+      {
+        self.showPlacementFailure("Bodenkontakt verloren. Bitte erneut auf dem Boden platzieren.")
         return
       }
       self.applyVehicleTransforms(state, chassisTransform: chassisTransform, anchor: anchor,
@@ -556,8 +575,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     ).first(where: { result in
       guard let plane = result.anchor as? ARPlaneAnchor else { return false }
       return plane.extent.x > 0.3 && plane.extent.z > 0.3
-    }) else {
+    }), let plane = hit.anchor as? ARPlaneAnchor else {
       placementCandidate = nil
+      placementPlane = nil
       placementMarker?.isEnabled = false
       if hasFloor { phase = .aiming }
       return
@@ -567,6 +587,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       hit.worldTransform.columns.3.z)
     guard position.x.isFinite, position.y.isFinite, position.z.isFinite else { return }
     placementCandidate = position
+    placementPlane = plane
     if placementMarker == nil {
       let marker = ModelEntity(
         mesh: .generateBox(size: [0.12, 0.002, 0.12], cornerRadius: 0.02),
@@ -585,7 +606,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     DispatchQueue.main.async {
       switch camera.trackingState {
       case .normal:
-        guard !self.physicsFailed else { return }
+        guard !self.physicsFailed, self.phase == .interrupted else { return }
         self.physics.setPaused(false)
         self.phase = self.carAnchor == nil ? (self.hasFloor ? .aiming : .scanning) : .ready
       default: self.interrupted()
@@ -602,6 +623,10 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       self.physics.removeVehicle()
       self.carAnchor?.removeFromParent()
       self.carAnchor = nil
+      self.vehicleVisualRoot = nil
+      self.placementFloorY = nil
+      self.placementCandidate = nil
+      self.placementPlane = nil
       self.wheels.removeAll()
       self.hasFloor = false
       self.startSession()
@@ -621,6 +646,11 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       return
     }
     for anchor in anchors {
+      if placementPlane?.identifier == anchor.identifier {
+        placementCandidate = nil
+        placementPlane = nil
+        placementMarker?.isEnabled = false
+      }
       meshWork[anchor.identifier]?.cancel()
       meshWork.removeValue(forKey: anchor.identifier)
       physics.removeStaticMesh(anchor.identifier)
@@ -674,19 +704,16 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     }
   }
   private func installPlaneCollider(_ plane: ARPlaneAnchor) {
-    let e = plane.extent
-    let center = SIMD4(plane.center.x, plane.center.y, plane.center.z, 0)
-    let local: [SIMD4<Float>] = [
-      [-e.x / 2, 0, -e.z / 2, 1], [e.x / 2, 0, -e.z / 2, 1], [e.x / 2, 0, e.z / 2, 1],
-      [-e.x / 2, 0, e.z / 2, 1],
-    ]
-    let v = local.map { p -> SIMD3<Float> in
-      let w = plane.transform * (p + center)
-      return [w.x, w.y, w.z]
+    let center = plane.transform * SIMD4(plane.center.x, plane.center.y, plane.center.z, 1)
+    let forward = plane.transform.columns.2
+    var heading = atan2(forward.x, forward.z)
+    var extent = SIMD2(plane.extent.x, plane.extent.z)
+    if #available(iOS 16.0, *) {
+      heading += plane.planeExtent.rotationOnYAxis
+      extent = SIMD2(plane.planeExtent.width, plane.planeExtent.height)
     }
-    // Clockwise from above: Jolt mesh triangles then expose their collidable
-    // face towards the vehicle, matching the native bridge test ground.
-    replaceCollider(id: plane.identifier, vertices: v, indices: [0, 2, 1, 0, 3, 2])
+    physics.replaceFloor(at: [center.x, center.y, center.z], extent: extent,
+                         heading: heading, identifier: plane.identifier)
   }
   @available(iOS 13.4, *) private func schedule(_ anchor: ARMeshAnchor) {
     meshWork[anchor.identifier]?.cancel()
@@ -828,6 +855,12 @@ private enum PhysicsDiagnostics {
   static func load() -> String? { UserDefaults.standard.string(forKey: key) }
 }
 
+private struct PlacementContactError: LocalizedError {
+  var errorDescription: String? {
+    "Kein stabiler Bodenkontakt. Bitte eine freie Bodenfläche anvisieren."
+  }
+}
+
 /// Owns every Jolt call on one queue. Completions return to the main thread, so
 /// the physics boundary never mutates RealityKit or UIKit objects.
 private final class SerializedJoltWorld {
@@ -849,8 +882,23 @@ private final class SerializedJoltWorld {
       ArRacingView.logger.notice("[Placement] 07 Jolt world ready")
       do {
         try world.prepareVehicle(at: position, heading: heading, profile: profile)
-        let state = world.step(0)
+        // The zero-step snapshot cannot prove suspension contact. Let the
+        // unloaded vehicle settle before handing control to the player.
+        world.setPaused(false)
+        // Match the bridge's Float fixed step exactly.
+        let step = Double(Float(1.0 / 60.0))
+        var state = world.step(step)
+        for _ in 1..<30 where state.success && state.groundedWheelCount < 4 {
+          state = world.step(step)
+        }
+        world.setPaused(true)
+        if state.success && (state.groundedWheelCount < 4 ||
+          (state.chassis?.positionY ?? -.infinity) < position.y)
+        {
+          throw PlacementContactError()
+        }
         let result = Self.decode(state)
+        if !state.success { world.removeVehicle() }
         DispatchQueue.main.async { completion(result) }
       } catch {
         world.removeVehicle()
@@ -888,6 +936,11 @@ private final class SerializedJoltWorld {
   }
   func replaceStaticMesh(_ id: UUID, vertices: Data, indices: Data) {
     queue.async { [world] in world.replaceStaticMesh(id, vertices: vertices, indices: indices) }
+  }
+  func replaceFloor(at center: SIMD3<Float>, extent: SIMD2<Float>, heading: Float, identifier: UUID) {
+    queue.async { [world] in
+      world.replaceFloor(at: center, extent: extent, heading: heading, identifier: identifier)
+    }
   }
   func removeStaticMesh(_ id: UUID) {
     queue.async { [world] in world.removeStaticMesh(id) }

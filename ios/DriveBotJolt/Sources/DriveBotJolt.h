@@ -33,6 +33,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic) double timeStep;
 @property(nonatomic) NSInteger expectedWheelCount;
 @property(nonatomic) NSInteger outputWheelCount;
+@property(nonatomic) NSInteger groundedWheelCount;
 @property(nonatomic) BOOL transformsFinite;
 @end
 
@@ -54,6 +55,11 @@ NS_ASSUME_NONNULL_BEGIN
                   vertices:(NSData *)vertices
                    indices:(NSData *)indices;
 - (void)removeStaticMesh:(NSUUID *)identifier;
+- (void)replaceFloorAt:(simd_float3)center
+                extent:(simd_float2)extent
+               heading:(float)heading
+            identifier:(NSUUID *)identifier
+    NS_SWIFT_NAME(replaceFloor(at:extent:heading:identifier:));
 - (DBJoltVehicleState *)step:(double)elapsedSeconds;
 @end
 

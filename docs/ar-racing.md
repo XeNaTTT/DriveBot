@@ -11,7 +11,12 @@ cross a Flutter channel.
   detection. On supported LiDAR hardware it additionally enables classified
   scene reconstruction and RealityKit occlusion. Other devices explicitly show
   that only floor collision is available.
-- Confirmed horizontal planes become stable, thin Jolt meshes. AR mesh anchors
+- Confirmed horizontal planes become finite solid Jolt boxes whose tops match
+  the AR plane and whose footprint follows its center, extent and yaw. The
+  placement hit's plane is installed on the physics queue before vehicle
+  creation. The unloaded vehicle must report four upward wheel contacts
+  before driving starts. A vehicle that falls below its placement height
+  without contact returns to placement. AR mesh anchors
   are converted from anchor-local coordinates to AR world coordinates. Changes
   are coalesced for 350 ms, keyed by anchor UUID, and removals delete both the
   pending update and the Jolt body.
@@ -26,6 +31,8 @@ cross a Flutter channel.
 - Jolt is the only dynamic authority. RealityKit entities have no dynamic
   physics body and only consume Jolt transforms. Simulation runs at 60 Hz with
   at most four catch-up steps and display updates follow `CADisplayLink`.
+  The miniature chassis uses linear-cast collision detection with a 0.5 mm
+  penetration allowance.
 
 ## Scale and configuration
 

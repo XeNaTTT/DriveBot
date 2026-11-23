@@ -5,6 +5,7 @@
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Core/JobSystemThreadPool.h>
 #include <Jolt/Physics/PhysicsSystem.h>
+#include <Jolt/Physics/PhysicsSettings.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
@@ -42,10 +43,13 @@ class ObjectBroadFilter final : public ObjectVsBroadPhaseLayerFilter {
  }
 };
 static simd_float4x4 Matrix(RMat44 matrix) {
+  const Vec3 x = matrix.GetAxisX(), y = matrix.GetAxisY(), z = matrix.GetAxisZ();
+  const RVec3 p = matrix.GetTranslation();
   simd_float4x4 output;
-  for (int column = 0; column < 4; ++column)
-    for (int row = 0; row < 4; ++row)
-      output.columns[column][row] = (float)matrix(column, row);
+  output.columns[0] = simd_make_float4(x.GetX(), x.GetY(), x.GetZ(), 0);
+  output.columns[1] = simd_make_float4(y.GetX(), y.GetY(), y.GetZ(), 0);
+  output.columns[2] = simd_make_float4(z.GetX(), z.GetY(), z.GetZ(), 0);
+  output.columns[3] = simd_make_float4((float)p.GetX(), (float)p.GetY(), (float)p.GetZ(), 1);
   return output;
 }
 static bool IsFinite(simd_float3 value) {
@@ -159,6 +163,11 @@ static Profile ProfileNamed(NSString *name) {
     _objectBroad = new ObjectBroadFilter;
     _physics = new PhysicsSystem;
     _physics->Init(4096, 0, 4096, 4096, *_broad, *_objectBroad, *_pairs);
+    PhysicsSettings settings = _physics->GetPhysicsSettings();
+    // Default penetration slop (20 mm) exceeds the 7 mm chassis height.
+    settings.mPenetrationSlop = .0005f;
+    settings.mSpeculativeContactDistance = .002f;
+    _physics->SetPhysicsSettings(settings);
     _physics->SetGravity(Vec3(0, -9.81f, 0));
     _paused = YES;
   }
@@ -222,6 +231,7 @@ static Profile ProfileNamed(NSString *name) {
   BodyCreationSettings body(shapeResult.Get(), RVec3(p.x, p.y + .011f, p.z),
     Quat::sRotation(Vec3::sAxisY(), heading), EMotionType::Dynamic, Layers::MOVING);
   body.mOverrideMassProperties = EOverrideMassProperties::CalculateInertia;
+  body.mMotionQuality = EMotionQuality::LinearCast;
   body.mMassPropertiesOverride.mMass = profile.mass;
   BodyInterface &bodies = _physics->GetBodyInterface();
   Body *createdBody = bodies.CreateBody(body);
@@ -323,6 +333,22 @@ static Profile ProfileNamed(NSString *name) {
   [self removeStaticMesh:identifier];
   _physics->GetBodyInterface().AddBody(created->GetID(), EActivation::DontActivate);
   _meshes[key] = created->GetID();
+}
+- (void)replaceFloorAt:(simd_float3)center extent:(simd_float2)extent
+               heading:(float)heading identifier:(NSUUID *)identifier {
+  if (!IsFinite(center) || !std::isfinite(heading) ||
+      !std::isfinite(extent.x) || !std::isfinite(extent.y) ||
+      extent.x < .02f || extent.y < .02f) return;
+  constexpr float halfThickness = .025f;
+  const RefConst<Shape> shape = new BoxShape(Vec3(extent.x / 2, halfThickness, extent.y / 2), .001f);
+  BodyCreationSettings body(shape, RVec3(center.x, center.y - halfThickness, center.z),
+    Quat::sRotation(Vec3::sAxisY(), heading), EMotionType::Static, Layers::STATIC);
+  auto &bodies = _physics->GetBodyInterface();
+  Body *created = bodies.CreateBody(body);
+  if (!created) return;
+  [self removeStaticMesh:identifier];
+  bodies.AddBody(created->GetID(), EActivation::DontActivate);
+  _meshes[identifier.UUIDString.UTF8String] = created->GetID();
 }
 - (void)removeStaticMesh:(NSUUID *)identifier {
   auto iterator = _meshes.find(identifier.UUIDString.UTF8String);
@@ -431,6 +457,8 @@ static Profile ProfileNamed(NSString *name) {
         [NSString stringWithFormat:@"Transformation von Jolt-Rad %u ist ungültig.", index]);
     }
     [wheelTransforms addObject:value];
+    if (wheels[index]->HasContact() && wheels[index]->GetContactNormal().GetY() > .5f)
+      state.groundedWheelCount += 1;
     outputWheelCount = wheelTransforms.count;
   }
   state.wheels = wheelTransforms;

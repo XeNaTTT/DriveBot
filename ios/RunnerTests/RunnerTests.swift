@@ -7,6 +7,28 @@ import XCTest
 @testable import Runner
 
 class RunnerTests: XCTestCase {
+  func testDetectedFloorSupportsAllMiniaturesAndCanBeRefined() throws {
+    // A nonzero world origin and rotated finite surface match the AR path.
+    let floor = SIMD3<Float>(0.82, -1.15, -0.63)
+    for profile in ["compact", "sport", "offroad"] {
+      let world = DBJoltWorld()
+      let id = UUID()
+      world.replaceFloor(at: floor, extent: [0.65, 0.44], heading: 0.48, identifier: id)
+      try world.prepareVehicle(at: floor, heading: 0, profile: profile)
+      world.setPaused(false)
+      var state = world.step(1.0 / 60.0)
+      for frame in 1...150 {
+        if frame == 50 {
+          world.replaceFloor(at: floor, extent: [0.82, 0.53], heading: 0.45, identifier: id)
+        }
+        state = world.step(1.0 / 60.0)
+        XCTAssertTrue(state.success, state.errorMessage ?? profile)
+        XCTAssertGreaterThan(try XCTUnwrap(state.chassis).positionY, floor.y)
+      }
+      XCTAssertEqual(state.groundedWheelCount, 4, profile)
+    }
+  }
+
   func testRallyWheelModelTransformScalesOffsetWithoutScalingWheelBasis() {
     var local = matrix_identity_float4x4
     local.columns.3 = SIMD4(0.0115, -0.006, 0.0165, 1)
