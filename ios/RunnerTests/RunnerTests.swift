@@ -7,6 +7,55 @@ import XCTest
 @testable import Runner
 
 class RunnerTests: XCTestCase {
+  func testReverseRequiresReleasingBrakeAfterStandstillAndPressingAgain() {
+    var pedals = RacingPedals()
+    pedals.setGas(pressed: true)
+    XCTAssertEqual(pedals.throttle, 1)
+    pedals.pressBrake()
+    XCTAssertEqual(pedals.throttle, 0)
+    XCTAssertEqual(pedals.brake, 1)
+    pedals.setGas(pressed: false)
+
+    pedals.observe(speed: 0.2, appliedBrake: 1)
+    pedals.releaseBrake()
+    pedals.pressBrake()
+    XCTAssertEqual(pedals.brake, 1)
+
+    pedals.observe(speed: 0.005, appliedBrake: 1)
+    pedals.pressBrake()
+    XCTAssertFalse(pedals.isReversing)
+    XCTAssertEqual(pedals.brake, 1)
+
+    pedals.releaseBrake()
+    pedals.pressBrake()
+    XCTAssertTrue(pedals.isReversing)
+    XCTAssertEqual(pedals.throttle, -1)
+    XCTAssertEqual(pedals.brake, 0)
+
+    pedals.releaseBrake()
+    XCTAssertFalse(pedals.isReversing)
+    XCTAssertEqual(pedals.throttle, 0)
+    pedals.observe(speed: 0.2, appliedBrake: 0)
+    pedals.pressBrake()
+    XCTAssertEqual(pedals.brake, 1)
+  }
+
+  func testCancelledBrakePressAndResumingGasDisarmReverse() {
+    var pedals = RacingPedals()
+    pedals.pressBrake()
+    pedals.observe(speed: 0, appliedBrake: 1)
+    pedals.releaseBrake(cancelled: true)
+    pedals.pressBrake()
+    XCTAssertEqual(pedals.brake, 1)
+
+    pedals.observe(speed: 0, appliedBrake: 1)
+    pedals.releaseBrake()
+    pedals.setGas(pressed: true)
+    pedals.setGas(pressed: false)
+    pedals.pressBrake()
+    XCTAssertEqual(pedals.brake, 1)
+  }
+
   func testHeldPedalsAccelerateCoastAndBrakeOnDetectedFloor() throws {
     let world = DBJoltWorld()
     let ground: SIMD3<Float> = [0.8, -1.1, -0.6]
@@ -42,6 +91,15 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(released.appliedBrake, 0)
     XCTAssertLessThan(released.speedMetersPerSecond, 0.01)
     XCTAssertEqual(released.groundedWheelCount, 4)
+
+    world.setThrottle(-1, brake: 0, steering: 0)
+    let reversing = advance(90)
+    XCTAssertTrue(reversing.success, reversing.errorMessage ?? "Reverse step failed")
+    XCTAssertEqual(reversing.appliedThrottle, -1)
+    XCTAssertEqual(reversing.appliedBrake, 0)
+    XCTAssertGreaterThan(reversing.speedMetersPerSecond, 0.01)
+    XCTAssertLessThan(try XCTUnwrap(reversing.chassis).positionZ,
+                      try XCTUnwrap(released.chassis).positionZ - 0.01)
   }
 
   func testDetectedFloorSupportsAllMiniaturesAndCanBeRefined() throws {

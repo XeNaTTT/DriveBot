@@ -56,7 +56,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private var previousTime: CFTimeInterval = 0
   private var physicsStepPending = false
   private var physicsFailed = false
-  private var throttle: Float = 0, brake: Float = 0, steering: Float = 0
+  private var pedals = RacingPedals()
+  private var steering: Float = 0
   private var meshWork: [UUID: DispatchWorkItem] = [:]
   private let meshQueue = DispatchQueue(label: "de.drivebot.mesh", qos: .utility)
   private var debugVisible = false
@@ -196,10 +197,11 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     throttleButton.addTarget(
       self, action: #selector(throttleUp),
       for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
-    brakeButton.addTarget(self, action: #selector(brakeDown), for: [.touchDown, .touchDragEnter])
+    brakeButton.addTarget(self, action: #selector(brakeDown), for: .touchDown)
+    brakeButton.addTarget(self, action: #selector(brakeUp), for: .touchUpInside)
     brakeButton.addTarget(
-      self, action: #selector(brakeUp),
-      for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit])
+      self, action: #selector(brakeCancelled),
+      for: [.touchUpOutside, .touchCancel, .touchDragExit])
     steeringPad.backgroundColor = UIColor.black.withAlphaComponent(0.45)
     steeringPad.layer.cornerRadius = 44
     steeringPad.translatesAutoresizingMaskIntoConstraints = false
@@ -281,8 +283,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     }
     message.isHidden = phase == .ready
     speed.isHidden = phase != .ready
-    throttleButton.isHidden = phase != .ready
-    brakeButton.isHidden = phase != .ready
+    throttleButton.isHidden = phase != .ready || placementPhysicsMode == .visualOnly
+    brakeButton.isHidden = phase != .ready || placementPhysicsMode == .visualOnly
     steeringPad.isHidden = true
     scanButton.isHidden = phase != .ready
     resetButton.isHidden = phase != .ready && !physicsFailed
@@ -453,24 +455,41 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
   @objc private func throttleDown() {
     guard phase == .ready else { return }
-    throttle = 1
+    pedals.setGas(pressed: true)
     sendInput()
   }
 
   @objc private func throttleUp() {
-    throttle = 0
+    pedals.setGas(pressed: false)
     sendInput()
   }
 
   @objc private func brakeDown() {
     guard phase == .ready else { return }
-    brake = 1
+    pedals.pressBrake()
+    updateBrakeButton()
     sendInput()
   }
 
   @objc private func brakeUp() {
-    brake = 0
+    pedals.releaseBrake()
+    updateBrakeButton()
     sendInput()
+  }
+
+  @objc private func brakeCancelled() {
+    pedals.releaseBrake(cancelled: true)
+    updateBrakeButton()
+    sendInput()
+  }
+
+  private func updateBrakeButton() {
+    let reversing = pedals.isReversing
+    brakeButton.setTitle(reversing ? "R" : "BREMSE", for: .normal)
+    brakeButton.accessibilityLabel = reversing ? "Rückwärtsfahren" : "Bremse"
+    brakeButton.backgroundColor = reversing
+      ? UIColor(red: 0.76, green: 0.07, blue: 0.11, alpha: 1)
+      : UIColor.black.withAlphaComponent(0.55)
   }
   @objc private func steer(_ pan: UIPanGestureRecognizer) {
     let x = Float(pan.location(in: steeringPad).x / steeringPad.bounds.width * 2 - 1)
@@ -479,11 +498,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     sendInput()
   }
   private func sendInput() {
-    // Brake has deterministic priority without destroying the independently
-    // tracked throttle finger state.
-    physics.setThrottle(brake > 0 ? 0 : throttle, brake: brake, steering: steering)
+    physics.setThrottle(pedals.throttle, brake: pedals.brake, steering: steering)
     inputDiagnostics.text = String(
-      format: "Gas %.1f | Bremse %.1f | Lenkung %+.2f", throttle, brake, steering)
+      format: "Gas %+.1f | Bremse %.1f | Lenkung %+.2f", pedals.throttle, pedals.brake, steering)
   }
   private func calibrateSteering() { neutralTilt = nil }
   private func landscapeTilt(gravity: CMAcceleration) -> Double {
@@ -494,8 +511,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     }
   }
   private func releaseInputs() {
-    throttle = 0
-    brake = 0
+    pedals = RacingPedals()
+    updateBrakeButton()
     steering = 0
     steeringKnob.transform = .identity
     sendInput()
@@ -555,6 +572,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       }
       self.applyVehicleTransforms(state, chassisTransform: chassisTransform, pose: pose,
                                   visualRoot: visualRoot)
+      self.pedals.observe(speed: state.speedMetersPerSecond, appliedBrake: state.appliedBrake)
       self.speed.text = String(format: "%.2f m/s", state.speedMetersPerSecond)
       self.lastSuccessfulOperation = state.operation
       if state.collided { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
@@ -865,6 +883,49 @@ private enum PhysicsDiagnostics {
   }
   static func save(_ report: String) { UserDefaults.standard.set(report, forKey: key) }
   static func load() -> String? { UserDefaults.standard.string(forKey: key) }
+}
+
+struct RacingPedals {
+  private enum BrakePress { case released, braking, reversing }
+
+  private static let standstillSpeed: Float = 0.01
+  private var gasPressed = false
+  private var brakePress: BrakePress = .released
+  private var reverseArmed = false
+
+  var isReversing: Bool { brakePress == .reversing }
+  var brake: Float { brakePress == .braking ? 1 : 0 }
+  var throttle: Float {
+    switch brakePress {
+    case .released: return gasPressed ? 1 : 0
+    case .braking: return 0
+    case .reversing: return -1
+    }
+  }
+
+  mutating func setGas(pressed: Bool) {
+    gasPressed = pressed
+    if pressed && brakePress == .released { reverseArmed = false }
+  }
+
+  mutating func pressBrake() {
+    guard brakePress == .released else { return }
+    brakePress = reverseArmed ? .reversing : .braking
+    reverseArmed = false
+  }
+
+  mutating func releaseBrake(cancelled: Bool = false) {
+    brakePress = .released
+    if cancelled || gasPressed { reverseArmed = false }
+  }
+
+  mutating func observe(speed: Float, appliedBrake: Float) {
+    if speed > Self.standstillSpeed {
+      reverseArmed = false
+    } else if brakePress == .braking && appliedBrake > 0 {
+      reverseArmed = true
+    }
+  }
 }
 
 private struct PlacementContactError: LocalizedError {

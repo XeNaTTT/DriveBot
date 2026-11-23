@@ -251,6 +251,8 @@ static Profile ProfileNamed(NSString *name) {
   for (int index = 0; index < 4; ++index) {
     auto *wheel = new WheelSettingsWV;
     wheel->mPosition = positions[index]; wheel->mRadius = radius; wheel->mWidth = .018f;
+    // Approximate each miniature wheel as a 5 g solid cylinder.
+    wheel->mInertia = .5f * .005f * radius * radius;
     wheel->mSuspensionMinLength = profile.clearance;
     wheel->mSuspensionMaxLength = profile.suspension;
     wheel->mSuspensionSpring.mFrequency = profile.frequency;
@@ -298,10 +300,10 @@ static Profile ProfileNamed(NSString *name) {
   return YES;
 }
 - (void)setThrottle:(float)t brake:(float)b steering:(float)s {
-  _throttle = std::clamp(t, 0.f, 1.f); _brake = std::clamp(b, 0.f, 1.f);
+  _throttle = std::clamp(t, -1.f, 1.f); _brake = std::clamp(b, 0.f, 1.f);
   _steering = std::clamp(s, -1.f, 1.f);
   if (_brake > 0.f) _throttle = 0.f;
-  if ([self isReady] && (_throttle > 0.f || _brake > 0.f || _steering != 0.f))
+  if ([self isReady] && (_throttle != 0.f || _brake > 0.f || _steering != 0.f))
     _physics->GetBodyInterface().ActivateBody(_car);
 }
 - (void)setPaused:(BOOL)paused {

@@ -49,6 +49,7 @@ NS_ASSUME_NONNULL_BEGIN
                    error:(NSError *_Nullable *_Nullable)error;
 - (void)removeVehicle;
 - (BOOL)isReady;
+/// Signed throttle in [-1, 1]. Negative values request reverse.
 - (void)setThrottle:(float)throttle brake:(float)brake steering:(float)steering;
 - (void)setPaused:(BOOL)paused;
 - (void)replaceStaticMesh:(NSUUID *)identifier

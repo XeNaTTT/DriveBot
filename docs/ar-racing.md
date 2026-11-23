@@ -45,6 +45,7 @@ long. Body and wheels share that root. Physics uses a 0.046 m long, 0.023 m wide
 box collider, 0.0045 m wheel radius, 0.033 m wheelbase, 0.023 m track and a
 0.011 m initial chassis-centre height. Profile masses are 0.075–0.095 kg;
 engine torque is 0.008–0.009 N·m and suspension travel is 0.005–0.0065 m.
+Wheel inertia uses the 0.0045 m radius and an estimated wheel mass of 5 g.
 Sport, off-road and compact profiles vary these parameters only inside the
 native physics boundary. The HUD reports actual metres per second from Jolt linear velocity;
 it does not apply a full-size-car multiplier. Vehicle shape, wheel positions,
@@ -84,7 +85,10 @@ Camera denial, unsupported tracking and AR errors are presented honestly.
 Limited/interrupted tracking and app resignation release all inputs and pause
 Jolt. ARKit relocalizes into the existing world on recovery. Flutter hands
 race-view pointers to UIKit on touch-down. Throttle/brake controls handle touch exit
-and cancellation independently, so steering and throttle support multitouch.
+and cancellation independently. The brake overrides forward throttle while held.
+Once the brake brings the vehicle to 0.01 m/s or below, release it and press it
+again to reverse. The button turns red and shows `R` while held. Releasing it
+ends reverse input and restores the brake label.
 Core Motion is the sole steering source in this native view. The first ready
 sample (and the gear/debug action) captures neutral tilt. Landscape-left and
 landscape-right use opposite gravity-Y signs, followed by a three-degree
