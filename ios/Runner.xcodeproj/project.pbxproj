@@ -17,6 +17,9 @@
 		DBA200000000000000000001 /* FloatingNavigationBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA200000000000000000101 /* FloatingNavigationBarView.swift */; };
 		DBA300000000000000000001 /* ArRacingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA300000000000000000101 /* ArRacingView.swift */; };
 		DBA30000000000000000000F /* RallyVehicleVisual.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA30000000000000000010F /* RallyVehicleVisual.swift */; };
+		DBA40000000000000000000F /* RallyWalker.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA40000000000000000010F /* RallyWalker.swift */; };
+		DBA60000000000000000000F /* RallyWalkingSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA60000000000000000010F /* RallyWalkingSurface.swift */; };
+		DBA50000000000000000000F /* RallySteeringPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA50000000000000000010F /* RallySteeringPanel.swift */; };
 		DBA300000000000000000002 /* ArRacingViewFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA300000000000000000102 /* ArRacingViewFactory.swift */; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
@@ -62,6 +65,9 @@
 		DBA200000000000000000101 /* FloatingNavigationBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingNavigationBarView.swift; sourceTree = "<group>"; };
 		DBA300000000000000000101 /* ArRacingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArRacingView.swift; sourceTree = "<group>"; };
 		DBA30000000000000000010F /* RallyVehicleVisual.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RallyVehicleVisual.swift; sourceTree = "<group>"; };
+		DBA40000000000000000010F /* RallyWalker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RallyWalker.swift; sourceTree = "<group>"; };
+		DBA60000000000000000010F /* RallyWalkingSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RallyWalkingSurface.swift; sourceTree = "<group>"; };
+		DBA50000000000000000010F /* RallySteeringPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RallySteeringPanel.swift; sourceTree = "<group>"; };
 		DBA300000000000000000102 /* ArRacingViewFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArRacingViewFactory.swift; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		78E0A7A72DC9AD7400C4905E /* FlutterGeneratedPluginSwiftPackage */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = FlutterGeneratedPluginSwiftPackage; path = Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage; sourceTree = "<group>"; };
@@ -142,6 +148,9 @@
 				DBA200000000000000000101 /* FloatingNavigationBarView.swift */,
 				DBA300000000000000000101 /* ArRacingView.swift */,
 				DBA30000000000000000010F /* RallyVehicleVisual.swift */,
+				DBA40000000000000000010F /* RallyWalker.swift */,
+				DBA60000000000000000010F /* RallyWalkingSurface.swift */,
+				DBA50000000000000000010F /* RallySteeringPanel.swift */,
 				DBA300000000000000000102 /* ArRacingViewFactory.swift */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
@@ -308,6 +317,9 @@
 				DBA100000000000000000003 /* ArKitView.swift in Sources */,
 				DBA300000000000000000001 /* ArRacingView.swift in Sources */,
 				DBA30000000000000000000F /* RallyVehicleVisual.swift in Sources */,
+				DBA40000000000000000000F /* RallyWalker.swift in Sources */,
+				DBA60000000000000000000F /* RallyWalkingSurface.swift in Sources */,
+				DBA50000000000000000000F /* RallySteeringPanel.swift in Sources */,
 				DBA300000000000000000002 /* ArRacingViewFactory.swift in Sources */,
 				DBA200000000000000000001 /* FloatingNavigationBarView.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,

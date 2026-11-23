@@ -137,7 +137,7 @@ How to change:
 3. Keep the Apple Developer Identifier and App Store Connect App record in sync with the same bundle identifier.
 ## iOS toolchain
 
-The `ios-testflight` workflow uses Xcode 27.1 on Codemagic's Mac mini M2
+The `ios-testflight` workflow uses Xcode 27.2 on Codemagic's Mac mini M2
 image. Its toolchain step checks that the active iPhoneOS SDK is at least
-27 and logs the installed CocoaPods version. Stable Flutter and CocoaPods
-continue to build the existing Runner and Jolt workspace.
+27 and logs the installed CocoaPods version. The workflow pins Flutter 3.50.1, runs Flutter analysis and tests, then runs
+RunnerTests on an iPhone 17 simulator with iOS 27.2 before distribution signing.

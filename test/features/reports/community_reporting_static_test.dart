@@ -53,13 +53,14 @@ void main() {
     final files = Directory.current
         .listSync(recursive: true)
         .whereType<File>()
-        .where((file) => !file.path.contains('/.git/'));
+        .where((file) => !file.uri.path.contains('/.git/'));
     for (final file in files) {
-      if (file.path.contains('/build/') ||
-          file.path.contains('/.dart_tool/') ||
-          file.path.contains('/node_modules/') ||
-          file.path.endsWith('docs/community-reporting.md') ||
-          file.path.endsWith('docs/supabase.md')) {
+      final path = file.uri.path;
+      if (path.contains('/build/') ||
+          path.contains('/.dart_tool/') ||
+          path.contains('/node_modules/') ||
+          path.endsWith('docs/community-reporting.md') ||
+          path.endsWith('docs/supabase.md')) {
         continue;
       }
       String contents;

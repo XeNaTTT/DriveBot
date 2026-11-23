@@ -11,8 +11,8 @@ workflows:
       groups:
         - Backend
 
-      flutter: stable
-      xcode: "27.1"
+      flutter: "3.50.1"
+      xcode: "27.2"
       cocoapods: default
 
       vars:
@@ -90,6 +90,12 @@ workflows:
           set -e
           flutter pub get
 
+      - name: Analyze and test Flutter
+        script: |
+          set -e
+          flutter analyze --no-fatal-infos --no-pub
+          flutter test --no-pub
+
       - name: Install CocoaPods dependencies
         script: |
           set -e
@@ -122,6 +128,13 @@ workflows:
           set -e
 
           exit "$XCODEBUILD_STATUS"
+
+      - name: Run native gameplay regression tests
+        script: |
+          set -eo pipefail
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.2' \
+            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
 
       - name: Set up iOS code signing
         script: |

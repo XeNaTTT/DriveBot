@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../domain/caravan_model.dart';
+import 'caravan_palette.dart';
 
 class CaravanArt extends StatelessWidget {
   const CaravanArt({required this.model, this.compact = false, super.key});
@@ -57,7 +57,20 @@ class _CaravanPainter extends CustomPainter {
       ..lineTo(w * .91, h * .56)
       ..lineTo(w * .91, h * .76)
       ..close();
-    canvas.drawPath(body, Paint()..color = model.color);
+    final paintwork = LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Color.lerp(model.color, Colors.white, .48)!,
+        model.color,
+        Color.lerp(model.color, Colors.black, .42)!,
+      ],
+      stops: const [0, .54, 1],
+    );
+    canvas.drawPath(
+      body,
+      Paint()..shader = paintwork.createShader(body.getBounds()),
+    );
     canvas.drawPath(
       body,
       Paint()

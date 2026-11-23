@@ -89,13 +89,13 @@ and cancellation independently. The brake overrides forward throttle while held.
 Once the brake brings the vehicle to 0.01 m/s or below, release it and press it
 again to reverse. The button turns red and shows `R` while held. Releasing it
 ends reverse input and restores the brake label.
-Core Motion is the sole steering source in this native view. The first ready
+The analog pad takes priority over Core Motion while touched. The first ready
 sample (and the gear/debug action) captures neutral tilt. Landscape-left and
 landscape-right use opposite gravity-Y signs, followed by a three-degree
 deadzone and a low-latency smoothing filter. The scan overlay starts visible, is hidden for driving and remains independently
 toggleable without adding colliders. Speed and pedals only exist in the ready
 state; scan instructions only exist before it. Motion steering is the default,
-and the legacy touch steering pad remains hidden.
+and both steering inputs share the saved sensitivity and inversion.
 
 ## Placement diagnostics and crash status
 
@@ -229,3 +229,69 @@ features must not be expressed as `JPH_*_ENABLED=0`: upstream tests those switch
 with `#ifdef`, so defining them to zero still enables them. Codemagic first builds
 the unsigned `DriveBotJolt` scheme for a generic ARM64 iOS device and only then
 continues with the signed Flutter archive.
+## Room Rallye – driving and walking acceptance
+
+Flutter stable builds the garage. It passes the selected profile through the
+platform view creation parameters. ARKit supplies metric tracking and detected
+geometry, RealityKit renders the live camera scene, and a serial Jolt world
+steps the car at 60 Hz. The display link advances the walker using elapsed time.
+No Flutter updates are needed per camera frame.
+
+The native view owns driving, exiting, on-foot and entering states. The car
+stays under its original world anchor during a mode switch. A brief tracking
+interruption during asynchronous vehicle construction previously called reset
+and removed that anchor. Construction now finishes while paused if tracking
+is limited. The previous pedal repair also replaced the full-size wheel inertia
+with miniature inertia; a negative throttle request selects reverse.
+
+The gear button opens the steering settings. Both tilt and the left thumb pad
+use the same bounded steering gain and inversion, persisted in UserDefaults.
+The left pad controls camera-relative movement on foot. ARKit verifies floor
+support and RealityKit checks reconstructed obstacles along the proposed step.
+Without reconstruction, detected vertical planes provide a wall check.
+Unscanned furniture and narrow geometry can still be missed.
+
+The garage illustrations, three camper meshes and articulated figure are
+project-generated. The figure uses a jacket, denim, separate limbs and
+procedural steps, breathing and turns. Door transitions use a short movement
+between the checked standing position and the cab. No third-party character,
+motion capture, vehicle textures or USDZ licenses were added. For higher
+fidelity, supply a licensed skinned character with idle, walk and door clips
+and vehicle meshes with separate wheel pivots. Jolt's license is in
+`LICENSES/JoltPhysics-LICENSE.txt`.
+
+### Implementation and verification record
+
+| Files | Responsibility |
+| --- | --- |
+| `ar_racing_screen.dart`, `caravan_art.dart`, `racing_caravan_art.dart`, `caravan_palette.dart`, `caravan_model.dart` | Garage, profile presentation and UI-independent camper data |
+| `ArRacingView.swift` | Placement recovery, mode transitions, HUD, input routing and parking |
+| `RallySteeringPanel.swift` | Persistent inversion and gain controls |
+| `RallyWalker.swift`, `RallyWalkingSurface.swift` | Articulated avatar, camera-relative movement, door distance, ground and obstacle queries |
+| `RallyVehicleVisual.swift`, `DriveBotJolt.mm` | Clear-coated bodywork, expedition lights and profile steering angles |
+| `project.pbxproj`, `codemagic.yaml`, `pubspec.lock`, `docs/codemagic-testflight.md` | Native target membership and reproducible build toolchain |
+| `RunnerTests.swift`, `ar_racing_ios_compatibility_test.rb`, `community_reporting_static_test.dart` | Control settings, walking geometry, native integration contracts and portable path exclusions in the repository scan |
+
+Local verification used Flutter 3.50.1 and Dart 3.14.0 on Windows. All 228
+Flutter tests passed. Analysis reported 30 informational notices and zero warnings
+or errors. The two Ruby integration suites passed 20 tests with 188 assertions.
+Swift syntax was parsed locally. The simulator XCTest suite, signing, TestFlight
+distribution, actual camera tracking and frame-time measurements require separate
+verification on the macOS build runner or a physical iPhone.
+
+### Physical iPhone acceptance
+
+1. Place each camper on a textured floor. Walk around it, briefly cover the
+   camera during placement, restore tracking and check visibility and contact.
+2. Accelerate, coast, brake to rest, release and press the brake again. Check
+   the red R, signed movement, wheel rotation, steering and speed indication.
+3. Try tilt and touch at gains 0.5, 1 and 2 in both landscape orientations.
+   Invert steering, terminate the app and verify the saved values on relaunch.
+4. Attempt exit while moving, then beside furniture, at a plane boundary and
+   on clear ground. Verify the feet stay supported and the camper stays parked.
+5. Hold diagonal input, drag off the pad and release. Walk away from the door
+   and return. Check contextual entry, repeated mode switches, app suspension,
+   immediate pedal response after entry, and recovery after tracking loss.
+6. Repeat on phones with and without scene reconstruction. Use Instruments
+   to record frame times during mesh refinement, walking and turning. Check
+   contact shadows and occlusion over both dark carpet and reflective floors.

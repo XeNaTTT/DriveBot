@@ -23,9 +23,12 @@ struct RallyVehicleVisual {
     let root = Entity()
     let van = profile == "compact"
     let expedition = profile == "offroad"
-    let paint = finish(
-      van ? 0x567C89 : expedition ? 0x626A45 : 0xDAD6C9,
-      roughness: 0.29, metallic: true)
+    var paint = PhysicallyBasedMaterial()
+    paint.baseColor = .init(tint: color(van ? 0x188F90 : expedition ? 0x455440 : 0xE3DCCC))
+    paint.metallic = 0.38
+    paint.roughness = 0.29
+    paint.clearcoat = 0.7
+    paint.clearcoatRoughness = 0.18
     let trim = finish(0x23272A, roughness: 0.76)
     let glass = finish(0x20313B, roughness: 0.15, metallic: true)
     let accent = finish(van ? 0xCDB893 : expedition ? 0xB49A5C : 0xA3543F, roughness: 0.43)
@@ -34,7 +37,7 @@ struct RallyVehicleVisual {
     let tailLamp = finish(0xAA2427, roughness: 0.25)
 
     func part(_ name: String, _ size: SIMD3<Float>, _ position: SIMD3<Float>,
-              _ material: SimpleMaterial, bevel: Float = 0.008, pitch: Float = 0) {
+              _ material: RealityKit.Material, bevel: Float = 0.008, pitch: Float = 0) {
       let model = ModelEntity(mesh: .generateBox(size: size, cornerRadius: bevel),
                               materials: [material])
       model.name = name
@@ -74,6 +77,7 @@ struct RallyVehicleVisual {
       part("headlight", [0.071, 0.037, 0.014], [side * 0.165, 0.046, 0.484], headlamp)
       part("taillight", [0.043, 0.068, 0.014], [side * 0.175, 0.084, -0.474], tailLamp)
       if expedition {
+        part("roof floodlight", [0.056, 0.035, 0.025], [side * 0.14, 0.39, 0.068], headlamp)
         part("roof rack rail", [0.021, 0.022, 0.47], [side * 0.178, 0.386, -0.172], trim)
         part("rock slider", [0.026, 0.026, 0.37], [side * 0.213, -0.018, 0], trim)
       }
@@ -188,10 +192,13 @@ struct RallyVehicleVisual {
   private static func finish(_ rgb: UInt32, roughness: Float, metallic: Bool = false)
     -> SimpleMaterial
   {
-    let color = UIColor(
+    SimpleMaterial(color: color(rgb), roughness: .float(roughness), isMetallic: metallic)
+  }
+
+  private static func color(_ rgb: UInt32) -> UIColor {
+    UIColor(
       red: CGFloat((rgb >> 16) & 255) / 255,
       green: CGFloat((rgb >> 8) & 255) / 255,
       blue: CGFloat(rgb & 255) / 255, alpha: 1)
-    return SimpleMaterial(color: color, roughness: .float(roughness), isMetallic: metallic)
   }
 }

@@ -13,7 +13,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private final class DisplayLinkTarget: NSObject {
     weak var view: ArRacingView?
 
-    @objc func tick(_ link: CADisplayLink) {
+    @MainActor @objc func tick(_ link: CADisplayLink) {
       guard let view else {
         link.invalidate()
         return
@@ -44,6 +44,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private let debugButton = UIButton(type: .system)
   private let scanButton = UIButton(type: .system)
   private let steeringPad = UIView()
+  private var walkingArrows: [UIImageView] = []
   private let steeringKnob = UIView()
   private let throttleButton = UIButton(type: .system)
   private let brakeButton = UIButton(type: .system)
@@ -56,8 +57,23 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private var previousTime: CFTimeInterval = 0
   private var physicsStepPending = false
   private var physicsFailed = false
+  private var trackingInterrupted = false
   private var pedals = RacingPedals()
   private var steering: Float = 0
+  private var touchSteering = false
+  private enum PlayMode { case driving, exiting, onFoot, entering }
+  private var mode: PlayMode = .driving
+  private let interaction = UIButton(type: .system)
+  private var avatar: RallyWalker?
+  @MainActor private lazy var walkingSurface = RallyWalkingSurface(view: arView)
+  private var walkInput = SIMD2<Float>.zero
+  private var outsideDoor = SIMD3<Float>.zero
+  private var transitionTime: Float = 0
+  private var lastSpeed = Float.infinity
+  private let controls = RallySteeringPreferences()
+  private lazy var settingsPanel = MainActor.assumeIsolated {
+    RallySteeringPanel(controls: controls) { [weak self] in self?.toggleDebug() }
+  }
   private var meshWork: [UUID: DispatchWorkItem] = [:]
   private let meshQueue = DispatchQueue(label: "de.drivebot.mesh", qos: .utility)
   private var debugVisible = false
@@ -93,6 +109,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     arView.session.delegate = self
     NotificationCenter.default.addObserver(
       self, selector: #selector(interrupted), name: UIApplication.willResignActiveNotification,
+      object: nil)
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(resumeIfTracked), name: UIApplication.didBecomeActiveNotification,
       object: nil)
     requestCameraAndStart()
     startMotionSteering()
@@ -130,14 +149,14 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     }
     let config = ARWorldTrackingConfiguration()
     config.worldAlignment = .gravity
-    config.planeDetection = [.horizontal]
+    config.planeDetection = [.horizontal, .vertical]
     config.environmentTexturing = .automatic
     if #available(iOS 13.4, *),
       ARWorldTrackingConfiguration.supportsSceneReconstruction(.meshWithClassification)
     {
       config.sceneReconstruction = .meshWithClassification
       hasSceneReconstruction = true
-      arView.environment.sceneUnderstanding.options = [.occlusion, .receivesLighting]
+      arView.environment.sceneUnderstanding.options = [.occlusion, .receivesLighting, .collision]
     }
     arView.session.run(config, options: [.resetTracking, .removeExistingAnchors])
     setScanVisible(true)
@@ -152,7 +171,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       button.tintColor = .white
       button.setTitleColor(.white, for: .normal)
       button.backgroundColor = UIColor.black.withAlphaComponent(0.55)
-      button.layer.cornerRadius = 22
+      button.layer.cornerRadius = 14
+      button.layer.borderWidth = 1
+      button.layer.borderColor = UIColor.white.withAlphaComponent(0.3).cgColor
       button.translatesAutoresizingMaskIntoConstraints = false
       root.addSubview(button)
     }
@@ -184,9 +205,13 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     style(resetButton, title: "Fahrzeug zurücksetzen")
     style(diagnosisButton, title: "Diagnose kopieren")
     style(debugButton, title: "⚙︎")
-    debugButton.accessibilityLabel = "Lenkung kalibrieren und Diagnose umschalten"
+    debugButton.accessibilityLabel = "Steuerung einstellen"
     style(scanButton, title: "Scan anzeigen")
+    style(interaction, title: "Aussteigen")
+    interaction.addTarget(self, action: #selector(interact), for: .touchUpInside)
     style(throttleButton, title: "GAS")
+    throttleButton.backgroundColor = UIColor(red: 0.13, green: 0.80, blue: 0.70, alpha: 0.96)
+    throttleButton.setTitleColor(.black, for: .normal)
     style(brakeButton, title: "BREMSE")
     resetButton.addTarget(self, action: #selector(resetCar), for: .touchUpInside)
     diagnosisButton.addTarget(self, action: #selector(shareDiagnosis), for: .touchUpInside)
@@ -204,15 +229,36 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       for: [.touchUpOutside, .touchCancel, .touchDragExit])
     steeringPad.backgroundColor = UIColor.black.withAlphaComponent(0.45)
     steeringPad.layer.cornerRadius = 44
+    steeringPad.layer.borderWidth = 1.5
+    steeringPad.layer.borderColor = UIColor.systemTeal.withAlphaComponent(0.65).cgColor
+    steeringPad.isAccessibilityElement = true
+    steeringPad.accessibilityTraits = [.allowsDirectInteraction]
     steeringPad.translatesAutoresizingMaskIntoConstraints = false
     root.addSubview(steeringPad)
+    for (symbol, dx, dy) in [("chevron.left", -46, 0), ("chevron.right", 46, 0),
+                             ("chevron.up", 0, -32), ("chevron.down", 0, 32)] {
+      let arrow = UIImageView(image: UIImage(systemName: symbol))
+      arrow.tintColor = .white
+      arrow.contentMode = .scaleAspectFit
+      arrow.translatesAutoresizingMaskIntoConstraints = false
+      steeringPad.addSubview(arrow)
+      NSLayoutConstraint.activate([
+        arrow.widthAnchor.constraint(equalToConstant: 12),
+        arrow.heightAnchor.constraint(equalToConstant: 12),
+        arrow.centerXAnchor.constraint(equalTo: steeringPad.centerXAnchor, constant: CGFloat(dx)),
+        arrow.centerYAnchor.constraint(equalTo: steeringPad.centerYAnchor, constant: CGFloat(dy))
+      ])
+      if dy != 0 { walkingArrows.append(arrow) }
+    }
     steeringKnob.backgroundColor = UIColor.white.withAlphaComponent(0.8)
     steeringKnob.layer.cornerRadius = 21
     steeringKnob.isUserInteractionEnabled = false
     steeringKnob.translatesAutoresizingMaskIntoConstraints = false
     steeringPad.addSubview(steeringKnob)
-    steeringPad.addGestureRecognizer(
-      UIPanGestureRecognizer(target: self, action: #selector(steer(_:))))
+    let stickTouch = UILongPressGestureRecognizer(target: self, action: #selector(steer(_:)))
+    stickTouch.minimumPressDuration = 0
+    stickTouch.allowableMovement = .greatestFiniteMagnitude
+    steeringPad.addGestureRecognizer(stickTouch)
     arView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(place(_:))))
     let guide = root.safeAreaLayoutGuide
     NSLayoutConstraint.activate([
@@ -254,6 +300,10 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       steeringKnob.centerYAnchor.constraint(equalTo: steeringPad.centerYAnchor),
       steeringKnob.widthAnchor.constraint(equalToConstant: 42),
       steeringKnob.heightAnchor.constraint(equalToConstant: 42),
+      interaction.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -20),
+      interaction.bottomAnchor.constraint(equalTo: throttleButton.topAnchor, constant: -8),
+      interaction.widthAnchor.constraint(equalToConstant: 128),
+      interaction.heightAnchor.constraint(equalToConstant: 44),
       throttleButton.trailingAnchor.constraint(equalTo: guide.trailingAnchor, constant: -20),
       throttleButton.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -16),
       throttleButton.widthAnchor.constraint(equalToConstant: 92),
@@ -262,6 +312,12 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       brakeButton.centerYAnchor.constraint(equalTo: throttleButton.centerYAnchor),
       brakeButton.widthAnchor.constraint(equalToConstant: 92),
       brakeButton.heightAnchor.constraint(equalToConstant: 58),
+    ])
+    root.addSubview(settingsPanel)
+    NSLayoutConstraint.activate([
+      settingsPanel.centerXAnchor.constraint(equalTo: guide.centerXAnchor),
+      settingsPanel.centerYAnchor.constraint(equalTo: guide.centerYAnchor),
+      settingsPanel.widthAnchor.constraint(equalToConstant: 280)
     ])
     updateMessage()
   }
@@ -283,9 +339,18 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     }
     message.isHidden = phase == .ready
     speed.isHidden = phase != .ready
-    throttleButton.isHidden = phase != .ready || placementPhysicsMode == .visualOnly
-    brakeButton.isHidden = phase != .ready || placementPhysicsMode == .visualOnly
-    steeringPad.isHidden = true
+    let playing = phase == .ready && placementPhysicsMode == .fullJolt && settingsPanel.isHidden
+    throttleButton.isHidden = !playing || mode != .driving
+    brakeButton.isHidden = throttleButton.isHidden
+    steeringPad.isHidden = !playing || (mode != .driving && mode != .onFoot)
+    interaction.isHidden = !playing || !(mode == .driving || (mode == .onFoot && nearDoor))
+    interaction.isEnabled = mode == .onFoot || lastSpeed <= 0.01
+    interaction.alpha = interaction.isEnabled ? 1 : 0.45
+    for arrow in walkingArrows { arrow.isHidden = mode != .onFoot }
+    steeringPad.accessibilityLabel = mode == .onFoot ? "Gehen" : "Lenken"
+    interaction.setTitle(mode == .onFoot ? "Einsteigen" : "Aussteigen", for: .normal)
+    if mode != .driving { speed.text = "ZU FUSS" }
+    else if phase == .ready && lastSpeed.isFinite { speed.text = String(format: "%.2f m/s", lastSpeed) }
     scanButton.isHidden = phase != .ready
     resetButton.isHidden = phase != .ready && !physicsFailed
     diagnosisButton.isHidden = !physicsFailed
@@ -375,10 +440,10 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
                                     visualRoot: visualRoot)
         self.lastSuccessfulOperation = state.operation
         Self.logger.notice("[Placement] 09 initial transform applied")
-        self.physics.setPaused(false)
+        self.physics.setPaused(self.trackingInterrupted)
         self.physicsFailed = false
         self.setScanVisible(false)
-        self.phase = .ready
+        self.phase = self.trackingInterrupted ? .interrupted : .ready
         Self.logger.notice("[Placement] 10 driving started")
       }
     }
@@ -401,6 +466,10 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
 
   @objc private func resetCar() {
     placementGeneration += 1
+    avatar?.root.removeFromParent()
+    avatar = nil
+    mode = .driving
+    lastSpeed = .infinity
     releaseInputs()
     physics.setPaused(true)
     physics.removeVehicle()
@@ -425,7 +494,10 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     root.window?.rootViewController?.present(controller, animated: true)
   }
   @objc private func toggleDebug() {
-    setScanVisible(!debugVisible)
+    releaseInputs()
+    settingsPanel.isHidden.toggle()
+    root.bringSubviewToFront(settingsPanel)
+    updateMessage()
     calibrateSteering()
   }
   @objc private func toggleScan() { setScanVisible(!debugVisible) }
@@ -445,7 +517,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     guard motion.isDeviceMotionAvailable else { return }
     motion.deviceMotionUpdateInterval = 1.0 / 60.0
     motion.startDeviceMotionUpdates(to: .main) { [weak self] sample, _ in
-      guard let self, let sample, self.phase == .ready else { return }
+      guard let self, let sample, self.phase == .ready, self.settingsPanel.isHidden, !self.touchSteering, self.mode == .driving else { return }
       let rawTilt = self.landscapeTilt(gravity: sample.gravity)
       if self.neutralTilt == nil { self.neutralTilt = rawTilt }
       let target = SteeringInput.normalizedTilt(rawTilt - (self.neutralTilt ?? rawTilt))
@@ -454,7 +526,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     }
   }
   @objc private func throttleDown() {
-    guard phase == .ready else { return }
+    guard phase == .ready, mode == .driving, settingsPanel.isHidden else { return }
     pedals.setGas(pressed: true)
     sendInput()
   }
@@ -465,7 +537,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
 
   @objc private func brakeDown() {
-    guard phase == .ready else { return }
+    guard phase == .ready, mode == .driving, settingsPanel.isHidden else { return }
     pedals.pressBrake()
     updateBrakeButton()
     sendInput()
@@ -491,16 +563,28 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       ? UIColor(red: 0.76, green: 0.07, blue: 0.11, alpha: 1)
       : UIColor.black.withAlphaComponent(0.55)
   }
-  @objc private func steer(_ pan: UIPanGestureRecognizer) {
-    let x = Float(pan.location(in: steeringPad).x / steeringPad.bounds.width * 2 - 1)
-    steering = pan.state == .ended || pan.state == .cancelled ? 0 : min(1, max(-1, x))
-    steeringKnob.transform = CGAffineTransform(translationX: CGFloat(steering) * 32, y: 0)
+  @objc private func steer(_ pan: UILongPressGestureRecognizer) {
+    let point = pan.location(in: steeringPad)
+    let active = pan.state == .began || pan.state == .changed
+    var input = SIMD2(Float(point.x / steeringPad.bounds.width * 2 - 1),
+                      Float(point.y / steeringPad.bounds.height * 2 - 1))
+    input /= max(1, simd_length(input))
+    if !active { input = .zero }
+    steeringKnob.transform = CGAffineTransform(translationX: CGFloat(input.x) * 32,
+                                               y: CGFloat(input.y) * 24)
+    if mode == .onFoot { walkInput = input; return }
+    guard mode == .driving else { return }
+    touchSteering = active
+    steering = input.x
     sendInput()
   }
   private func sendInput() {
-    physics.setThrottle(pedals.throttle, brake: pedals.brake, steering: steering)
+    let requestedAngle = SteeringInput.angle(steering, sensitivity: controls.sensitivity,
+                                             inverted: controls.inverted)
+    physics.setThrottle(pedals.throttle, brake: pedals.brake, steering: requestedAngle)
+    guard !inputDiagnostics.isHidden else { return }
     inputDiagnostics.text = String(
-      format: "Gas %+.1f | Bremse %.1f | Lenkung %+.2f", pedals.throttle, pedals.brake, steering)
+      format: "Gas %+.1f | Bremse %.1f | Lenkung %+.2f", pedals.throttle, pedals.brake, requestedAngle)
   }
   private func calibrateSteering() { neutralTilt = nil }
   private func landscapeTilt(gravity: CMAcceleration) -> Double {
@@ -514,15 +598,102 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     pedals = RacingPedals()
     updateBrakeButton()
     steering = 0
+    touchSteering = false
+    walkInput = .zero
     steeringKnob.transform = .identity
     sendInput()
   }
   @objc private func interrupted() {
-    if phase == .building || phase == .placing { resetCar() }
+    trackingInterrupted = true
     releaseInputs()
     physics.setPaused(true)
     previousTime = 0
-    phase = .interrupted
+    if phase != .building { phase = .interrupted }
+  }
+
+  private var door: SIMD3<Float>? {
+    vehiclePose?.convert(position: [-0.017, 0, 0.008], to: nil)
+  }
+  private var nearDoor: Bool {
+    guard let door, let avatar else { return false }
+    let local = avatar.root.position(relativeTo: vehiclePose)
+    return RallyWalking.canEnter(distance: simd_distance(door, avatar.root.position(relativeTo: nil)),
+                                 localX: local.x)
+  }
+
+  @MainActor @objc private func interact() {
+    guard phase == .ready, settingsPanel.isHidden, let pose = vehiclePose else { return }
+    switch mode {
+    case .driving:
+      guard lastSpeed <= 0.01, pedals.throttle == 0, let door,
+            let anchor = carAnchor else { return }
+      let query = ARRaycastQuery(origin: door + SIMD3(0, 0.015, 0), direction: [0,-1,0],
+                                 allowing: .existingPlaneGeometry, alignment: .horizontal)
+      guard let floor = arView.session.raycast(query).first else { return }
+      let y = floor.worldTransform.columns.3.y
+      guard abs(y - door.y) < 0.018 else { return }
+      let start = SIMD3(door.x, y, door.z)
+      for z: Float in [0.008, -0.002, 0.018] {
+        let side = pose.convert(position: [-0.023, 0, z], to: nil)
+        guard let spot = walkingSurface.position([side.x, y, side.z], from: start,
+          vehiclePose: pose, hasSceneReconstruction: hasSceneReconstruction) else { continue }
+        releaseInputs()
+        physics.setPaused(true)
+        let walker = RallyWalker()
+        anchor.addChild(walker.root)
+        outsideDoor = spot
+        walker.root.setPosition(door, relativeTo: nil)
+        avatar = walker
+        mode = .exiting
+        transitionTime = 0
+        updateMessage()
+        return
+      }
+      message.text = "Neben der Fahrertür ist kein freier Boden erkannt."
+      message.isHidden = false
+    case .onFoot:
+      guard nearDoor, let avatar else { return }
+      releaseInputs()
+      outsideDoor = avatar.root.position(relativeTo: nil)
+      mode = .entering
+      transitionTime = 0
+      updateMessage()
+    default: break
+    }
+  }
+
+  @MainActor private func tickWalking(_ dt: Float) {
+    guard let avatar, settingsPanel.isHidden else { return }
+    if mode == .entering || mode == .exiting {
+      transitionTime += dt
+      let t = min(1, transitionTime / 0.24)
+      if let door {
+        let progress = mode == .entering ? 1 - t : t
+        avatar.root.setPosition(door + (outsideDoor - door) * progress, relativeTo: nil)
+        avatar.animate(dt: dt, velocity: (outsideDoor - door) * (mode == .entering ? -4 : 4))
+      }
+      guard t >= 1 else { return }
+      if mode == .entering {
+        avatar.root.removeFromParent()
+        self.avatar = nil
+        mode = .driving
+        calibrateSteering()
+        physics.setPaused(false)
+      } else { mode = .onFoot }
+      updateMessage()
+      return
+    }
+    let camera = arView.cameraTransform.matrix.columns.0
+    let velocity = RallyWalking.velocity(input: walkInput, cameraRight: [camera.x, camera.y, camera.z])
+    let start = avatar.root.position(relativeTo: nil)
+    let wasNear = nearDoor
+    if dt > 0, simd_length(velocity) > 0.001,
+      let next = walkingSurface.position(start + velocity * dt, from: start,
+        vehiclePose: vehiclePose, hasSceneReconstruction: hasSceneReconstruction) {
+      avatar.root.setPosition(next, relativeTo: nil)
+      avatar.animate(dt: dt, velocity: velocity)
+    } else { avatar.animate(dt: dt, velocity: .zero) }
+    if wasNear != nearDoor { updateMessage() }
   }
 
   private func startDisplayLink() {
@@ -533,10 +704,16 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     link.add(to: .main, forMode: .common)
     displayLink = link
   }
-  private func frame(_ link: CADisplayLink) {
+  @MainActor private func frame(_ link: CADisplayLink) {
     updatePlacementCandidate()
     guard phase == .ready, let pose = vehiclePose else {
       previousTime = 0
+      return
+    }
+    if mode != .driving {
+      let dt = previousTime == 0 ? 0 : min(0.05, link.timestamp - previousTime)
+      previousTime = link.timestamp
+      tickWalking(Float(dt))
       return
     }
     guard placementPhysicsMode == .fullJolt, !physicsStepPending, !physicsFailed else { return }
@@ -548,7 +725,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       guard let self else { return }
       guard generation == self.placementGeneration else { return }
       self.physicsStepPending = false
-      guard let pose, let visualRoot = self.vehicleVisualRoot, self.phase == .ready else { return }
+      guard let pose, let visualRoot = self.vehicleVisualRoot, self.phase == .ready, self.mode == .driving else { return }
       guard case .success(let state) = result else {
         if case .failure(let error) = result { self.stopAfterPhysicsFailure(error) }
         return
@@ -572,6 +749,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       }
       self.applyVehicleTransforms(state, chassisTransform: chassisTransform, pose: pose,
                                   visualRoot: visualRoot)
+      let wasStopped = self.lastSpeed <= 0.01
+      self.lastSpeed = state.speedMetersPerSecond
+      if wasStopped != (self.lastSpeed <= 0.01) { self.updateMessage() }
       self.pedals.observe(speed: state.speedMetersPerSecond, appliedBrake: state.appliedBrake)
       self.speed.text = String(format: "%.2f m/s", state.speedMetersPerSecond)
       self.lastSuccessfulOperation = state.operation
@@ -648,13 +828,21 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     phase = .aiming
   }
 
+  @objc private func resumeIfTracked() {
+    guard UIApplication.shared.applicationState == .active,
+          let frame = arView.session.currentFrame,
+          case .normal = frame.camera.trackingState else { return }
+    trackingInterrupted = false
+    guard !physicsFailed, phase == .interrupted else { return }
+    physics.setPaused(mode != .driving)
+    phase = carAnchor == nil ? (hasFloor ? .aiming : .scanning) : .ready
+  }
+
   func session(_ session: ARSession, cameraDidChangeTrackingState camera: ARCamera) {
     DispatchQueue.main.async {
       switch camera.trackingState {
       case .normal:
-        guard !self.physicsFailed, self.phase == .interrupted else { return }
-        self.physics.setPaused(false)
-        self.phase = self.carAnchor == nil ? (self.hasFloor ? .aiming : .scanning) : .ready
+        self.resumeIfTracked()
       default: self.interrupted()
       }
     }
@@ -706,7 +894,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
         plane.extent.z > 0.3
       {
         hasFloor = true
-        if carAnchor == nil { phase = .aiming }
+        if carAnchor == nil && !trackingInterrupted && !physicsFailed { phase = .aiming }
         installPlaneCollider(plane)
         visualizeFloor(plane)
       }
@@ -1070,6 +1258,11 @@ private final class SerializedJoltWorld {
 
 enum SteeringInput {
   static let deadZone = sin(3.0 * .pi / 180.0)
+
+  static func angle(_ input: Float, sensitivity: Float, inverted: Bool) -> Float {
+    let scaled = input * max(0.5, min(2, sensitivity))
+    return max(-1, min(1, inverted ? -scaled : scaled))
+  }
 
   static func normalizedTilt(_ tilt: Double) -> Float {
     let magnitude = abs(tilt)

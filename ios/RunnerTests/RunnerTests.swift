@@ -242,6 +242,62 @@ class RunnerTests: XCTestCase {
     XCTAssertGreaterThan(try XCTUnwrap(settled.chassis).positionY, 0)
   }
 
+  func testWalkerUsesCameraAxesAndDoorSide() {
+    let forward = RallyWalking.velocity(input: [0,-1], cameraRight: [0,0,1])
+    XCTAssertEqual(forward.x, 0.026, accuracy: 0.0001)
+    XCTAssertEqual(forward.y, 0)
+    let diagonal = RallyWalking.velocity(input: [1,1], cameraRight: [1,0,0])
+    XCTAssertEqual(simd_length(diagonal), 0.026, accuracy: 0.0001)
+    XCTAssertEqual(RallyWalking.velocity(input: .zero, cameraRight: [1,0,0]), .zero)
+    XCTAssertTrue(RallyWalking.canEnter(distance: 0.02, localX: -0.023))
+    XCTAssertFalse(RallyWalking.canEnter(distance: 0.04, localX: -0.023))
+    XCTAssertFalse(RallyWalking.canEnter(distance: 0.02, localX: 0.023))
+  }
+
+  @MainActor
+  func testSteeringPanelPersistsControlEventsAndCloses() throws {
+    let suite = UUID().uuidString
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = RallySteeringPreferences(defaults: defaults)
+    var closed = false
+    let panel = RallySteeringPanel(controls: preferences) { closed = true }
+    let row = try XCTUnwrap(panel.arrangedSubviews.compactMap { $0 as? UIStackView }.first)
+    let toggle = try XCTUnwrap(row.arrangedSubviews.compactMap { $0 as? UISwitch }.first)
+    let slider = try XCTUnwrap(panel.arrangedSubviews.compactMap { $0 as? UISlider }.first)
+    toggle.isOn = true
+    toggle.sendActions(for: .valueChanged)
+    slider.value = 2
+    slider.sendActions(for: .valueChanged)
+    let restored = RallySteeringPreferences(defaults: defaults)
+    XCTAssertTrue(restored.inverted)
+    XCTAssertEqual(restored.sensitivity, 2)
+    let done = try XCTUnwrap(panel.arrangedSubviews.compactMap { $0 as? UIButton }.first)
+    done.sendActions(for: .touchUpInside)
+    XCTAssertTrue(closed)
+  }
+
+  func testSteeringPreferencesSurviveRecreation() throws {
+    let suite = UUID().uuidString
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let initial = RallySteeringPreferences(defaults: defaults)
+    XCTAssertEqual(initial.sensitivity, 1)
+    XCTAssertFalse(initial.inverted)
+    initial.inverted = true
+    initial.sensitivity = 1.5
+    let restored = RallySteeringPreferences(defaults: defaults)
+    XCTAssertTrue(restored.inverted)
+    XCTAssertEqual(restored.sensitivity, 1.5)
+  }
+
+  func testSteeringGainAndInversionSaturateInBothDirections() {
+    XCTAssertEqual(SteeringInput.angle(0.5, sensitivity: 0.5, inverted: false), 0.25)
+    XCTAssertEqual(SteeringInput.angle(0.5, sensitivity: 1, inverted: false), 0.5)
+    XCTAssertEqual(SteeringInput.angle(0.5, sensitivity: 1.5, inverted: true), -0.75)
+    XCTAssertEqual(SteeringInput.angle(-0.9, sensitivity: 2, inverted: true), 1)
+  }
+
   func testSteeringMappingDeadZoneAndBothLandscapeSigns() {
     XCTAssertEqual(SteeringInput.normalizedTilt(0), 0)
     XCTAssertEqual(SteeringInput.normalizedTilt(SteeringInput.deadZone * 0.5), 0)

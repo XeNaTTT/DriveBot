@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../application/motion_steering_service.dart';
-import '../domain/caravan_model.dart';
+import 'caravan_palette.dart';
 import 'caravan_art.dart';
 
 typedef ArRaceBackgroundBuilder = Widget Function(BuildContext context);
@@ -100,7 +100,7 @@ class _GarageView extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xFF171A22), Color(0xFF07080C)],
+          colors: [Color(0xFF153538), Color(0xFF091416)],
         ),
       ),
       child: SafeArea(
@@ -127,7 +127,7 @@ class _GarageView extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'ROOM RALLY',
+                        'ROOM RALLYE',
                         style: TextStyle(
                           fontSize: 21,
                           fontWeight: FontWeight.w900,
@@ -135,7 +135,7 @@ class _GarageView extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        'AR CARAVAN RACING',
+                        'AR OPEN WORLD',
                         style: TextStyle(
                           fontSize: 10,
                           color: Color(0xFF9DA1AD),
@@ -177,7 +177,7 @@ class _GarageView extends StatelessWidget {
                           ),
                         if (!landscape)
                           const Text(
-                            'WOHNWAGEN',
+                            'CAMPER',
                             style: TextStyle(
                               fontSize: 31,
                               letterSpacing: .5,
@@ -194,7 +194,17 @@ class _GarageView extends StatelessWidget {
                             landscape ? 4 : 14,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF20232B),
+                            gradient: RadialGradient(
+                              center: const Alignment(-0.6, -0.8),
+                              radius: 1.7,
+                              colors: [
+                                Color.alphaBlend(
+                                  model.accent.withValues(alpha: .18),
+                                  const Color(0xFF183438),
+                                ),
+                                const Color(0xFF101C20),
+                              ],
+                            ),
                             borderRadius: BorderRadius.circular(28),
                             border: Border.all(
                               color: model.accent.withValues(alpha: .5),
@@ -205,7 +215,16 @@ class _GarageView extends StatelessWidget {
                                 ? Axis.horizontal
                                 : Axis.vertical,
                             children: [
-                              CaravanArt(model: model, compact: landscape),
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 220),
+                                child: KeyedSubtree(
+                                  key: ValueKey(model.id),
+                                  child: CaravanArt(
+                                    model: model,
+                                    compact: landscape,
+                                  ),
+                                ),
+                              ),
                               SizedBox(width: landscape ? 12 : 0, height: 2),
                               Flexible(
                                 flex: landscape ? 1 : 0,
@@ -253,7 +272,7 @@ class _GarageView extends StatelessWidget {
                                           color: model.accent,
                                         ),
                                         _Stat(
-                                          label: 'PANZERUNG',
+                                          label: 'ROBUSTHEIT',
                                           value: model.durability,
                                           color: model.accent,
                                         ),

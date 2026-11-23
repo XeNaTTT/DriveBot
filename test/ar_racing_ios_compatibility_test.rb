@@ -73,7 +73,9 @@ class ArRacingIosCompatibilityTest < Minitest::Test
     assert_includes SOURCE, 'arView.debugOptions.insert(.showSceneUnderstanding)'
     assert_includes SOURCE, 'allowing: .existingPlaneGeometry'
     assert_includes SOURCE, 'speed.isHidden = phase != .ready'
-    assert_includes SOURCE, 'steeringPad.isHidden = true'
+    assert_includes SOURCE, 'steeringPad.isHidden = !playing'
+    assert_includes SOURCE, 'mode == .onFoot && nearDoor'
+    assert_includes SOURCE, 'physics.setPaused(mode != .driving)'
     refute_match(/scan.*percent|scan.*progress/i, SOURCE)
   end
 
@@ -88,9 +90,9 @@ class ArRacingIosCompatibilityTest < Minitest::Test
     assert_match(/throttleButton\.addTarget.*touchDown.*touchDragEnter/m, SOURCE)
     assert_match(/throttleButton\.addTarget.*touchUpInside.*touchUpOutside.*touchCancel/m, SOURCE)
     assert_match(/brakeButton\.addTarget.*touchUpInside.*touchUpOutside.*touchCancel/m, SOURCE)
-    assert_includes SOURCE, 'brake > 0 ? 0 : throttle'
+    assert_includes SOURCE, 'physics.setThrottle(pedals.throttle, brake: pedals.brake'
     assert_includes SOURCE, 'case .landscapeLeft: return -gravity.y'
     assert_includes SOURCE, 'case .landscapeRight: return gravity.y'
-    assert_includes SOURCE, 'Gas %.1f | Bremse %.1f | Lenkung %+.2f'
+    assert_includes SOURCE, 'Gas %+.1f | Bremse %.1f | Lenkung %+.2f'
   end
 end

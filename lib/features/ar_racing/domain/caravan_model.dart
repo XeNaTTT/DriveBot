@@ -1,13 +1,8 @@
-import 'package:flutter/material.dart';
-
-@immutable
 class CaravanModel {
   const CaravanModel({
     required this.id,
     required this.name,
     required this.subtitle,
-    required this.color,
-    required this.accent,
     required this.speed,
     required this.handling,
     required this.durability,
@@ -16,8 +11,6 @@ class CaravanModel {
   final String id;
   final String name;
   final String subtitle;
-  final Color color;
-  final Color accent;
   final int speed;
   final int handling;
   final int durability;
@@ -27,9 +20,7 @@ const caravanModels = <CaravanModel>[
   CaravanModel(
     id: 'sport',
     name: 'FAMILY CRUISER',
-    subtitle: 'Direkte Lenkung & kräftiger Antrieb',
-    color: Color(0xFFDAD6C9),
-    accent: Color(0xFFFF5A36),
+    subtitle: 'Ausgewogener Alkoven-Camper',
     speed: 92,
     handling: 88,
     durability: 58,
@@ -38,8 +29,6 @@ const caravanModels = <CaravanModel>[
     id: 'offroad',
     name: 'EXPEDITION BEAST',
     subtitle: 'Mehr Bodenfreiheit & Federweg',
-    color: Color(0xFF626A45),
-    accent: Color(0xFFD8FF3E),
     speed: 74,
     handling: 72,
     durability: 94,
@@ -47,11 +36,9 @@ const caravanModels = <CaravanModel>[
   CaravanModel(
     id: 'compact',
     name: 'URBAN CAMPER',
-    subtitle: 'Gutmütig & kontrollierbar',
-    color: Color(0xFF567C89),
-    accent: Color(0xFF8A6CFF),
+    subtitle: 'Wendiger Stadtcamper',
     speed: 84,
-    handling: 82,
+    handling: 95,
     durability: 78,
   ),
 ];

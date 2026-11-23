@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../domain/caravan_model.dart';
+import 'caravan_palette.dart';
 
 /// Rear three-quarter view used while the caravan drives into the room.
 class RacingCaravanArt extends StatelessWidget {
