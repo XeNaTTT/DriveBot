@@ -214,7 +214,7 @@ static Profile ProfileNamed(NSString *name) {
   constexpr float halfWidth = .0115f, halfHeight = .0035f, halfLength = .023f;
   constexpr float radius = .0045f, axleOffset = .0165f;
   auto shapeResult = OffsetCenterOfMassShapeSettings(
-    Vec3(0, -.0015f, 0), new BoxShape(Vec3(halfWidth, halfHeight, halfLength))).Create();
+    Vec3(0, -.0015f, 0), new BoxShape(Vec3(halfWidth, halfHeight, halfLength), .001f)).Create();
   if (shapeResult.HasError()) {
     SetError(error, 2, @"Die Kollisionsform des Fahrzeugs konnte nicht erstellt werden.");
     return NO;

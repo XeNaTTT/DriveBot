@@ -596,7 +596,10 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     let center = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
     guard let hit = arView.raycast(
       from: center, allowing: .existingPlaneGeometry, alignment: .horizontal
-    ).first else {
+    ).first(where: { result in
+      guard let plane = result.anchor as? ARPlaneAnchor else { return false }
+      return plane.extent.x > 0.3 && plane.extent.z > 0.3
+    }) else {
       placementCandidate = nil
       placementMarker?.isEnabled = false
       if hasFloor { phase = .aiming }
@@ -716,12 +719,13 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
   private func installPlaneCollider(_ plane: ARPlaneAnchor) {
     let e = plane.extent
+    let center = SIMD4(plane.center.x, plane.center.y, plane.center.z, 0)
     let local: [SIMD4<Float>] = [
       [-e.x / 2, 0, -e.z / 2, 1], [e.x / 2, 0, -e.z / 2, 1], [e.x / 2, 0, e.z / 2, 1],
       [-e.x / 2, 0, e.z / 2, 1],
     ]
     let v = local.map { p -> SIMD3<Float> in
-      let w = plane.transform * p
+      let w = plane.transform * (p + center)
       return [w.x, w.y, w.z]
     }
     // Clockwise from above: Jolt mesh triangles then expose their collidable

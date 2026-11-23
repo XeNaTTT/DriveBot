@@ -82,6 +82,12 @@ class RunnerTests: XCTestCase {
     let zs = state.wheels.map(\.positionZ)
     XCTAssertLessThanOrEqual((xs.max() ?? 0) - (xs.min() ?? 0), 0.03)
     XCTAssertLessThanOrEqual((zs.max() ?? 0) - (zs.min() ?? 0), 0.04)
+
+    world.setPaused(false)
+    var settled = state
+    for _ in 0..<120 { settled = world.step(1.0 / 60.0) }
+    XCTAssertTrue(settled.success)
+    XCTAssertGreaterThan(try XCTUnwrap(settled.chassis).positionY, 0)
   }
 
   func testSteeringMappingDeadZoneAndBothLandscapeSigns() {

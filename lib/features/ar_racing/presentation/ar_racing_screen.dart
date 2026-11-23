@@ -57,22 +57,22 @@ class _ArRacingScreenState extends State<ArRacingScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    body: AnimatedSwitcher(
-      duration: const Duration(milliseconds: 450),
-      child: _racing
-          ? _RaceView(
-              onClose: _finishRace,
-              vehicleID: caravanModels[_selected].id,
-              backgroundBuilder: widget.backgroundBuilder,
-            )
-          : _GarageView(
-              selected: _selected,
-              onSelect: (value) => setState(() => _selected = value),
-              onStart: _startRace,
-              accountEntryPoint: widget.accountEntryPoint,
-            ),
-    ),
-  );
+        body: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 450),
+          child: _racing
+              ? _RaceView(
+                  onClose: _finishRace,
+                  vehicleID: caravanModels[_selected].id,
+                  backgroundBuilder: widget.backgroundBuilder,
+                )
+              : _GarageView(
+                  selected: _selected,
+                  onSelect: (value) => setState(() => _selected = value),
+                  onStart: _startRace,
+                  accountEntryPoint: widget.accountEntryPoint,
+                ),
+        ),
+      );
 }
 
 class _GarageView extends StatelessWidget {
@@ -90,6 +90,8 @@ class _GarageView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final model = caravanModels[selected];
+    final landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
     return Container(
       key: const Key('ar-racing-garage'),
       decoration: const BoxDecoration(
@@ -148,34 +150,47 @@ class _GarageView extends StatelessWidget {
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) => SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+                  padding: EdgeInsets.fromLTRB(
+                    20,
+                    landscape ? 4 : 22,
+                    20,
+                    landscape ? 4 : 20,
+                  ),
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
-                      minHeight: constraints.maxHeight - 42,
+                      minHeight: (constraints.maxHeight - (landscape ? 8 : 42))
+                          .clamp(0.0, double.infinity),
                     ),
                     child: Column(
                       children: [
-                        const Text(
-                          'WÄHLE DEINEN',
-                          style: TextStyle(
-                            color: Color(0xFFA5A7B0),
-                            fontSize: 13,
-                            letterSpacing: 3,
-                            fontWeight: FontWeight.w700,
+                        if (!landscape)
+                          const Text(
+                            'WÄHLE DEINEN',
+                            style: TextStyle(
+                              color: Color(0xFFA5A7B0),
+                              fontSize: 13,
+                              letterSpacing: 3,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                        ),
-                        const Text(
-                          'WOHNWAGEN',
-                          style: TextStyle(
-                            fontSize: 31,
-                            letterSpacing: .5,
-                            fontWeight: FontWeight.w900,
+                        if (!landscape)
+                          const Text(
+                            'WOHNWAGEN',
+                            style: TextStyle(
+                              fontSize: 31,
+                              letterSpacing: .5,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 10),
+                        SizedBox(height: landscape ? 2 : 10),
                         Container(
                           width: double.infinity,
-                          padding: const EdgeInsets.fromLTRB(16, 20, 16, 14),
+                          padding: EdgeInsets.fromLTRB(
+                            16,
+                            landscape ? 4 : 20,
+                            16,
+                            landscape ? 4 : 14,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFF20232B),
                             borderRadius: BorderRadius.circular(28),
@@ -183,71 +198,85 @@ class _GarageView extends StatelessWidget {
                               color: model.accent.withValues(alpha: .5),
                             ),
                           ),
-                          child: Column(
+                          child: Flex(
+                            direction:
+                                landscape ? Axis.horizontal : Axis.vertical,
                             children: [
-                              CaravanArt(model: model),
-                              const SizedBox(height: 2),
-                              Text(
-                                model.name,
-                                style: const TextStyle(
-                                  fontSize: 25,
-                                  fontWeight: FontWeight.w900,
+                              CaravanArt(model: model, compact: landscape),
+                              SizedBox(width: landscape ? 12 : 0, height: 2),
+                              Flexible(
+                                flex: landscape ? 1 : 0,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      model.name,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        fontSize: 25,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                    Text(
+                                      model.subtitle,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: model.accent,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    SizedBox(height: landscape ? 4 : 14),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceAround,
+                                      children: [
+                                        _Stat(
+                                          label: 'TEMPO',
+                                          value: model.speed,
+                                          color: model.accent,
+                                        ),
+                                        _Stat(
+                                          label: 'HANDLING',
+                                          value: model.handling,
+                                          color: model.accent,
+                                        ),
+                                        _Stat(
+                                          label: 'PANZERUNG',
+                                          value: model.durability,
+                                          color: model.accent,
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
-                              ),
-                              Text(
-                                model.subtitle,
-                                style: TextStyle(
-                                  color: model.accent,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 14),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceAround,
-                                children: [
-                                  _Stat(
-                                    label: 'TEMPO',
-                                    value: model.speed,
-                                    color: model.accent,
-                                  ),
-                                  _Stat(
-                                    label: 'HANDLING',
-                                    value: model.handling,
-                                    color: model.accent,
-                                  ),
-                                  _Stat(
-                                    label: 'PANZERUNG',
-                                    value: model.durability,
-                                    color: model.accent,
-                                  ),
-                                ],
                               ),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 15),
+                        SizedBox(height: landscape ? 6 : 15),
                         Row(
                           children: List.generate(
                             caravanModels.length,
                             (index) => Expanded(
                               child: Padding(
                                 padding: EdgeInsets.only(
-                                  right: index == 2 ? 0 : 8,
+                                  right:
+                                      index == caravanModels.length - 1 ? 0 : 8,
                                 ),
                                 child: _ModelChoice(
                                   model: caravanModels[index],
                                   selected: selected == index,
                                   onTap: () => onSelect(index),
+                                  compact: landscape,
                                 ),
                               ),
                             ),
                           ),
                         ),
-                        const SizedBox(height: 18),
+                        SizedBox(height: landscape ? 6 : 18),
                         SizedBox(
                           width: double.infinity,
-                          height: 62,
+                          height: landscape ? 48 : 62,
                           child: FilledButton(
                             key: const Key('start-ar-race'),
                             onPressed: onStart,
@@ -277,27 +306,28 @@ class _GarageView extends StatelessWidget {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 12),
-                        const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.screen_rotation_rounded,
-                              size: 17,
-                              color: Color(0xFF8D919B),
-                            ),
-                            SizedBox(width: 7),
-                            Flexible(
-                              child: Text(
-                                'Smartphone neigen wie ein Lenkrad',
-                                style: TextStyle(
-                                  color: Color(0xFF8D919B),
-                                  fontSize: 12,
+                        if (!landscape) const SizedBox(height: 12),
+                        if (!landscape)
+                          const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.screen_rotation_rounded,
+                                size: 17,
+                                color: Color(0xFF8D919B),
+                              ),
+                              SizedBox(width: 7),
+                              Flexible(
+                                child: Text(
+                                  'Smartphone neigen wie ein Lenkrad',
+                                  style: TextStyle(
+                                    color: Color(0xFF8D919B),
+                                    fontSize: 12,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
+                            ],
+                          ),
                       ],
                     ),
                   ),
@@ -318,41 +348,41 @@ class _Stat extends StatelessWidget {
   final Color color;
   @override
   Widget build(BuildContext context) => Column(
-    children: [
-      Text(
-        '$value',
-        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-      ),
-      const SizedBox(height: 4),
-      Container(
-        width: 56,
-        height: 4,
-        decoration: BoxDecoration(
-          color: Colors.white12,
-          borderRadius: BorderRadius.circular(2),
-        ),
-        alignment: Alignment.centerLeft,
-        child: FractionallySizedBox(
-          widthFactor: value / 100,
-          child: DecoratedBox(
+        children: [
+          Text(
+            '$value',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 4),
+          Container(
+            width: 56,
+            height: 4,
             decoration: BoxDecoration(
-              color: color,
+              color: Colors.white12,
               borderRadius: BorderRadius.circular(2),
             ),
+            alignment: Alignment.centerLeft,
+            child: FractionallySizedBox(
+              widthFactor: value / 100,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
           ),
-        ),
-      ),
-      const SizedBox(height: 5),
-      Text(
-        label,
-        style: const TextStyle(
-          color: Color(0xFF9296A0),
-          fontSize: 8,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    ],
-  );
+          const SizedBox(height: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF9296A0),
+              fontSize: 8,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      );
 }
 
 class _ModelChoice extends StatelessWidget {
@@ -360,53 +390,56 @@ class _ModelChoice extends StatelessWidget {
     required this.model,
     required this.selected,
     required this.onTap,
+    required this.compact,
   });
   final CaravanModel model;
   final bool selected;
   final VoidCallback onTap;
+  final bool compact;
   @override
   Widget build(BuildContext context) => Semantics(
-    button: true,
-    selected: selected,
-    label: model.name,
-    child: InkWell(
-      key: Key('caravan-${model.id}'),
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(15),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        height: 72,
-        decoration: BoxDecoration(
-          color: selected
-              ? model.accent.withValues(alpha: .14)
-              : const Color(0xFF17191F),
+        button: true,
+        selected: selected,
+        label: model.name,
+        child: InkWell(
+          key: Key('caravan-${model.id}'),
+          onTap: onTap,
           borderRadius: BorderRadius.circular(15),
-          border: Border.all(
-            color: selected ? model.accent : Colors.white10,
-            width: selected ? 2 : 1,
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.airport_shuttle_rounded,
-              color: selected ? model.accent : Colors.white54,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              model.name.split(' ').first,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                color: selected ? Colors.white : Colors.white54,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            height: compact ? 48 : 72,
+            decoration: BoxDecoration(
+              color: selected
+                  ? model.accent.withValues(alpha: .14)
+                  : const Color(0xFF17191F),
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(
+                color: selected ? model.accent : Colors.white10,
+                width: selected ? 2 : 1,
               ),
             ),
-          ],
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.airport_shuttle_rounded,
+                  size: compact ? 18 : 24,
+                  color: selected ? model.accent : Colors.white54,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  model.name.split(' ').first,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: selected ? Colors.white : Colors.white54,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-      ),
-    ),
-  );
+      );
 }
 
 class _RaceView extends StatelessWidget {
@@ -422,32 +455,32 @@ class _RaceView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Stack(
-    key: const Key('ar-race-view'),
-    fit: StackFit.expand,
-    children: [
-      if (backgroundBuilder != null)
-        backgroundBuilder!(context)
-      else
-        UiKitView(
-          key: const Key('native-ar-racing-view'),
-          viewType: 'drivebot/ar_racing_view',
-          creationParams: <String, Object>{'vehicleID': vehicleID},
-          creationParamsCodec: const StandardMessageCodec(),
-        ),
-      SafeArea(
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: IconButton.filledTonal(
-              key: const Key('close-ar-race'),
-              onPressed: onClose,
-              icon: const Icon(Icons.close),
-              tooltip: 'Rennen schließen',
+        key: const Key('ar-race-view'),
+        fit: StackFit.expand,
+        children: [
+          if (backgroundBuilder != null)
+            backgroundBuilder!(context)
+          else
+            UiKitView(
+              key: const Key('native-ar-racing-view'),
+              viewType: 'drivebot/ar_racing_view',
+              creationParams: <String, Object>{'vehicleID': vehicleID},
+              creationParamsCodec: const StandardMessageCodec(),
+            ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: IconButton.filledTonal(
+                  key: const Key('close-ar-race'),
+                  onPressed: onClose,
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Rennen schließen',
+                ),
+              ),
             ),
           ),
-        ),
-      ),
-    ],
-  );
+        ],
+      );
 }
