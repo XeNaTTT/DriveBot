@@ -4,6 +4,19 @@ class ArRacingIosCompatibilityTest < Minitest::Test
   SOURCE = File.read(File.expand_path('../ios/Runner/ArRacingView.swift', __dir__))
   VEHICLE = File.read(File.expand_path('../ios/Runner/RallyVehicleVisual.swift', __dir__))
 
+  def test_building_visit_hud_and_walking_control_contract
+    assert_includes SOURCE, 'let canUseShop = mode == .onFoot && shop != nil'
+    assert_includes SOURCE, 'canUseShop ? "Betreten"'
+    assert_includes SOURCE, 'mode = .visiting'
+    assert_includes SOURCE, 'if mode == .onFoot { walkInput = input; return }'
+    completion = SOURCE.split('if step.done {', 2).last.split('guard settingsPanel.isHidden', 2).first
+    assert_includes completion, 'mode = .onFoot'
+    assert_includes completion, 'inventory.pick(item)'
+    cancellation = SOURCE.split('func interrupted()', 2).last.split('private var door:', 2).first
+    assert_includes cancellation, 'avatar.root.setPosition(visit.start, relativeTo: nil)'
+    assert_includes cancellation, 'avatar.root.isEnabled = true'
+  end
+
   def test_wheels_use_ios_15_mesh_generation
     assert_includes VEHICLE, 'MeshResource.generate(from: [descriptor])'
     refute_includes VEHICLE, '.generateCylinder'

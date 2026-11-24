@@ -19,6 +19,7 @@ enum RallyWalking {
 /// Animated pilot with a procedural fallback. The root sits at the soles of the shoes.
 final class RallyWalker {
   let root: Entity
+  let handAnchor = Entity()
   private let hips: Entity
   private var legs: [Entity] = []
   private var arms: [Entity] = []
@@ -30,6 +31,9 @@ final class RallyWalker {
 
   @MainActor init() {
     root = Entity()
+    handAnchor.name = "RightHandGrip"
+    handAnchor.position = [0.0035,0.006,0.001]
+    root.addChild(handAnchor)
     hips = Entity()
     root.addChild(hips)
     hips.position.y = 0.008
@@ -87,12 +91,13 @@ final class RallyWalker {
   }
 
   @MainActor func animate(dt: Float, velocity: SIMD3<Float>) {
-    if let skin, let held = root.findEntity(named: "held item"), !handChain.isEmpty {
+    if let skin, !handChain.isEmpty {
       let joints = skin.jointTransforms
       var hand = matrix_identity_float4x4
       for index in handChain where index < joints.count { hand = hand * joints[index].matrix }
       let p = hand.columns.3
-      held.position = skin.convert(position: [p.x,p.y,p.z], to: root)
+      handAnchor.position = skin.convert(position: [p.x,p.y,p.z], to: root)
+      handAnchor.orientation = Transform(matrix: skin.transformMatrix(relativeTo: root) * hand).rotation
     }
     let speed = simd_length(velocity)
     if let pilot {

@@ -4,7 +4,7 @@ import UIKit
 enum RallyItem: Int, CaseIterable {
   case nos, sword, blaster, wings
   var symbol: String { ["bolt.fill","sparkles","scope","wind"][rawValue] }
-  var title: String { ["NOS", "Energy Sword", "AR Blaster", "Glider Wings"][rawValue] }
+  var title: String { ["NOS-Booster", "Laserschwert", "Virtuelles Gewehr", "Cessna-Tragflächen"][rawValue] }
   @MainActor func model() -> Entity? {
     guard let url = Bundle.main.url(forResource: "Item" + String(rawValue), withExtension: "usdz", subdirectory: "RallyAssets"),
           let model = try? Entity.load(contentsOf: url) else { return nil }

@@ -64,7 +64,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private var pedals = RacingPedals()
   private var steering: Float = 0
   private var touchSteering = false
-  private enum PlayMode { case driving, exiting, onFoot, entering }
+  private enum PlayMode { case driving, exiting, onFoot, entering, visiting }
   private var mode: PlayMode = .driving
   private let interaction = UIButton(type: .system)
   private var avatar: RallyWalker?
@@ -80,6 +80,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private let boostButton = UIButton(type: .system)
   private lazy var district = MainActor.assumeIsolated { RallyDistrict() }
   @MainActor private lazy var walkingSurface = RallyWalkingSurface(view: arView)
+  private var displayedEntry: Int?
+  private var visit: RallyVisit?
   private var walkInput = SIMD2<Float>.zero
   private var outsideDoor = SIMD3<Float>.zero
   private var transitionTime: Float = 0
@@ -388,17 +390,19 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       speed.layer.borderWidth = 1
       speed.layer.borderColor = UIColor.systemTeal.cgColor
     } else { speed.layer.borderWidth = 0 }
-    let pickup = avatar.flatMap { district.pickup(at: $0.root.position(relativeTo: nil)) }
+
     let shop = avatar.flatMap { district.entry(at: $0.root.position(relativeTo: nil)) }
     let canReturnToCar = mode == .onFoot && nearDoor
-    let canUseShop = mode == .onFoot && (shop != nil || district.inside != nil)
+    let canUseShop = mode == .onFoot && shop != nil
+    displayedEntry = canUseShop ? shop : nil
+    district.highlight(displayedEntry)
     interaction.isHidden = !playing || !(mode == .driving || canReturnToCar || canUseShop)
     interaction.isEnabled = mode == .onFoot || lastSpeed <= 0.01
     interaction.alpha = interaction.isEnabled ? 1 : 0.45
     for arrow in walkingArrows { arrow.isHidden = mode != .onFoot }
     steeringPad.accessibilityLabel = mode == .onFoot ? "Gehen" : "Lenken"
-    interaction.setTitle(mode == .onFoot ? (pickup != nil ? "Aufnehmen" : district.inside != nil ? "Verlassen" : shop != nil ? "Interagieren" : "Einsteigen") : "Aussteigen", for: .normal)
-    interaction.setImage(pickup.flatMap { UIImage(systemName: $0.symbol) }, for: .normal)
+    interaction.setTitle(mode == .onFoot ? (canUseShop ? "Betreten" : "Einsteigen") : "Aussteigen", for: .normal)
+
     if mode != .driving { speed.text = "ZU FUSS" }
     else if phase == .ready && lastSpeed.isFinite { speed.text = String(format: "%.2f m/s", lastSpeed) }
     scanButton.isHidden = phase != .ready
@@ -525,6 +529,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     stripes = nil
     plume = nil
     deployed = false
+    visit = nil
     district.reset()
     inventory = RallyInventory()
     placementGeneration += 1
@@ -668,6 +673,12 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     sendInput()
   }
   @objc private func interrupted() {
+    if let visit, let avatar {
+      avatar.root.setPosition(visit.start, relativeTo: nil)
+      avatar.root.isEnabled = true
+      self.visit = nil
+      mode = .onFoot
+    }
     trackingInterrupted = true
     releaseInputs()
     physics.setPaused(true)
@@ -736,7 +747,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     if let hand = avatar?.root.findEntity(named: "held item") {
       let flash = ModelEntity(mesh: .generateSphere(radius: 0.0016), materials: [UnlitMaterial(color: .cyan)])
       avatar?.root.addChild(flash)
-      flash.position = hand.position + [0,0.001,0.002]
+      flash.position = hand.position(relativeTo: avatar?.root) + [0,0.001,0.002]
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { flash.removeFromParent() }
     }
     let center = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
@@ -765,8 +776,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     walker.root.findEntity(named: "held item")?.removeFromParent()
     if let held = inventory.held, let model = held.model() {
       model.name = "held item"
-      model.position = [0.0035,0.006,0.001]
-      walker.root.addChild(model)
+      model.position = .zero
+      walker.handAnchor.addChild(model)
     }
   }
 
@@ -802,18 +813,16 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       message.text = "Neben der Fahrertür ist kein freier Boden erkannt."
       message.isHidden = false
     case .onFoot:
-      if let avatar, let item = district.pickup(at: avatar.root.position(relativeTo: nil)), inventory.pick(item) {
-        play("pickup")
-        district.collect(item)
-        equip(avatar)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        updateMessage()
-        return
-      }
-      if let avatar, let shop = district.inside ?? district.entry(at: avatar.root.position(relativeTo: nil)) {
-        district.toggle(shop, walker: avatar.root)
-        updateMessage()
-        return
+      if let avatar {
+        let position = avatar.root.position(relativeTo: nil)
+        if let shop = district.entry(at: position),
+           let route = district.visit(shop, from: position, now: CACurrentMediaTime()) {
+          releaseInputs()
+          visit = route
+          mode = .visiting
+          updateMessage()
+          return
+        }
       }
       guard nearDoor, let avatar else { return }
       releaseInputs()
@@ -826,7 +835,36 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
 
   @MainActor private func tickWalking(_ dt: Float) {
-    guard let avatar, settingsPanel.isHidden else { return }
+    guard let avatar else { return }
+    if var route = visit {
+      let step = route.sample(at: CACurrentMediaTime())
+      visit = route
+      let previous = avatar.root.position(relativeTo: nil)
+      avatar.root.isEnabled = !step.hidden
+      avatar.root.setPosition(step.position, relativeTo: nil)
+      avatar.animate(dt: dt, velocity: (step.position - previous) / max(dt,0.001))
+      if step.done {
+        visit = nil
+        mode = .onFoot
+        let safeExit = walkingSurface.position(route.exit, from: route.start, vehiclePose: vehiclePose,
+          hasSceneReconstruction: hasSceneReconstruction) ?? route.start
+        avatar.root.setPosition(safeExit, relativeTo: nil)
+        district.finish(route.index)
+        if let item = RallyItem(rawValue: route.index), inventory.pick(item) {
+          equip(avatar)
+          play("pickup")
+          updateMessage()
+          let confirmation = item.title + " erhalten"
+          message.text = confirmation
+          message.isHidden = false
+          DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            if self?.message.text == confirmation { self?.updateMessage() }
+          }
+        } else { updateMessage() }
+      }
+      return
+    }
+    guard settingsPanel.isHidden else { return }
     if mode == .entering || mode == .exiting {
       transitionTime += dt
       let t = min(1, transitionTime / 0.24)
@@ -858,8 +896,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     let camera = arView.cameraTransform.matrix.columns.0
     let velocity = RallyWalking.velocity(input: walkInput, cameraRight: [camera.x, camera.y, camera.z])
     let start = avatar.root.position(relativeTo: nil)
-    let previousPickup = district.pickup(at: start)
-    let previousShop = district.entry(at: start)
+
+
     let wasNear = nearDoor
     if dt > 0, simd_length(velocity) > 0.001,
       let next = walkingSurface.position(start + velocity * dt, from: start,
@@ -868,7 +906,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       avatar.root.setPosition(next, relativeTo: nil)
       avatar.animate(dt: dt, velocity: velocity)
     } else { avatar.animate(dt: dt, velocity: .zero) }
-    if previousPickup != district.pickup(at: avatar.root.position(relativeTo: nil)) || previousShop != district.entry(at: avatar.root.position(relativeTo: nil)) || wasNear != nearDoor { updateMessage() }
+    if displayedEntry != district.entry(at: avatar.root.position(relativeTo: nil)) || wasNear != nearDoor { updateMessage() }
   }
 
   private func startDisplayLink() {

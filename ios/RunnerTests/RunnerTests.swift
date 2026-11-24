@@ -40,6 +40,33 @@ class RunnerTests: XCTestCase {
     }
   }
 
+  @MainActor func testEntranceRangeUsesFrontAndMatchingFloor() {
+    XCTAssertTrue(RallyDistrict.nearEntrance([0,0,RallyScale.metres(2)]))
+    XCTAssertFalse(RallyDistrict.nearEntrance([0,0,RallyScale.metres(4)]))
+    XCTAssertFalse(RallyDistrict.nearEntrance([0,0,-0.01]))
+    XCTAssertFalse(RallyDistrict.nearEntrance([0,0.02,0]))
+  }
+
+  func testAutomaticVisitWaitsTwoSecondsFromActualEntry() {
+    let threshold = SIMD3<Float>(0,0,0.02)
+    let outside = SIMD3<Float>(0,0,0.04)
+    var visit = RallyVisit(index: 2, start: [0.01,0,0.05], entry: threshold, exit: outside, began: 10)
+    XCTAssertFalse(visit.sample(at: 10.1).hidden)
+    XCTAssertTrue(visit.sample(at: 12).hidden)
+    XCTAssertTrue(visit.sample(at: 13.999).hidden)
+    let emerging = visit.sample(at: 14)
+    XCTAssertFalse(emerging.hidden)
+    XCTAssertFalse(emerging.done)
+    XCTAssertEqual(emerging.position, threshold)
+    let restored = visit.sample(at: 15)
+    XCTAssertTrue(restored.done)
+    XCTAssertEqual(restored.position, outside)
+    var bag = RallyInventory()
+    XCTAssertTrue(bag.pick(.blaster))
+    XCTAssertFalse(bag.pick(.blaster))
+    XCTAssertEqual(bag.held, .blaster)
+  }
+
   func testTransportInstallConsumptionAndLanding() {
     var bag = RallyInventory()
     XCTAssertTrue(bag.pick(.nos))

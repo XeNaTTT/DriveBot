@@ -11,7 +11,8 @@ final class RallyDistrict {
   private var anchors: [AnchorEntity] = []
   private var details: [(anchor: AnchorEntity, parts: [Entity], visible: Bool)] = []
   private var lastLOD: TimeInterval = -.infinity
-  private(set) var inside: Int?
+  private var visited: Set<Int> = []
+  private var highlighted: Int?
   private var lastAttempt: TimeInterval = -.infinity
   private let hull = ShapeResource.generateBox(size: [0.066,0.029,0.069])
 
@@ -19,7 +20,8 @@ final class RallyDistrict {
     for anchor in anchors { anchor.removeFromParent() }
     anchors.removeAll()
     details.removeAll()
-    inside = nil
+    visited.removeAll()
+    highlighted = nil
     lastAttempt = -.infinity
   }
 
@@ -88,9 +90,22 @@ final class RallyDistrict {
         anchor.addChild(model)
         if let item = RallyItem(rawValue: anchors.count), let display = item.model() {
           display.name = "collectible"
-          display.position = [0,0.001,-0.008]
+          display.position = [0,RallyScale.metres(4.5),0]
+          display.scale *= 1.8
           anchor.addChild(display)
         }
+        for (name, z) in [("Entry", Float(2.75)), ("Exit", Float(4.6))] {
+          let point = Entity()
+          point.name = name
+          point.position.z = RallyScale.metres(z)
+          anchor.addChild(point)
+        }
+        let marker = ModelEntity(mesh: .generateBox(size: [0.012,0.0004,0.002]),
+                                 materials: [UnlitMaterial(color: .systemTeal)])
+        marker.position = [0,0.0005,RallyScale.metres(3.45)]
+        marker.name = "Entrance light"
+        marker.isEnabled = false
+        anchor.addChild(marker)
         var trim: [Entity] = []
         func collectTrim(_ entity: Entity) {
           if ["Seam","Sill","Mullion","Pull","Stock_shelving"].contains(where: { entity.name.hasPrefix($0) }) {
@@ -111,40 +126,73 @@ final class RallyDistrict {
     simd_distance(p, item) <= RallyScale.metres(1.3)
   }
 
-  func pickup(at p: SIMD3<Float>) -> RallyItem? {
-    guard let inside, let item = anchors[inside].findEntity(named: "collectible"),
-          Self.canReach(p, item: item.position(relativeTo: nil)) else { return nil }
-    return RallyItem(rawValue: inside)
+  static func nearEntrance(_ local: SIMD3<Float>) -> Bool {
+    let radius = RallyScale.metres(3.4)
+    return abs(local.y) < RallyScale.metres(1) && local.z >= 0
+      && simd_length(SIMD2(local.x,local.z)) <= radius
   }
-
-  func collect(_ item: RallyItem) { anchors[item.rawValue].findEntity(named: "collectible")?.removeFromParent() }
 
   func entry(at p: SIMD3<Float>) -> Int? {
-    anchors.indices.first { simd_distance(p, doorway($0)) < RallyScale.metres(1.5) }
+    anchors.indices.filter { i in
+      guard !visited.contains(i), let threshold = anchors[i].findEntity(named: "Entry") else { return false }
+      return Self.nearEntrance(threshold.convert(position: p, from: nil))
+    }.min { simd_distance(p, anchors[$0].position(relativeTo: nil)) < simd_distance(p, anchors[$1].position(relativeTo: nil)) }
   }
 
-  private func doorway(_ i: Int) -> SIMD3<Float> {
-    anchors[i].position(relativeTo: nil) + [0,0,RallyScale.metres(4)]
+  func highlight(_ i: Int?) {
+    guard highlighted != i else { return }
+    if let old = highlighted { anchors[old].findEntity(named: "Entrance light")?.isEnabled = false }
+    highlighted = i
+    if let i { anchors[i].findEntity(named: "Entrance light")?.isEnabled = true }
   }
 
-  func toggle(_ index: Int, walker: Entity) {
-    let leaving = inside != nil
-    anchors[index].findEntity(named: "Roof")?.isEnabled = leaving
-    if let door = anchors[index].findEntity(named: "EntryDoor") {
-      var open = door.transform
-      open.translation.x = leaving ? -0.48 : -1.45
-      door.move(to: open, relativeTo: door.parent, duration: 0.18)
+  func visit(_ index: Int, from start: SIMD3<Float>, now: TimeInterval) -> RallyVisit? {
+    guard entry(at: start) == index, let entry = anchors[index].findEntity(named: "Entry"),
+          let exit = anchors[index].findEntity(named: "Exit") else { return nil }
+    return RallyVisit(index: index, start: start, entry: entry.position(relativeTo: nil),
+                      exit: exit.position(relativeTo: nil), began: now)
+  }
+
+  func finish(_ index: Int) {
+    visited.insert(index)
+    highlight(nil)
+    anchors[index].findEntity(named: "collectible")?.removeFromParent()
+    if let light = anchors[index].findEntity(named: "Entrance light") as? ModelEntity {
+      light.model?.materials = [UnlitMaterial(color: .systemGreen)]
+      light.isEnabled = true
     }
-    walker.setPosition(leaving ? doorway(index) : anchors[index].position(relativeTo: nil) + [0,0,0.012], relativeTo: nil)
-    inside = leaving ? nil : index
   }
-
   func permits(_ p: SIMD3<Float>) -> Bool {
-    for (i, anchor) in anchors.enumerated() {
+    for anchor in anchors {
       let d = p - anchor.position(relativeTo: nil)
-      if inside == i { return abs(d.x) < 0.026 && abs(d.z) < 0.019 }
+
       if abs(d.x) < 0.033 && abs(d.z) < 0.025 { return false }
     }
     return true
+  }
+}
+
+/// Positions are AR-world metres. Start the wait on the frame that reaches the threshold.
+struct RallyVisit {
+  let index: Int
+  let start, entry, exit: SIMD3<Float>
+  let began: TimeInterval
+  private(set) var entered: TimeInterval? = nil
+
+  mutating func sample(at now: TimeInterval) -> (position: SIMD3<Float>, hidden: Bool, done: Bool) {
+    let approach = Double(simd_distance(start, exit)) / 0.035
+    let crossing = max(0.15, Double(simd_distance(exit, entry)) / 0.035)
+    func lerp(_ a: SIMD3<Float>, _ b: SIMD3<Float>, _ fraction: Double) -> SIMD3<Float> {
+      a + (b-a) * Float(max(0,min(1,fraction)))
+    }
+    if entered == nil {
+      let elapsed = now - began
+      if elapsed < approach { return (lerp(start,exit,elapsed / approach),false,false) }
+      if elapsed < approach + crossing { return (lerp(exit,entry,(elapsed-approach)/crossing),false,false) }
+      entered = now
+    }
+    let returning = now - (entered ?? now) - 2
+    if returning < 0 { return (entry,true,false) }
+    return (lerp(entry,exit,returning/crossing),false,returning >= crossing)
   }
 }
