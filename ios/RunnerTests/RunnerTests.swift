@@ -194,10 +194,10 @@ class RunnerTests: XCTestCase {
     let distance = try XCTUnwrap(projection.distanceMeters(latitude: 0, longitude: -179.999))
 
     // A 0.002-degree equatorial arc is about 222.64 m on WGS84.
-    // MapKit supplies a local map scale; Core Location computes a geodesic.
-    XCTAssertEqual(offset.east, 222.64, accuracy: 1)
+    // At the equator the parallel is also a geodesic.
+    XCTAssertEqual(offset.east, 222.64, accuracy: 0.01)
     XCTAssertEqual(offset.north, 0, accuracy: 0.01)
-    XCTAssertEqual(distance, 222.64, accuracy: 1)
+    XCTAssertEqual(distance, offset.east, accuracy: 0.01)
     let reverse = try XCTUnwrap(AppleGeoProjection(latitude: 0, longitude: -179.999))
     let west = try XCTUnwrap(reverse.eastNorthMeters(latitude: 0, longitude: 179.999))
     XCTAssertEqual(west.east, -offset.east, accuracy: 0.01)

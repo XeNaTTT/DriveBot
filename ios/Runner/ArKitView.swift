@@ -21,6 +21,7 @@ struct AppleGeoProjection {
   private let originLocation: CLLocation
   private let originPoint: MKMapPoint
   private let metersPerMapPoint: CLLocationDistance
+  private let eastMetersPerMapPoint: CLLocationDistance
 
   init?(latitude: CLLocationDegrees, longitude: CLLocationDegrees) {
     let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
@@ -30,6 +31,14 @@ struct AppleGeoProjection {
     originLocation = CLLocation(latitude: latitude, longitude: longitude)
     originPoint = MKMapPoint(coordinate)
     metersPerMapPoint = MKMetersPerMapPointAtLatitude(latitude)
+    // Map x is linear in longitude. A parallel on the WGS84 ellipsoid
+    // has radius N(phi) * cos(phi), where N is the prime vertical radius.
+    let phi = latitude * .pi / 180
+    let flattening = 1.0 / 298.257223563
+    let eccentricitySquared = flattening * (2 - flattening)
+    let sinPhi = sin(phi)
+    let radius = 6_378_137 / sqrt(1 - eccentricitySquared * sinPhi * sinPhi)
+    eastMetersPerMapPoint = 2 * .pi * radius * cos(phi) / MKMapSize.world.width
   }
 
   func eastNorthMeters(
@@ -46,7 +55,7 @@ struct AppleGeoProjection {
     if deltaX < -worldWidth / 2 { deltaX += worldWidth }
 
     return (
-      east: deltaX * metersPerMapPoint,
+      east: deltaX * eastMetersPerMapPoint,
       north: -(targetPoint.y - originPoint.y) * metersPerMapPoint
     )
   }
