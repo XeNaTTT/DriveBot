@@ -80,10 +80,13 @@ class DriveBotJoltIntegrationTest < Minitest::Test
 
   def test_native_build_log_is_preserved_without_masking_xcodebuild_status
     codemagic = File.read(CODEMAGIC)
-
-    assert_includes codemagic, 'build 2>&1 | tee build/native-logs/jolt-xcodebuild.log'
-    assert_includes codemagic, 'XCODEBUILD_STATUS=${PIPESTATUS[0]}'
-    assert_includes codemagic, 'exit "$XCODEBUILD_STATUS"'
+    runner = File.read(File.join(ROOT, 'ios/scripts/run_gameplay_tests.sh'))
+    assert_includes codemagic, 'set -o pipefail'
+    assert_includes codemagic, '2>&1 | tee build/native-logs/archive.log'
+    assert_includes runner, 'set -euo pipefail'
+    assert_includes runner, 'build-for-testing) 2>&1 | tee'
+    assert_includes runner, 'test-without-building) 2>&1 | tee'
+    refute_match(/-(only|skip)-testing/, runner)
     assert_includes codemagic, '- build/native-logs/*.log'
   end
 end

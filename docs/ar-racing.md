@@ -226,9 +226,9 @@ header map (where it could shadow the Apple SDK's `<math.h>`).
 
 The pod uses Jolt's default feature configuration. In particular, disabled Jolt
 features must not be expressed as `JPH_*_ENABLED=0`: upstream tests those switches
-with `#ifdef`, so defining them to zero still enables them. Codemagic first builds
-the unsigned `DriveBotJolt` scheme for a generic ARM64 iOS device and only then
-continues with the signed Flutter archive.
+with `#ifdef`, so defining them to zero still enables them. The device archive
+builds Jolt through the Runner dependency graph. Full Gameplay Regression builds
+the simulator variant with the test host and runs the complete RunnerTests suite.
 ## Room Rallye – driving and walking acceptance
 
 Flutter stable builds the garage. It passes the selected profile through the

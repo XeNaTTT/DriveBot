@@ -1,6 +1,6 @@
 workflows:
   ios-testflight:
-    name: iOS TestFlight (Flutter)
+    name: Fast TestFlight
     max_build_duration: 120
     instance_type: mac_mini_m2
 
@@ -11,8 +11,8 @@ workflows:
       groups:
         - Backend
 
-      flutter: "3.50.1"
-      xcode: "27.2"
+      flutter: &flutter_version "3.50.1"
+      xcode: &xcode_version "27.2"
       cocoapods: default
 
       vars:
@@ -37,14 +37,15 @@ workflows:
           include: true
           source: true
 
-    cache:
+    cache: &dependency_cache
       cache_paths:
-        - $FLUTTER_ROOT/.pub-cache
+        - ~/Library/Developer/Xcode/DerivedData/CompilationCache.noindex
         - ~/.pub-cache
         - ~/Library/Caches/CocoaPods
 
     scripts:
-      - name: Toolchain diagnostics
+      - &toolchain
+        name: Toolchain diagnostics
         script: |
           set -e
 
@@ -71,12 +72,8 @@ workflows:
           echo "Branch: ${CM_BRANCH:-unknown}"
           echo "Codemagic revision: ${CM_COMMIT:-unknown}"
 
-      - name: Flutter clean
-        script: |
-          set -e
-          flutter clean
-
-      - name: Select CocoaPods dependency integration
+      - &integration
+        name: Select CocoaPods dependency integration
         script: |
           set -e
 
@@ -85,18 +82,21 @@ workflows:
           # runner-wide Flutter setting attempt a mixed SPM/CocoaPods build.
           flutter config --no-enable-swift-package-manager
 
-      - name: Resolve Flutter dependencies
+      - &resolve
+        name: Resolve Flutter dependencies
         script: |
           set -e
           flutter pub get
 
-      - name: Analyze and test Flutter
+      - &flutter_tests
+        name: Analyze and test Flutter
         script: |
           set -e
           flutter analyze --no-fatal-infos --no-pub
           flutter test --no-pub
 
-      - name: Install CocoaPods dependencies
+      - &pods
+        name: Install CocoaPods dependencies
         script: |
           set -e
           JOLT_DIR=ios/DriveBotJolt/Vendor/Jolt
@@ -109,33 +109,6 @@ workflows:
           cd ios
           pod install
           cd ..
-
-      - name: Build native Jolt component
-        script: |
-          set -o pipefail
-          mkdir -p build/native-logs
-
-          set +e
-          xcodebuild \
-            -workspace ios/Runner.xcworkspace \
-            -scheme DriveBotJolt \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tee build/native-logs/jolt-xcodebuild.log
-          XCODEBUILD_STATUS=${PIPESTATUS[0]}
-          set -e
-
-          exit "$XCODEBUILD_STATUS"
-
-      - name: Run native gameplay regression tests
-        script: |
-          set -eo pipefail
-          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner \
-            -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.2' \
-            -resultBundlePath "$CM_BUILD_DIR/build/native-logs/gameplay.xcresult" \
-            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test 2>&1 | tee build/native-logs/gameplay.log
 
       - name: Set up iOS code signing
         script: |
@@ -169,15 +142,17 @@ workflows:
           # on-device physics diagnostic identifies its code unambiguously.
           /usr/libexec/PlistBuddy -c "Set :DriveBotCommit ${CM_COMMIT:-unknown}" ios/Runner/Info.plist
 
-          flutter build ipa \
+          export FLUTTER_XCODE_COMPILATION_CACHE_ENABLE_CACHING=YES
+          set -o pipefail
+          mkdir -p build/native-logs
+          flutter build ipa --no-pub \
             --release \
             --build-number="$NEXT_BUILD_NUMBER" \
-            --export-options-plist=/Users/builder/export_options.plist
+            --export-options-plist=/Users/builder/export_options.plist 2>&1 | tee build/native-logs/archive.log
 
     artifacts:
       - build/ios/ipa/*.ipa
       - build/native-logs/*.log
-      - build/native-logs/*.xcresult
       - /tmp/xcodebuild_logs/*.log
       - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
 
@@ -186,3 +161,36 @@ workflows:
         auth: integration
         submit_to_testflight: true
         submit_to_app_store: false
+
+  full-gameplay-regression:
+    name: Full Gameplay Regression
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      flutter: *flutter_version
+      xcode: *xcode_version
+      cocoapods: default
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: qa/gameplay
+          include: true
+          source: true
+    cache: *dependency_cache
+    scripts:
+      - *toolchain
+      - *integration
+      - *resolve
+      - *flutter_tests
+      - *pods
+      - name: Verify native integration contracts
+        script: |
+          set -e
+          ruby test/drivebot_jolt_integration_test.rb
+          ruby test/ar_racing_ios_compatibility_test.rb
+      - name: Build and run complete RunnerTests suite
+        script: bash ios/scripts/run_gameplay_tests.sh
+    artifacts:
+      - build/native-logs/*.log
+      - build/native-logs/*.xcresult

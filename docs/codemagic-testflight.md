@@ -139,5 +139,36 @@ How to change:
 
 The `ios-testflight` workflow uses Xcode 27.2 on Codemagic's Mac mini M2
 image. Its toolchain step checks that the active iPhoneOS SDK is at least
-27 and logs the installed CocoaPods version. The workflow pins Flutter 3.50.1, runs Flutter analysis and tests, then runs
-RunnerTests on an iPhone 17 simulator with iOS 27.2 before distribution signing.
+27 and logs the installed CocoaPods version. Both workflows pin Flutter 3.50.1.
+
+### Choosing a workflow
+
+* **Fast TestFlight** runs on pushes to `main`. Flutter analysis and the complete
+  Flutter test suite precede the signed device archive, export and TestFlight upload.
+  Jolt is a dependency of Runner in that archive. A green check covers the
+  distribution build and Flutter tests only.
+* **Full Gameplay Regression** can be started manually in Codemagic for the
+  intended revision, or by pushing that revision to `qa/gameplay`. Before an
+  important release, verify the green check on the exact release SHA. It runs
+  Flutter checks, the Ruby integration contracts and every XCTest in Runner.
+  Physical camera tracking, real floor contact and touch feel still need a device.
+
+### Measuring build time
+
+The previous combined workflow on `ef8c775` spent 14 s cleaning Flutter,
+23 s building the standalone device Jolt scheme and 5 min 35 s in native
+regression before failing. XCTest executed 17 tests in 5.933 s.
+Xcode reported 249.572 s from testing start to end, which includes runner
+overhead. These intervals overlap. The old log does not isolate simulator
+boot, compilation, host launch or result processing. The workflow requested
+one simulator test invocation. The archive was a separate device build.
+
+Both workflows reuse Pub and CocoaPods download caches. Xcode's
+`CompilationCache.noindex` is cached per workflow. The first successful run
+populates it. Compiler cache hits depend on matching inputs and toolchain.
+Signing products and complete DerivedData directories are not cached.
+Full QA boots one simulator by UDID while building its test products. The
+script records boot time, Xcode's build timing summary and test-only elapsed
+time in separate logs. Boot and build overlap, so use the Codemagic step
+wall time for comparisons. Compare successful runs on the same machine class
+and record cache state, total elapsed time and publish time separately.
