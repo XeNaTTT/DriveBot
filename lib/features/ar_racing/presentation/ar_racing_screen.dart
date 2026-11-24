@@ -27,32 +27,27 @@ class ArRacingScreen extends StatefulWidget {
 class _ArRacingScreenState extends State<ArRacingScreen> {
   int _selected = 0;
   bool _racing = false;
-  void _startRace() {
+  @override
+  void initState() {
+    super.initState();
     SystemChrome.setPreferredOrientations(const [
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
-    setState(() => _racing = true);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   }
 
-  void _finishRace() {
+  void _startRace() => setState(() => _racing = true);
+  void _finishRace() => setState(() => _racing = false);
+
+  @override
+  void dispose() {
     SystemChrome.setPreferredOrientations(const [
       DeviceOrientation.portraitUp,
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
     ]);
-    setState(() => _racing = false);
-  }
-
-  @override
-  void dispose() {
-    if (_racing) {
-      SystemChrome.setPreferredOrientations(const [
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.landscapeLeft,
-        DeviceOrientation.landscapeRight,
-      ]);
-    }
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
@@ -93,18 +88,12 @@ class _GarageView extends StatefulWidget {
 
 class _GarageViewState extends State<_GarageView> {
   static const pink = Color(0xffff4ca6);
-  static const heroCrops = {
-    'sport': Rect.fromLTRB(56, 0, 643, 239),
-    'compact': Rect.fromLTRB(58, 74, 223, 236),
-    'offroad': Rect.fromLTRB(502, 56, 642, 237),
-  };
   static const cardCrops = {
     'compact': Rect.fromLTRB(72, 292, 154, 333),
     'sport': Rect.fromLTRB(184, 291, 265, 332),
     'offroad': Rect.fromLTRB(296, 291, 380, 332),
   };
   double drag = 0;
-  bool preview = false;
 
   void step(int direction) =>
       widget.onSelect((widget.selected + direction) % caravanModels.length);
@@ -112,218 +101,160 @@ class _GarageViewState extends State<_GarageView> {
   @override
   Widget build(BuildContext context) {
     final model = caravanModels[widget.selected];
-    final native = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
-    return ColoredBox(
+    return Stack(
       key: const Key('ar-racing-garage'),
-      color: const Color(0xff1d1424),
-      child: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, bounds) {
-            final wide = bounds.maxWidth > bounds.maxHeight;
-            final heroHeight = wide
-                ? (bounds.maxHeight - 126).clamp(64.0, bounds.maxHeight * .65)
-                : bounds.maxHeight * .51;
-            final controls = Row(
-              children: [
-                for (final id in ['compact', 'sport', 'offroad'])
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      child: _angledChoice(id, model.id, wide ? 47 : 66),
-                    ),
-                  ),
-              ],
-            );
-            final start = FilledButton.icon(
-              key: const Key('start-ar-race'),
-              style: FilledButton.styleFrom(
-                backgroundColor: pink,
-                foregroundColor: const Color(0xff251021),
-                shape: const BeveledRectangleBorder(),
-                minimumSize: const Size(0, 44),
-              ),
-              onPressed: widget.onStart,
-              icon: const Icon(Icons.play_circle_fill),
-              label: const FittedBox(
-                child: Text(
-                  'MIT DIESEM AUTO STARTEN',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ),
-            );
-            return SingleChildScrollView(
-              child: Column(
-                children: [
-                  SizedBox(
-                    height: heroHeight,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        GestureDetector(
-                          key: ValueKey(model.id),
-                          behavior: HitTestBehavior.opaque,
-                          onHorizontalDragStart: (_) => drag = 0,
-                          onHorizontalDragUpdate: (e) => drag += e.delta.dx,
-                          onHorizontalDragEnd: (e) {
-                            final offset = drag.abs() >= 32
-                                ? drag
-                                : (e.primaryVelocity ?? 0);
-                            if (offset.abs() >= 32) step(offset < 0 ? 1 : -1);
-                          },
-                          child: preview && native
-                              ? IgnorePointer(
-                                  child: UiKitView(
-                                    key: ValueKey('preview-${model.id}'),
-                                    viewType: 'drivebot/rally_showroom',
-                                    creationParams: {'vehicleID': model.id},
-                                    creationParamsCodec:
-                                        const StandardMessageCodec(),
-                                  ),
-                                )
-                              : _ArtCrop(
-                                  heroCrops[model.id]!,
-                                  alignment: model.id == 'sport' && !wide
-                                      ? const Alignment(-.16, 0)
-                                      : Alignment.center,
-                                ),
-                        ),
-                        if (model.id != 'sport' || preview || !wide)
-                          const Positioned(
-                            top: 10,
-                            left: 14,
-                            child: Text(
-                              'ROOM\nRALLYE',
-                              style: TextStyle(
-                                height: .86,
-                                fontSize: 23,
-                                fontStyle: FontStyle.italic,
-                                fontWeight: FontWeight.w900,
-                                shadows: [Shadow(blurRadius: 8)],
-                              ),
-                            ),
-                          ),
-                        for (final direction in [-1, 1])
-                          Align(
-                            alignment: Alignment(direction.toDouble(), .42),
-                            child: IconButton.filledTonal(
-                              tooltip: direction < 0
-                                  ? 'Vorheriges Fahrzeug'
-                                  : 'Nächstes Fahrzeug',
-                              style: IconButton.styleFrom(
-                                backgroundColor: const Color(0x99321a30),
-                                foregroundColor: Colors.white,
-                              ),
-                              onPressed: () => step(direction),
-                              icon: Icon(
-                                direction < 0
-                                    ? Icons.chevron_left
-                                    : Icons.chevron_right,
-                              ),
-                            ),
-                          ),
-                        Positioned(
-                          right: 8,
-                          top: 4,
-                          child: Row(
-                            children: [
-                              if (native)
-                                IconButton.filledTonal(
-                                  onPressed: () =>
-                                      setState(() => preview = !preview),
-                                  tooltip: '3D-Ansicht wechseln',
-                                  icon: const Icon(Icons.view_in_ar),
-                                ),
-                              if (widget.accountEntryPoint != null)
-                                widget.accountEntryPoint!,
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: wide ? 20 : 16,
-                      vertical: wide ? 4 : 12,
-                    ),
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xff401f36), Color(0xff201722)],
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  model.name,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: wide ? 22 : 25,
-                                    fontWeight: FontWeight.w900,
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                                ),
-                              ),
-                              Text(
-                                model.subtitle,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xffe7cdd9),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: wide ? 158 : 126,
-                          child: Column(
-                            children: [
-                              _meter('TEMPO', model.speed),
-                              _meter('HANDLING', model.handling),
-                              _meter('ROBUSTHEIT', model.durability),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: wide ? 15 : 12,
-                      vertical: wide ? 4 : 12,
-                    ),
-                    child: wide
-                        ? Row(
-                            children: [
-                              Expanded(flex: 3, child: controls),
-                              const SizedBox(width: 14),
-                              Expanded(flex: 2, child: start),
-                            ],
-                          )
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              controls,
-                              const SizedBox(height: 12),
-                              start,
-                            ],
-                          ),
-                  ),
-                ],
-              ),
-            );
+      fit: StackFit.expand,
+      children: [
+        const _SunsetBackdrop(key: Key('static-showroom-art')),
+        GestureDetector(
+          key: ValueKey(model.id),
+          behavior: HitTestBehavior.translucent,
+          onHorizontalDragStart: (_) => drag = 0,
+          onHorizontalDragUpdate: (event) => drag += event.delta.dx,
+          onHorizontalDragEnd: (event) {
+            final delta = drag.abs() >= 32
+                ? drag
+                : (event.primaryVelocity ?? 0);
+            if (delta.abs() >= 32) step(delta < 0 ? 1 : -1);
           },
         ),
-      ),
+        SafeArea(
+          minimum: const EdgeInsets.symmetric(horizontal: 8),
+          child: LayoutBuilder(
+            builder: (context, box) {
+              final wide = box.maxWidth > box.maxHeight;
+              final cards = Row(
+                children: [
+                  for (final id in ['compact', 'sport', 'offroad'])
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: _angledChoice(
+                          id,
+                          model.id,
+                          (box.maxHeight * .16).clamp(44.0, 72.0),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+              final start = FilledButton.icon(
+                key: const Key('start-ar-race'),
+                onPressed: widget.onStart,
+                style: FilledButton.styleFrom(
+                  backgroundColor: pink,
+                  foregroundColor: const Color(0xff251021),
+                  shape: const BeveledRectangleBorder(),
+                  minimumSize: const Size(0, 44),
+                ),
+                icon: const Icon(Icons.play_circle_fill),
+                label: const FittedBox(
+                  child: Text(
+                    'MIT DIESEM AUTO STARTEN',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              );
+              return Stack(
+                children: [
+                  if (widget.accountEntryPoint != null)
+                    Align(
+                      alignment: Alignment.topRight,
+                      child: widget.accountEntryPoint!,
+                    ),
+                  for (final dir in [-1, 1])
+                    Align(
+                      alignment: Alignment(dir.toDouble(), -.17),
+                      child: IconButton.filledTonal(
+                        tooltip: dir < 0
+                            ? 'Vorheriges Fahrzeug'
+                            : 'Nächstes Fahrzeug',
+                        onPressed: () => step(dir),
+                        style: IconButton.styleFrom(
+                          backgroundColor: const Color(0x66321a30),
+                          foregroundColor: Colors.white,
+                        ),
+                        icon: Icon(
+                          dir < 0 ? Icons.chevron_left : Icons.chevron_right,
+                        ),
+                      ),
+                    ),
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(8, 2, 8, 6),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        model.name,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 25,
+                                          fontWeight: FontWeight.w900,
+                                          fontStyle: FontStyle.italic,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      model.subtitle,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                flex: 2,
+                                child: Column(
+                                  children: [
+                                    _meter('TEMPO', model.speed),
+                                    _meter('HANDLING', model.handling),
+                                    _meter('ROBUSTHEIT', model.durability),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          if (wide)
+                            Row(
+                              children: [
+                                Expanded(flex: 3, child: cards),
+                                const SizedBox(width: 12),
+                                Expanded(flex: 2, child: start),
+                              ],
+                            )
+                          else ...[
+                            cards,
+                            const SizedBox(height: 6),
+                            start,
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -333,6 +264,8 @@ class _GarageViewState extends State<_GarageView> {
         width: 52,
         child: Text(
           label,
+          maxLines: 1,
+          softWrap: false,
           style: const TextStyle(
             fontSize: 8,
             fontWeight: FontWeight.w800,
@@ -415,6 +348,54 @@ class _GarageViewState extends State<_GarageView> {
 }
 
 // Source rectangles use the reference artwork's 700-unit design grid.
+class _SunsetBackdrop extends StatelessWidget {
+  const _SunsetBackdrop({super.key});
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      // The JPEG also contains a mock HUD. Sample only the illustrated landscape.
+      const scene = Rect.fromLTRB(24, 0, 676, 238);
+      final artHeight = box.maxWidth * scene.height / scene.width;
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          const ColoredBox(color: Color(0xff2e1929)),
+          Positioned(
+            top: artHeight,
+            left: 0,
+            right: 0,
+            height: artHeight,
+            child: Transform.flip(flipY: true, child: const _ArtCrop(scene)),
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: artHeight,
+            child: const _ArtCrop(scene),
+          ),
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.transparent,
+                  Color(0x98221223),
+                  Color(0xee201421),
+                ],
+                stops: [0, .49, .74, 1],
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
 class _ArtCrop extends StatelessWidget {
   const _ArtCrop(this.region, {this.alignment = Alignment.center});
   final Rect region;

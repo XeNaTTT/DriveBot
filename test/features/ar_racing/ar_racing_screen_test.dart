@@ -10,6 +10,10 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(theme: buildAppTheme(), home: const ArRacingScreen()),
     );
+    final hero = find.byKey(const Key('static-showroom-art'));
+    final original = tester.element(hero);
+    final bounds = tester.getRect(hero);
+    expect(bounds, tester.getRect(find.byType(Scaffold)));
     await tester.tap(find.byKey(const Key('caravan-compact')));
     await tester.pumpAndSettle();
     await tester.drag(
@@ -24,6 +28,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('URBAN CAMPER'), findsOneWidget);
+    expect(tester.element(hero), same(original));
+    expect(tester.getRect(hero), bounds);
   });
   testWidgets(
     'landscape garage shows every vehicle and start without scrolling',
