@@ -49,7 +49,7 @@ final class RallyWalker {
             handChain = segments.indices.compactMap { index in
               mesh.jointNames.firstIndex(of: segments[...index].joined(separator: "/"))
             }
-            skin = mesh
+            self.skin = mesh
           }
           for child in entity.children { bind(child) }
         }

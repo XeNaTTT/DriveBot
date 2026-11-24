@@ -29,7 +29,7 @@ final class RallyShowroomFactory: NSObject, FlutterPlatformViewFactory {
 
   func create(withFrame frame: CGRect, viewIdentifier: Int64, arguments args: Any?) -> FlutterPlatformView {
     let profile = (args as? [String: Any])?["vehicleID"] as? String ?? "compact"
-    return RallyShowroom(frame: frame, profile: profile)
+    return MainActor.assumeIsolated { RallyShowroom(frame: frame, profile: profile) }
   }
 }
 
@@ -41,7 +41,7 @@ private final class RallyShowroom: NSObject, FlutterPlatformView {
     stage = ARView(frame: frame, cameraMode: .nonAR, automaticallyConfigureSession: false)
     super.init()
     stage.environment.background = .color(UIColor(red: 0.052, green: 0.096, blue: 0.11, alpha: 1))
-    let anchor = AnchorEntity(world: .zero)
+    let anchor = AnchorEntity(world: SIMD3<Float>.zero)
     let model = RallyVehicleVisual.build(profile: profile).root
     anchor.addChild(model)
     let camera = PerspectiveCamera()
