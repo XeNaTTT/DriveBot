@@ -1,4 +1,5 @@
 import ARKit
+import AVFoundation
 import CoreMotion
 import DriveBotJolt
 import Flutter
@@ -71,6 +72,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private var marks: [AnchorEntity] = []
   private var wingModel: Entity?
   private var deployed = false
+  private var sounds: [String: AVAudioPlayer] = [:]
+  private var stripes: Entity?
+  private var plume: Entity?
   private let boostButton = UIButton(type: .system)
   private let district = RallyDistrict()
   @MainActor private lazy var walkingSurface = RallyWalkingSurface(view: arView)
@@ -504,6 +508,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     for mark in marks { mark.removeFromParent() }
     marks.removeAll()
     wingModel = nil
+    stripes = nil
+    plume = nil
     deployed = false
     district.reset()
     inventory = RallyInventory()
@@ -637,7 +643,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     }
   }
   private func releaseInputs() {
-    if inventory.boosting { inventory.stopBoost(); physics.boost(false) }
+    if inventory.boosting { inventory.stopBoost(); physics.boost(false); plume?.isEnabled = false }
     pedals = RacingPedals()
     updateBrakeButton()
     steering = 0
@@ -671,8 +677,53 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     updateMessage()
   }
 
+  private func play(_ name: String) {
+    if sounds[name] == nil, let url = Bundle.main.url(forResource: name, withExtension: "wav", subdirectory: "RallyAssets") {
+      sounds[name] = try? AVAudioPlayer(contentsOf: url)
+    }
+    sounds[name]?.currentTime = 0
+    sounds[name]?.play()
+  }
+
+  @MainActor private func refreshBoostVisuals() {
+    guard let pose = vehiclePose else { return }
+    if inventory.remaining <= 0 {
+      stripes?.removeFromParent()
+      stripes = nil
+      plume?.removeFromParent()
+      plume = nil
+      return
+    }
+    if stripes == nil {
+      let group = Entity()
+      for sign: Float in [-1,1] {
+        let strip = ModelEntity(mesh: .generateBox(size: [0.0004,0.001,0.024], cornerRadius: 0.00015),
+                                materials: [UnlitMaterial(color: .systemPurple)])
+        strip.position = [sign * (vehicleID == "compact" ? 0.0106 : 0.0119),0.006,-0.008]
+        group.addChild(strip)
+      }
+      pose.addChild(group)
+      stripes = group
+      var material = UnlitMaterial(color: .systemPurple)
+      material.blending = .transparent(opacity: .init(floatLiteral: 0.42))
+      let trail = ModelEntity(mesh: .generateSphere(radius: 0.002), materials: [material])
+      trail.scale = [1.6,0.5,4]
+      trail.position = [0,0,-0.031]
+      pose.addChild(trail)
+      plume = trail
+    }
+    plume?.isEnabled = inventory.boosting
+  }
+
   @MainActor @objc private func firePulse() {
     guard mode == .onFoot, inventory.held == .blaster, phase == .ready, settingsPanel.isHidden else { return }
+    play("pulse")
+    if let hand = avatar?.root.findEntity(named: "held item") {
+      let flash = ModelEntity(mesh: .generateSphere(radius: 0.0016), materials: [UnlitMaterial(color: .cyan)])
+      avatar?.root.addChild(flash)
+      flash.position = hand.position + [0,0.001,0.002]
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { flash.removeFromParent() }
+    }
     let center = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
     guard let hit = arView.raycast(from: center, allowing: .existingPlaneGeometry, alignment: .any).first,
           hit.anchor is ARPlaneAnchor else { return }
@@ -687,9 +738,11 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     UIImpactFeedbackGenerator(style: .light).impactOccurred()
   }
 
-  @objc private func toggleBoost() {
+  @MainActor @objc private func toggleBoost() {
     guard phase == .ready, mode == .driving, inventory.remaining > 0 else { return }
     if inventory.boosting { inventory.stopBoost() } else { inventory.boosting = true }
+    if inventory.boosting { play("boost") }
+    refreshBoostVisuals()
     physics.boost(inventory.boosting)
   }
 
@@ -735,6 +788,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       message.isHidden = false
     case .onFoot:
       if let avatar, let item = district.pickup(at: avatar.root.position(relativeTo: nil)), inventory.pick(item) {
+        play("pickup")
         district.collect(item)
         equip(avatar)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -771,6 +825,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
         avatar.root.removeFromParent()
         self.avatar = nil
         inventory.enterVehicle()
+        refreshBoostVisuals()
         if inventory.wings, wingModel == nil, let wing = RallyItem.wings.model(), let pose = vehiclePose {
           wing.scale *= 2
           wing.position = [0,0.02,-0.006]
@@ -870,7 +925,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
         let p = chassisTransform.columns.3
         self.inventory.sample([p.x,p.z], elapsed: Float(dt), speed: state.speedMetersPerSecond)
         self.boostButton.setTitle("NOS " + String(Int(ceil(self.inventory.remaining * 10))) + "%", for: .normal)
-        if !self.inventory.boosting { self.physics.boost(false); self.updateMessage() }
+        if !self.inventory.boosting { self.physics.boost(false); self.refreshBoostVisuals(); self.updateMessage() }
       }
       self.lastSuccessfulOperation = state.operation
       if state.collided { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
