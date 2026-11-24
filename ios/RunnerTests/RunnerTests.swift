@@ -62,9 +62,18 @@ class RunnerTests: XCTestCase {
     world.replaceFloor(at: ground, extent: [6, 6], heading: 0.4, identifier: UUID())
     try world.prepareVehicle(at: ground, heading: 0, profile: "compact")
     world.setPaused(false)
-    func advance(_ frames: Int) -> DBJoltVehicleState {
+    func advance(_ frames: Int, file: StaticString = #filePath, line: UInt = #line) -> DBJoltVehicleState {
       var state = world.step(0)
-      for _ in 0..<frames { state = world.step(1.0 / 60.0) }
+      let initialStep = state.simulationStep
+      for _ in 0..<frames {
+        state = world.step(1.0 / 60.0)
+        guard state.success else {
+          XCTFail(state.errorMessage ?? "Jolt step failed", file: file, line: line)
+          return state
+        }
+      }
+      XCTAssertEqual(state.simulationStep, initialStep + frames, file: file, line: line)
+      print("Pedal phase at line \(line): step=\(state.simulationStep) speed=\(state.speedMetersPerSecond) throttle=\(state.appliedThrottle) brake=\(state.appliedBrake) contacts=\(state.groundedWheelCount) z=\(String(describing: state.chassis?.positionZ))")
       return state
     }
     let parked = advance(60)
@@ -77,9 +86,19 @@ class RunnerTests: XCTestCase {
     XCTAssertGreaterThan(accelerating.speedMetersPerSecond, early.speedMetersPerSecond + 0.01)
     XCTAssertGreaterThan(try XCTUnwrap(accelerating.chassis).positionZ, ground.z + 0.01)
     world.setThrottle(0, brake: 0, steering: 0)
-    let coasting = advance(12)
+    let justReleased = advance(12)
+    XCTAssertEqual(justReleased.appliedThrottle, 0)
+    XCTAssertEqual(justReleased.appliedBrake, 0)
+    XCTAssertGreaterThan(justReleased.speedMetersPerSecond, 0.01)
+    XCTAssertGreaterThan(try XCTUnwrap(justReleased.chassis).positionZ,
+                         try XCTUnwrap(accelerating.chassis).positionZ)
+    // The driven wheels can still transfer momentum just after throttle release.
+    // Measure deceleration over one second of coasting on the level floor.
+    let coasting = advance(48)
     XCTAssertEqual(coasting.appliedThrottle, 0)
+    XCTAssertEqual(coasting.appliedBrake, 0)
     XCTAssertGreaterThan(coasting.speedMetersPerSecond, 0.01)
+    XCTAssertLessThan(coasting.speedMetersPerSecond, justReleased.speedMetersPerSecond)
     XCTAssertLessThan(coasting.speedMetersPerSecond, accelerating.speedMetersPerSecond)
     world.setThrottle(1, brake: 1, steering: 0)
     let stopped = advance(30)
@@ -174,9 +193,14 @@ class RunnerTests: XCTestCase {
     let offset = try XCTUnwrap(projection.eastNorthMeters(latitude: 0, longitude: -179.999))
     let distance = try XCTUnwrap(projection.distanceMeters(latitude: 0, longitude: -179.999))
 
-    XCTAssertGreaterThan(offset.east, 200)
-    XCTAssertLessThan(offset.east, 230)
-    XCTAssertEqual(distance, offset.east, accuracy: 0.01)
+    // A 0.002-degree equatorial arc is about 222.64 m on WGS84.
+    // MapKit supplies a local map scale; Core Location computes a geodesic.
+    XCTAssertEqual(offset.east, 222.64, accuracy: 1)
+    XCTAssertEqual(offset.north, 0, accuracy: 0.01)
+    XCTAssertEqual(distance, 222.64, accuracy: 1)
+    let reverse = try XCTUnwrap(AppleGeoProjection(latitude: 0, longitude: -179.999))
+    let west = try XCTUnwrap(reverse.eastNorthMeters(latitude: 0, longitude: 179.999))
+    XCTAssertEqual(west.east, -offset.east, accuracy: 0.01)
   }
 
   func testJoltBridgeProducesStableTypedStateAndCanReset() throws {

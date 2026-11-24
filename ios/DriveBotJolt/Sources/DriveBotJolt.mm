@@ -108,9 +108,9 @@ static Profile ProfileNamed(NSString *name) {
   // SI values for a 50 mm car. Suspension retains millimetres of travel so it
   // stays above Jolt's numerical tolerances rather than being visually scaled
   // from the former 300 mm setup.
-  if ([name isEqualToString:@"sport"]) return {.075f, .0085f, 28, .0015f, .0050f, 5.0f, .78f};
+  if ([name isEqualToString:@"sport"]) return {.075f, .009f, 30, .0015f, .0050f, 5.0f, .78f};
   if ([name isEqualToString:@"offroad"]) return {.095f, .008f, 26, .0020f, .0065f, 4.2f, .75f};
-  return {.085f, .009f, 34, .0018f, .0055f, 4.6f, .76f};
+  return {.085f, .0085f, 28, .0018f, .0055f, 4.6f, .76f};
 }
 }
 

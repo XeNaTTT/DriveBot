@@ -281,6 +281,30 @@ verification on the macOS build runner or a physical iPhone.
 
 ### Physical iPhone acceptance
 
+For the November 2026 regression comparison the reference is `3475f7e`,
+the last successful TestFlight workflow before the redesign. Its distribution
+build succeeded before the workflow began executing RunnerTests. The installed
+device build number was unavailable. The native Jolt source and all three
+profiles have been restored to that revision. The redesign had moved the sport
+profile from 0.009 to 0.0085 N·m and 30 to 28 degrees of steering, and compact
+from 0.0085 to 0.009 N·m and 28 to 34 degrees. Off-road was unchanged.
+
+A Windows C++ replay using the pinned Jolt source, the bridge's floor, chassis,
+wheel and drivetrain settings, and the XCTest's 60 Hz inputs gave these compact
+profile speeds in m/s:
+
+| Measurement | Reference | Redesign |
+| --- | ---: | ---: |
+| At throttle release | 0.08413 | 0.08877 |
+| After 0.2 s coasting | 0.08465 | 0.08925 |
+| After 1 s coasting | 0.04987 | 0.05259 |
+
+Both runs reproduce the early-coast assertion failure. The test now verifies
+zero pedal inputs and forward displacement at 0.2 s, then slowing over a full
+second before applying the brake. The replay covers the Jolt dynamics only.
+The native test bypasses Flutter, UIKit, AR tracking and the display link.
+Its logs and result bundle are retained by the Codemagic workflow.
+
 1. Place each camper on a textured floor. Walk around it, briefly cover the
    camera during placement, restore tracking and check visibility and contact.
 2. Accelerate, coast, brake to rest, release and press the brake again. Check
