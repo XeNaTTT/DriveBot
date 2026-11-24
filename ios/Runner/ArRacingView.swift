@@ -65,6 +65,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private var mode: PlayMode = .driving
   private let interaction = UIButton(type: .system)
   private var avatar: RallyWalker?
+  private var inventory = RallyInventory()
+  private let boostButton = UIButton(type: .system)
   private let district = RallyDistrict()
   @MainActor private lazy var walkingSurface = RallyWalkingSurface(view: arView)
   private var walkInput = SIMD2<Float>.zero
@@ -207,15 +209,22 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     style(diagnosisButton, title: "Diagnose kopieren")
     style(debugButton, title: "")
     debugButton.setImage(UIImage(systemName: "gearshape.fill"), for: .normal)
-    debugButton.accessibilityLabel = "Einstellungen"
     debugButton.accessibilityLabel = "Steuerung einstellen"
     style(scanButton, title: "Scan anzeigen")
+    style(boostButton, title: "NOS")
+    boostButton.backgroundColor = UIColor.systemPurple.withAlphaComponent(0.82)
+    boostButton.addTarget(self, action: #selector(toggleBoost), for: .touchUpInside)
     style(interaction, title: "Aussteigen")
     interaction.addTarget(self, action: #selector(interact), for: .touchUpInside)
     style(throttleButton, title: "GAS")
     throttleButton.backgroundColor = UIColor(red: 0.13, green: 0.80, blue: 0.70, alpha: 0.96)
     throttleButton.setTitleColor(.black, for: .normal)
     style(brakeButton, title: "BREMSE")
+    NSLayoutConstraint.activate([
+      boostButton.trailingAnchor.constraint(equalTo: root.safeAreaLayoutGuide.trailingAnchor, constant: -18),
+      boostButton.bottomAnchor.constraint(equalTo: throttleButton.topAnchor, constant: -8),
+      boostButton.widthAnchor.constraint(equalToConstant: 105), boostButton.heightAnchor.constraint(equalToConstant: 44)
+    ])
     resetButton.addTarget(self, action: #selector(resetCar), for: .touchUpInside)
     diagnosisButton.addTarget(self, action: #selector(shareDiagnosis), for: .touchUpInside)
     debugButton.addTarget(self, action: #selector(toggleDebug), for: .touchUpInside)
@@ -346,13 +355,15 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     throttleButton.isHidden = !playing || mode != .driving
     brakeButton.isHidden = throttleButton.isHidden
     steeringPad.isHidden = !playing || (mode != .driving && mode != .onFoot)
+    boostButton.isHidden = !playing || mode != .driving || inventory.remaining <= 0
+    let pickup = avatar.flatMap { district.pickup(at: $0.root.position(relativeTo: nil)) }
     let shop = avatar.flatMap { district.entry(at: $0.root.position(relativeTo: nil)) }
     interaction.isHidden = !playing || !(mode == .driving || (mode == .onFoot && (nearDoor || shop != nil || district.inside != nil)))
     interaction.isEnabled = mode == .onFoot || lastSpeed <= 0.01
     interaction.alpha = interaction.isEnabled ? 1 : 0.45
     for arrow in walkingArrows { arrow.isHidden = mode != .onFoot }
     steeringPad.accessibilityLabel = mode == .onFoot ? "Gehen" : "Lenken"
-    interaction.setTitle(mode == .onFoot ? (district.inside != nil ? "Verlassen" : shop != nil ? "Interagieren" : "Einsteigen") : "Aussteigen", for: .normal)
+    interaction.setTitle(mode == .onFoot ? (pickup != nil ? "Aufnehmen" : district.inside != nil ? "Verlassen" : shop != nil ? "Interagieren" : "Einsteigen") : "Aussteigen", for: .normal)
     if mode != .driving { speed.text = "ZU FUSS" }
     else if phase == .ready && lastSpeed.isFinite { speed.text = String(format: "%.2f m/s", lastSpeed) }
     scanButton.isHidden = phase != .ready
@@ -470,6 +481,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
 
   @objc private func resetCar() {
     district.reset()
+    inventory = RallyInventory()
     placementGeneration += 1
     avatar?.root.removeFromParent()
     avatar = nil
@@ -600,6 +612,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     }
   }
   private func releaseInputs() {
+    if inventory.boosting { inventory.stopBoost(); physics.boost(false) }
     pedals = RacingPedals()
     updateBrakeButton()
     steering = 0
@@ -626,6 +639,21 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
                                  localX: local.x)
   }
 
+  @objc private func toggleBoost() {
+    guard phase == .ready, mode == .driving, inventory.remaining > 0 else { return }
+    if inventory.boosting { inventory.stopBoost() } else { inventory.boosting = true }
+    physics.boost(inventory.boosting)
+  }
+
+  @MainActor private func equip(_ walker: RallyWalker) {
+    walker.root.findEntity(named: "held item")?.removeFromParent()
+    if let held = inventory.held, let model = held.model() {
+      model.name = "held item"
+      model.position = [0.0035,0.006,0.001]
+      walker.root.addChild(model)
+    }
+  }
+
   @MainActor @objc private func interact() {
     guard phase == .ready, settingsPanel.isHidden, let pose = vehiclePose else { return }
     switch mode {
@@ -648,6 +676,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
         anchor.addChild(walker.root)
         outsideDoor = spot
         walker.root.setPosition(door, relativeTo: nil)
+        equip(walker)
         avatar = walker
         mode = .exiting
         transitionTime = 0
@@ -657,6 +686,13 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       message.text = "Neben der Fahrertür ist kein freier Boden erkannt."
       message.isHidden = false
     case .onFoot:
+      if let avatar, let item = district.pickup(at: avatar.root.position(relativeTo: nil)), inventory.pick(item) {
+        district.collect(item)
+        equip(avatar)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        updateMessage()
+        return
+      }
       if let avatar, let shop = district.inside ?? district.entry(at: avatar.root.position(relativeTo: nil)) {
         district.toggle(shop, walker: avatar.root)
         updateMessage()
@@ -686,6 +722,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       if mode == .entering {
         avatar.root.removeFromParent()
         self.avatar = nil
+        inventory.enterVehicle()
         mode = .driving
         calibrateSteering()
         physics.setPaused(false)
@@ -696,6 +733,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     let camera = arView.cameraTransform.matrix.columns.0
     let velocity = RallyWalking.velocity(input: walkInput, cameraRight: [camera.x, camera.y, camera.z])
     let start = avatar.root.position(relativeTo: nil)
+    let previousPickup = district.pickup(at: start)
     let previousShop = district.entry(at: start)
     let wasNear = nearDoor
     if dt > 0, simd_length(velocity) > 0.001,
@@ -705,7 +743,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       avatar.root.setPosition(next, relativeTo: nil)
       avatar.animate(dt: dt, velocity: velocity)
     } else { avatar.animate(dt: dt, velocity: .zero) }
-    if previousShop != district.entry(at: avatar.root.position(relativeTo: nil)) || wasNear != nearDoor { updateMessage() }
+    if previousPickup != district.pickup(at: avatar.root.position(relativeTo: nil)) || previousShop != district.entry(at: avatar.root.position(relativeTo: nil)) || wasNear != nearDoor { updateMessage() }
   }
 
   private func startDisplayLink() {
@@ -766,6 +804,12 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       if wasStopped != (self.lastSpeed <= 0.01) { self.updateMessage() }
       self.pedals.observe(speed: state.speedMetersPerSecond, appliedBrake: state.appliedBrake)
       self.speed.text = String(format: "%.2f m/s", state.speedMetersPerSecond)
+      if self.inventory.boosting {
+        let p = chassisTransform.columns.3
+        self.inventory.sample([p.x,p.z], elapsed: Float(dt), speed: state.speedMetersPerSecond)
+        self.boostButton.setTitle("NOS " + String(Int(ceil(self.inventory.remaining * 10))) + "%", for: .normal)
+        if !self.inventory.boosting { self.physics.boost(false); self.updateMessage() }
+      }
       self.lastSuccessfulOperation = state.operation
       if state.collided { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
     }
@@ -1183,6 +1227,7 @@ private final class SerializedJoltWorld {
   }
 
   func removeVehicle() { queue.async { [world] in world.removeVehicle() } }
+  func boost(_ enabled: Bool) { queue.async { [world] in world.setBoostEnabled(enabled) } }
   func setPaused(_ paused: Bool) { queue.async { [world] in world.setPaused(paused) } }
   func setThrottle(_ throttle: Float, brake: Float, steering: Float) {
     queue.async { [world] in

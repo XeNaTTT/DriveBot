@@ -142,6 +142,7 @@ static Profile ProfileNamed(NSString *name) {
   float _throttle, _brake, _steering;
   double _accumulator;
   BOOL _paused;
+  float _baseTorque;
   Vec3 _lastVelocity;
   NSInteger _simulationStep;
 }
@@ -263,6 +264,7 @@ static Profile ProfileNamed(NSString *name) {
     settings.mWheels.push_back(wheel);
   }
   auto *controller = new WheeledVehicleControllerSettings;
+  _baseTorque = profile.torque;
   controller->mEngine.mMaxTorque = profile.torque;
   // Full-size engine inertia and clutch strength are disproportionate at 50 mm.
   controller->mEngine.mInertia = .00002f;
@@ -305,6 +307,12 @@ static Profile ProfileNamed(NSString *name) {
   if (_brake > 0.f) _throttle = 0.f;
   if ([self isReady] && (_throttle != 0.f || _brake > 0.f || _steering != 0.f))
     _physics->GetBodyInterface().ActivateBody(_car);
+}
+- (void)setBoostEnabled:(BOOL)enabled {
+  if (!_vehicle) return;
+  auto *controller = static_cast<WheeledVehicleController *>(_vehicle->GetController());
+  controller->GetEngine().mMaxTorque = _baseTorque * (enabled ? 1.6f : 1.f);
+  controller->GetEngine().mMaxRPM = enabled ? 9000.f : 6000.f;
 }
 - (void)setPaused:(BOOL)paused {
   _paused = paused;

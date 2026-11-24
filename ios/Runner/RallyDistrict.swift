@@ -6,7 +6,7 @@ enum RallyScale {
   static func metres(_ fullSize: Float) -> Float { fullSize * factor }
 }
 
-@MainActor
+@preconcurrency @MainActor
 final class RallyDistrict {
   private var anchors: [AnchorEntity] = []
   private(set) var inside: Int?
@@ -52,12 +52,25 @@ final class RallyDistrict {
         let anchor = AnchorEntity(world: p)
         model.scale = SIMD3(repeating: RallyScale.factor)
         anchor.addChild(model)
+        if let item = RallyItem(rawValue: anchors.count), let display = item.model() {
+          display.name = "collectible"
+          display.position = [0,0.001,-0.008]
+          anchor.addChild(display)
+        }
         view.scene.addAnchor(anchor)
         anchors.append(anchor)
         return
       }
     }
   }
+
+  func pickup(at p: SIMD3<Float>) -> RallyItem? {
+    guard let inside, let item = anchors[inside].findEntity(named: "collectible"),
+          simd_distance(item.position(relativeTo: nil), p) <= RallyScale.metres(1.3) else { return nil }
+    return RallyItem(rawValue: inside)
+  }
+
+  func collect(_ item: RallyItem) { anchors[item.rawValue].findEntity(named: "collectible")?.removeFromParent() }
 
   func entry(at p: SIMD3<Float>) -> Int? {
     anchors.indices.first { simd_distance(p, doorway($0)) < RallyScale.metres(1.5) }
