@@ -42,6 +42,11 @@ target 'Runner' do
   pod 'DriveBotJolt', :path => 'DriveBotJolt'
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+  # Hosted XCTest imports DriveBotJolt directly; Runner embeds the framework.
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
 end
 
 post_install do |installer|

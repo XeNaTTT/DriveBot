@@ -6,6 +6,13 @@ class DriveBotJoltIntegrationTest < Minitest::Test
   WRAPPER = File.join(ROOT, 'ios/DriveBotJolt/Sources/DriveBotJolt.mm')
   CODEMAGIC = File.join(ROOT, 'codemagic.yaml')
 
+  def test_hosted_tests_inherit_jolt_module_search_paths
+    podfile = File.read(File.join(ROOT, 'ios/Podfile'))
+    runner = podfile[/^target 'Runner' do\n(.*?)^end$/m, 1]
+    assert_includes runner, "pod 'DriveBotJolt'"
+    assert_match(/target 'RunnerTests' do\s+inherit! :search_paths\s+end/, runner)
+  end
+
   def test_vendor_headers_are_not_added_to_cocoapods_header_map
     podspec = File.read(PODSPEC)
 
