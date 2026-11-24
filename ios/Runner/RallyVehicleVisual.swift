@@ -116,6 +116,11 @@ struct RallyVehicleVisual {
     return Self(root: root, wheels: wheels)
   }
 
+  private static let treadTexture: TextureResource? = {
+    guard let url = Bundle.main.url(forResource: "tread", withExtension: "png", subdirectory: "RallyAssets") else { return nil }
+    return try? TextureResource.load(contentsOf: url)
+  }()
+
   private static func makeWheel(width: Float, offroad: Bool) -> Entity {
     let wheel = Entity()
     func surface(_ rings: [SIMD2<Float>], material: SimpleMaterial,
@@ -125,9 +130,11 @@ struct RallyVehicleVisual {
       return true
     }
     let edge = width / 2
+    var rubber = finish(0x242526, roughness: 0.88)
+    if let texture = treadTexture { rubber.color = .init(tint: .white, texture: .init(texture)) }
     let hasTyre = surface([[0.044, -edge], [0.074, -edge], [0.09, -edge * 0.72],
              [0.09, edge * 0.72], [0.074, edge], [0.044, edge]],
-            material: finish(0x242526, roughness: 0.88), tread: offroad)
+            material: rubber, tread: offroad)
     _ = surface([[0.001, -edge], [0.048, -edge], [0.048, edge], [0.001, edge]],
             material: finish(0x909A9E, roughness: 0.37, metallic: true))
     // Contrasting inserts give a visible rotation cue at miniature scale.
@@ -161,8 +168,11 @@ struct RallyVehicleVisual {
     let segments = 24
     var positions: [SIMD3<Float>] = []
     var indices: [UInt32] = []
-    for ring in rings {
-      for index in 0..<segments {
+    var uv: [SIMD2<Float>] = []
+    let stride = segments + 1
+    for (row, ring) in rings.enumerated() {
+      for index in 0...segments {
+        uv.append([Float(index) / Float(segments), Float(row) / Float(rings.count - 1)])
         let angle = Float(index) * 2 * .pi / Float(segments)
         let radius = tread && ring.x == 0.09 && index.isMultiple(of: 2) ? ring.x - 0.007 : ring.x
         positions.append([radius * cos(angle), ring.y, radius * sin(angle)])
@@ -170,18 +180,18 @@ struct RallyVehicleVisual {
     }
     for ring in 0..<(rings.count - 1) {
       for segment in 0..<segments {
-        let a = UInt32(ring * segments + segment)
-        let b = UInt32(ring * segments + (segment + 1) % segments)
-        let c = a + UInt32(segments)
-        let d = b + UInt32(segments)
+        let a = UInt32(ring * stride + segment)
+        let b = a + 1
+        let c = a + UInt32(stride)
+        let d = b + UInt32(stride)
         indices.append(contentsOf: [a, c, b, b, c, d])
       }
     }
-    return makeMesh(tread ? "off-road tyre" : "wheel surface", positions: positions, indices: indices)
+    return makeMesh(tread ? "off-road tyre" : "wheel surface", positions: positions, indices: indices, uv: uv)
   }
 
   private static func makeMesh(_ name: String, positions: [SIMD3<Float>],
-                               indices: [UInt32]) -> MeshResource? {
+                               indices: [UInt32], uv: [SIMD2<Float>] = []) -> MeshResource? {
     var normals = Array(repeating: SIMD3<Float>.zero, count: positions.count)
     for i in stride(from: 0, to: indices.count, by: 3) {
       let a = Int(indices[i]), b = Int(indices[i + 1]), c = Int(indices[i + 2])
@@ -193,6 +203,7 @@ struct RallyVehicleVisual {
     var descriptor = MeshDescriptor(name: name)
     descriptor.positions = MeshBuffers.Positions(positions)
     descriptor.normals = MeshBuffers.Normals(normals.map { simd_normalize($0) })
+    if !uv.isEmpty { descriptor.textureCoordinates = MeshBuffers.TextureCoordinates(uv) }
     descriptor.primitives = .triangles(indices)
     return try? MeshResource.generate(from: [descriptor])
   }

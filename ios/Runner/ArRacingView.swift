@@ -53,6 +53,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private var vehiclePose: Entity?
   private var vehicleVisualRoot: Entity?
   private var wheels: [Entity] = []
+  private var vehicleTrim: [Entity] = []
+  private var trimVisible = true
   private var phase: Phase = .scanning { didSet { updateMessage() } }
   private var displayLink: CADisplayLink?
   private var previousTime: CFTimeInterval = 0
@@ -456,6 +458,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     vehiclePose = pose
     vehicleVisualRoot = visualRoot
     wheels = builtWheels
+    let trimNames: Set<String> = ["door handle","grille insert","roof rack crossbar","roof floodlight","rock slider"]
+    vehicleTrim = visualRoot.children.filter { trimNames.contains($0.name) }
+    trimVisible = true
     Self.logger.notice("[Placement] 06 model attached")
 
     if placementPhysicsMode == .visualOnly {
@@ -506,6 +511,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     vehicleVisualRoot = nil
     placementFloorY = nil
     wheels.removeAll()
+    vehicleTrim.removeAll()
     setScanVisible(true)
     phase = hasFloor ? .aiming : .scanning
     message.text = text
@@ -539,6 +545,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     vehicleVisualRoot = nil
     placementFloorY = nil
     wheels.removeAll()
+    vehicleTrim.removeAll()
     setScanVisible(true)
     phase = hasFloor ? .aiming : .scanning
   }
@@ -873,7 +880,15 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     displayLink = link
   }
   @MainActor private func frame(_ link: CADisplayLink) {
-    if phase == .ready { district.updateDetail(camera: arView.cameraTransform.translation, time: link.timestamp) }
+    if phase == .ready, let pose = vehiclePose {
+      let camera = arView.cameraTransform.translation
+      district.updateDetail(camera: camera, time: link.timestamp)
+      let show = simd_distance(camera, pose.position(relativeTo: nil)) < (trimVisible ? 0.9 : 0.75)
+      if show != trimVisible {
+        for trim in vehicleTrim { trim.isEnabled = show }
+        trimVisible = show
+      }
+    }
     updatePlacementCandidate()
     guard phase == .ready, let pose = vehiclePose else {
       previousTime = 0
