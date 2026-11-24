@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 
 import '../application/motion_steering_service.dart';
 import 'caravan_palette.dart';
-import 'caravan_art.dart';
 
 typedef ArRaceBackgroundBuilder = Widget Function(BuildContext context);
 
@@ -77,7 +76,7 @@ class _ArRacingScreenState extends State<ArRacingScreen> {
   );
 }
 
-class _GarageView extends StatelessWidget {
+class _GarageView extends StatefulWidget {
   const _GarageView({
     required this.selected,
     required this.onSelect,
@@ -88,433 +87,363 @@ class _GarageView extends StatelessWidget {
   final ValueChanged<int> onSelect;
   final VoidCallback onStart;
   final Widget? accountEntryPoint;
+  @override
+  State<_GarageView> createState() => _GarageViewState();
+}
+
+class _GarageViewState extends State<_GarageView> {
+  static const pink = Color(0xffff4ca6);
+  static const heroCrops = {
+    'sport': Rect.fromLTRB(56, 0, 643, 239),
+    'compact': Rect.fromLTRB(58, 74, 223, 236),
+    'offroad': Rect.fromLTRB(502, 56, 642, 237),
+  };
+  static const cardCrops = {
+    'compact': Rect.fromLTRB(72, 292, 154, 333),
+    'sport': Rect.fromLTRB(184, 291, 265, 332),
+    'offroad': Rect.fromLTRB(296, 291, 380, 332),
+  };
+  double drag = 0;
+  bool preview = false;
+
+  void step(int direction) =>
+      widget.onSelect((widget.selected + direction) % caravanModels.length);
 
   @override
   Widget build(BuildContext context) {
-    final model = caravanModels[selected];
-    double dragDistance = 0;
-    final landscape =
-        MediaQuery.orientationOf(context) == Orientation.landscape;
-    return Container(
+    final model = caravanModels[widget.selected];
+    final native = !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+    return ColoredBox(
       key: const Key('ar-racing-garage'),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF153538), Color(0xFF091416)],
-        ),
-      ),
+      color: const Color(0xff1d1424),
       child: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(22, landscape ? 4 : 10, 12, 0),
-              child: Row(
-                children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: model.accent,
-                      borderRadius: BorderRadius.circular(13),
-                    ),
-                    child: const Icon(
-                      Icons.sports_motorsports_rounded,
-                      color: Colors.black,
+        child: LayoutBuilder(
+          builder: (context, bounds) {
+            final wide = bounds.maxWidth > bounds.maxHeight;
+            final heroHeight = wide
+                ? (bounds.maxHeight - 126).clamp(64.0, bounds.maxHeight * .65)
+                : bounds.maxHeight * .51;
+            final controls = Row(
+              children: [
+                for (final id in ['compact', 'sport', 'offroad'])
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: _angledChoice(id, model.id, wide ? 47 : 66),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'ROOM RALLYE',
-                        style: TextStyle(
-                          fontSize: 21,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                      Text(
-                        'AR OPEN WORLD',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Color(0xFF9DA1AD),
-                          letterSpacing: 2,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                  if (accountEntryPoint != null) accountEntryPoint!,
-                ],
+              ],
+            );
+            final start = FilledButton.icon(
+              key: const Key('start-ar-race'),
+              style: FilledButton.styleFrom(
+                backgroundColor: pink,
+                foregroundColor: const Color(0xff251021),
+                shape: const BeveledRectangleBorder(),
+                minimumSize: const Size(0, 44),
               ),
-            ),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) => SingleChildScrollView(
-                  padding: EdgeInsets.fromLTRB(
-                    20,
-                    landscape ? 4 : 22,
-                    20,
-                    landscape ? 4 : 20,
-                  ),
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: (constraints.maxHeight - (landscape ? 8 : 42))
-                          .clamp(0.0, double.infinity),
-                    ),
-                    child: Column(
-                      children: [
-                        if (!landscape)
-                          const Text(
-                            'WÄHLE DEINEN',
-                            style: TextStyle(
-                              color: Color(0xFFA5A7B0),
-                              fontSize: 13,
-                              letterSpacing: 3,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        if (!landscape)
-                          const Text(
-                            'CAMPER',
-                            style: TextStyle(
-                              fontSize: 31,
-                              letterSpacing: .5,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        SizedBox(height: landscape ? 2 : 10),
-                        Container(
-                          width: double.infinity,
-                          padding: EdgeInsets.fromLTRB(
-                            16,
-                            landscape ? 4 : 20,
-                            16,
-                            landscape ? 4 : 14,
-                          ),
-                          decoration: BoxDecoration(
-                            gradient: RadialGradient(
-                              center: const Alignment(-0.6, -0.8),
-                              radius: 1.7,
-                              colors: [
-                                Color.alphaBlend(
-                                  model.accent.withValues(alpha: .18),
-                                  const Color(0xFF183438),
-                                ),
-                                const Color(0xFF101C20),
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(28),
-                            border: Border.all(
-                              color: model.accent.withValues(alpha: .5),
-                            ),
-                          ),
-                          child: Flex(
-                            direction: landscape
-                                ? Axis.horizontal
-                                : Axis.vertical,
-                            children: [
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 220),
-                                child: KeyedSubtree(
-                                  key: ValueKey(model.id),
-                                  child: GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    onHorizontalDragStart: (_) =>
-                                        dragDistance = 0,
-                                    onHorizontalDragUpdate: (details) =>
-                                        dragDistance += details.delta.dx,
-                                    onHorizontalDragEnd: (details) {
-                                      final speed =
-                                          details.primaryVelocity ?? 0;
-                                      if (dragDistance.abs() >= 32 ||
-                                          speed.abs() > 80) {
-                                        onSelect(
-                                          (selected +
-                                                  ((dragDistance.abs() >= 32
-                                                              ? dragDistance
-                                                              : speed) <
-                                                          0
-                                                      ? 1
-                                                      : -1)) %
-                                              caravanModels.length,
-                                        );
-                                      }
-                                    },
-                                    child:
-                                        !kIsWeb &&
-                                            defaultTargetPlatform ==
-                                                TargetPlatform.iOS
-                                        ? SizedBox(
-                                            width: landscape ? 160 : 250,
-                                            height: landscape ? 90 : 138,
-                                            child: IgnorePointer(
-                                              child: UiKitView(
-                                                viewType:
-                                                    'drivebot/rally_showroom',
-                                                creationParams: {
-                                                  'vehicleID': model.id,
-                                                },
-                                                creationParamsCodec:
-                                                    const StandardMessageCodec(),
-                                              ),
-                                            ),
-                                          )
-                                        : CaravanArt(
-                                            model: model,
-                                            compact: landscape,
-                                          ),
-                                  ),
-                                ),
-                              ),
-                              SizedBox(width: landscape ? 12 : 0, height: 2),
-                              Flexible(
-                                flex: landscape ? 1 : 0,
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      model.name,
-                                      textAlign: TextAlign.center,
-                                      maxLines: landscape ? 1 : null,
-                                      overflow: landscape
-                                          ? TextOverflow.ellipsis
-                                          : null,
-                                      style: TextStyle(
-                                        fontSize: landscape ? 18 : 25,
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                    Text(
-                                      model.subtitle,
-                                      textAlign: TextAlign.center,
-                                      maxLines: landscape ? 1 : null,
-                                      overflow: landscape
-                                          ? TextOverflow.ellipsis
-                                          : null,
-                                      style: TextStyle(
-                                        color: model.accent,
-                                        fontSize: landscape ? 12 : null,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    SizedBox(height: landscape ? 4 : 14),
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceAround,
-                                      children: [
-                                        _Stat(
-                                          label: 'TEMPO',
-                                          value: model.speed,
-                                          color: model.accent,
-                                        ),
-                                        _Stat(
-                                          label: 'HANDLING',
-                                          value: model.handling,
-                                          color: model.accent,
-                                        ),
-                                        _Stat(
-                                          label: 'ROBUSTHEIT',
-                                          value: model.durability,
-                                          color: model.accent,
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(height: landscape ? 6 : 15),
-                        Row(
-                          children: List.generate(
-                            caravanModels.length,
-                            (index) => Expanded(
-                              child: Padding(
-                                padding: EdgeInsets.only(
-                                  right: index == caravanModels.length - 1
-                                      ? 0
-                                      : 8,
-                                ),
-                                child: _ModelChoice(
-                                  model: caravanModels[index],
-                                  selected: selected == index,
-                                  onTap: () => onSelect(index),
-                                  compact: landscape,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: landscape ? 6 : 18),
-                        SizedBox(
-                          width: double.infinity,
-                          height: landscape ? 48 : 62,
-                          child: FilledButton(
-                            key: const Key('start-ar-race'),
-                            onPressed: onStart,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: model.accent,
-                              foregroundColor: Colors.black,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                            ),
-                            child: const FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.view_in_ar_rounded),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    'MIT DIESEM AUTO STARTEN',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (!landscape) const SizedBox(height: 12),
-                        if (!landscape)
-                          const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.screen_rotation_rounded,
-                                size: 17,
-                                color: Color(0xFF8D919B),
-                              ),
-                              SizedBox(width: 7),
-                              Flexible(
-                                child: Text(
-                                  'Smartphone neigen wie ein Lenkrad',
-                                  style: TextStyle(
-                                    color: Color(0xFF8D919B),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                      ],
-                    ),
+              onPressed: widget.onStart,
+              icon: const Icon(Icons.play_circle_fill),
+              label: const FittedBox(
+                child: Text(
+                  'MIT DIESEM AUTO STARTEN',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontStyle: FontStyle.italic,
                   ),
                 ),
               ),
+            );
+            return SingleChildScrollView(
+              child: Column(
+                children: [
+                  SizedBox(
+                    height: heroHeight,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        GestureDetector(
+                          key: ValueKey(model.id),
+                          behavior: HitTestBehavior.opaque,
+                          onHorizontalDragStart: (_) => drag = 0,
+                          onHorizontalDragUpdate: (e) => drag += e.delta.dx,
+                          onHorizontalDragEnd: (e) {
+                            final offset = drag.abs() >= 32
+                                ? drag
+                                : (e.primaryVelocity ?? 0);
+                            if (offset.abs() >= 32) step(offset < 0 ? 1 : -1);
+                          },
+                          child: preview && native
+                              ? IgnorePointer(
+                                  child: UiKitView(
+                                    key: ValueKey('preview-${model.id}'),
+                                    viewType: 'drivebot/rally_showroom',
+                                    creationParams: {'vehicleID': model.id},
+                                    creationParamsCodec:
+                                        const StandardMessageCodec(),
+                                  ),
+                                )
+                              : _ArtCrop(
+                                  heroCrops[model.id]!,
+                                  alignment: model.id == 'sport' && !wide
+                                      ? const Alignment(-.16, 0)
+                                      : Alignment.center,
+                                ),
+                        ),
+                        if (model.id != 'sport' || preview || !wide)
+                          const Positioned(
+                            top: 10,
+                            left: 14,
+                            child: Text(
+                              'ROOM\nRALLYE',
+                              style: TextStyle(
+                                height: .86,
+                                fontSize: 23,
+                                fontStyle: FontStyle.italic,
+                                fontWeight: FontWeight.w900,
+                                shadows: [Shadow(blurRadius: 8)],
+                              ),
+                            ),
+                          ),
+                        for (final direction in [-1, 1])
+                          Align(
+                            alignment: Alignment(direction.toDouble(), .42),
+                            child: IconButton.filledTonal(
+                              tooltip: direction < 0
+                                  ? 'Vorheriges Fahrzeug'
+                                  : 'Nächstes Fahrzeug',
+                              style: IconButton.styleFrom(
+                                backgroundColor: const Color(0x99321a30),
+                                foregroundColor: Colors.white,
+                              ),
+                              onPressed: () => step(direction),
+                              icon: Icon(
+                                direction < 0
+                                    ? Icons.chevron_left
+                                    : Icons.chevron_right,
+                              ),
+                            ),
+                          ),
+                        Positioned(
+                          right: 8,
+                          top: 4,
+                          child: Row(
+                            children: [
+                              if (native)
+                                IconButton.filledTonal(
+                                  onPressed: () =>
+                                      setState(() => preview = !preview),
+                                  tooltip: '3D-Ansicht wechseln',
+                                  icon: const Icon(Icons.view_in_ar),
+                                ),
+                              if (widget.accountEntryPoint != null)
+                                widget.accountEntryPoint!,
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: wide ? 20 : 16,
+                      vertical: wide ? 4 : 12,
+                    ),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xff401f36), Color(0xff201722)],
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  model.name,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: wide ? 22 : 25,
+                                    fontWeight: FontWeight.w900,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                model.subtitle,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xffe7cdd9),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: wide ? 158 : 126,
+                          child: Column(
+                            children: [
+                              _meter('TEMPO', model.speed),
+                              _meter('HANDLING', model.handling),
+                              _meter('ROBUSTHEIT', model.durability),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: wide ? 15 : 12,
+                      vertical: wide ? 4 : 12,
+                    ),
+                    child: wide
+                        ? Row(
+                            children: [
+                              Expanded(flex: 3, child: controls),
+                              const SizedBox(width: 14),
+                              Expanded(flex: 2, child: start),
+                            ],
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              controls,
+                              const SizedBox(height: 12),
+                              start,
+                            ],
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _meter(String label, int value) => Row(
+    children: [
+      SizedBox(
+        width: 52,
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 8,
+            fontWeight: FontWeight.w800,
+            color: Colors.white,
+          ),
+        ),
+      ),
+      Expanded(
+        child: TweenAnimationBuilder<double>(
+          duration: const Duration(milliseconds: 250),
+          tween: Tween(end: value / 100),
+          builder: (context, fraction, _) => LinearProgressIndicator(
+            value: fraction,
+            color: pink,
+            backgroundColor: Colors.white12,
+            minHeight: 4,
+          ),
+        ),
+      ),
+      SizedBox(
+        width: 22,
+        child: Text(
+          '$value',
+          textAlign: TextAlign.right,
+          style: const TextStyle(fontSize: 10, color: Colors.white),
+        ),
+      ),
+    ],
+  );
+
+  Widget _angledChoice(String id, String current, double height) {
+    final index = caravanModels.indexWhere((car) => car.id == id);
+    final car = caravanModels[index];
+    return Semantics(
+      button: true,
+      selected: id == current,
+      label: car.name,
+      child: GestureDetector(
+        key: Key('caravan-$id'),
+        onTap: () => widget.onSelect(index),
+        child: Transform(
+          transform: Matrix4.skewX(-.13),
+          alignment: Alignment.center,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            height: height,
+            decoration: BoxDecoration(
+              color: const Color(0xff211827),
+              border: Border.all(
+                color: id == current ? pink : Colors.white38,
+                width: id == current ? 2 : 1,
+              ),
+              boxShadow: id == current
+                  ? [const BoxShadow(color: Color(0x80ff288b), blurRadius: 8)]
+                  : [],
             ),
-          ],
+            child: Column(
+              children: [
+                Expanded(child: _ArtCrop(cardCrops[id]!)),
+                Text(
+                  car.name
+                      .toLowerCase()
+                      .split(' ')
+                      .map((w) => w[0].toUpperCase() + w.substring(1))
+                      .join(' '),
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    color: id == current ? pink : Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value, required this.color});
-  final String label;
-  final int value;
-  final Color color;
+// Source rectangles use the reference artwork's 700-unit design grid.
+class _ArtCrop extends StatelessWidget {
+  const _ArtCrop(this.region, {this.alignment = Alignment.center});
+  final Rect region;
+  final Alignment alignment;
   @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      Text(
-        '$value',
-        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-      ),
-      const SizedBox(height: 4),
-      Container(
-        width: 56,
-        height: 4,
-        decoration: BoxDecoration(
-          color: Colors.white12,
-          borderRadius: BorderRadius.circular(2),
-        ),
-        alignment: Alignment.centerLeft,
-        child: TweenAnimationBuilder<double>(
-          tween: Tween(end: value / 100),
-          duration: const Duration(milliseconds: 320),
-          builder: (context, fraction, child) =>
-              FractionallySizedBox(widthFactor: fraction, child: child),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-        ),
-      ),
-      const SizedBox(height: 5),
-      Text(
-        label,
-        style: const TextStyle(
-          color: Color(0xFF9296A0),
-          fontSize: 8,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    ],
-  );
-}
-
-class _ModelChoice extends StatelessWidget {
-  const _ModelChoice({
-    required this.model,
-    required this.selected,
-    required this.onTap,
-    required this.compact,
-  });
-  final CaravanModel model;
-  final bool selected;
-  final VoidCallback onTap;
-  final bool compact;
-  @override
-  Widget build(BuildContext context) => Semantics(
-    button: true,
-    selected: selected,
-    label: model.name,
-    child: InkWell(
-      key: Key('caravan-${model.id}'),
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(15),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        height: compact ? 48 : 72,
-        decoration: BoxDecoration(
-          color: selected
-              ? model.accent.withValues(alpha: .14)
-              : const Color(0xFF17191F),
-          borderRadius: BorderRadius.circular(15),
-          border: Border.all(
-            color: selected ? model.accent : Colors.white10,
-            width: selected ? 2 : 1,
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.airport_shuttle_rounded,
-              size: compact ? 18 : 24,
-              color: selected ? model.accent : Colors.white54,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              model.name.split(' ').first,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                color: selected ? Colors.white : Colors.white54,
+  Widget build(BuildContext context) => ClipRect(
+    child: FittedBox(
+      fit: BoxFit.cover,
+      alignment: alignment,
+      child: SizedBox(
+        width: region.width,
+        height: region.height,
+        child: ClipRect(
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                left: -region.left,
+                top: -region.top,
+                width: 700,
+                height: 367.5,
+                child: Image.asset(
+                  'assets/showroom/sunset.jpg',
+                  fit: BoxFit.fill,
+                  excludeFromSemantics: true,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     ),
