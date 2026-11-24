@@ -142,7 +142,8 @@ static Profile ProfileNamed(NSString *name) {
   float _throttle, _brake, _steering;
   double _accumulator;
   BOOL _paused;
-  float _baseTorque;
+  float _baseTorque, _vehicleMass;
+  BOOL _wingsInstalled;
   Vec3 _lastVelocity;
   NSInteger _simulationStep;
 }
@@ -264,6 +265,8 @@ static Profile ProfileNamed(NSString *name) {
     settings.mWheels.push_back(wheel);
   }
   auto *controller = new WheeledVehicleControllerSettings;
+  _vehicleMass = profile.mass;
+  _wingsInstalled = NO;
   _baseTorque = profile.torque;
   controller->mEngine.mMaxTorque = profile.torque;
   // Full-size engine inertia and clutch strength are disproportionate at 50 mm.
@@ -308,6 +311,7 @@ static Profile ProfileNamed(NSString *name) {
   if ([self isReady] && (_throttle != 0.f || _brake > 0.f || _steering != 0.f))
     _physics->GetBodyInterface().ActivateBody(_car);
 }
+- (void)setWingsInstalled:(BOOL)installed { _wingsInstalled = installed; }
 - (void)setBoostEnabled:(BOOL)enabled {
   if (!_vehicle) return;
   auto *controller = static_cast<WheeledVehicleController *>(_vehicle->GetController());
@@ -420,6 +424,20 @@ static Profile ProfileNamed(NSString *name) {
       controller->SetDriverInput(_throttle, _steering * steeringLimit, _brake, _brake);
       if (_throttle != 0 || _steering != 0 || _brake != 0)
         _physics->GetBodyInterface().ActivateBody(_car);
+      if (_wingsInstalled && _simulationStep > 0) {
+        const auto &wheels = _vehicle->GetWheels();
+        bool airborne = std::none_of(wheels.begin(), wheels.end(),
+          [](const Wheel *wheel) { return wheel->HasContact(); });
+        if (airborne) {
+          auto &bodies = _physics->GetBodyInterface();
+          const Vec3 velocity = bodies.GetLinearVelocity(_car);
+          if (velocity.GetY() < 0)
+            bodies.AddForce(_car, Vec3(0, _vehicleMass * 9.81f * .55f, 0));
+          const Vec3 spin = bodies.GetAngularVelocity(_car);
+          bodies.SetAngularVelocity(_car, Vec3(spin.GetX() * .92f,
+            spin.GetY() * .95f + _steering * .035f, spin.GetZ() * .92f));
+        }
+      }
       const EPhysicsUpdateError updateError = _physics->Update((float)timeStep, 1, _temp, _jobs);
       if (updateError != EPhysicsUpdateError::None)
         return failure(kUpdateFailed, [NSString stringWithFormat:

@@ -66,6 +66,11 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private let interaction = UIButton(type: .system)
   private var avatar: RallyWalker?
   private var inventory = RallyInventory()
+  private let equipmentButton = UIButton(type: .system)
+  private let cycleButton = UIButton(type: .system)
+  private var marks: [AnchorEntity] = []
+  private var wingModel: Entity?
+  private var deployed = false
   private let boostButton = UIButton(type: .system)
   private let district = RallyDistrict()
   @MainActor private lazy var walkingSurface = RallyWalkingSurface(view: arView)
@@ -211,6 +216,14 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     debugButton.setImage(UIImage(systemName: "gearshape.fill"), for: .normal)
     debugButton.accessibilityLabel = "Steuerung einstellen"
     style(scanButton, title: "Scan anzeigen")
+    style(equipmentButton, title: "")
+    equipmentButton.setImage(UIImage(systemName: "scope"), for: .normal)
+    equipmentButton.accessibilityLabel = "Energieimpuls"
+    equipmentButton.addTarget(self, action: #selector(firePulse), for: .touchUpInside)
+    style(cycleButton, title: "")
+    cycleButton.setImage(UIImage(systemName: "arrow.triangle.2.circlepath"), for: .normal)
+    cycleButton.accessibilityLabel = "Ausrüstung wechseln"
+    cycleButton.addTarget(self, action: #selector(cycleEquipment), for: .touchUpInside)
     style(boostButton, title: "NOS")
     boostButton.backgroundColor = UIColor.systemPurple.withAlphaComponent(0.82)
     boostButton.addTarget(self, action: #selector(toggleBoost), for: .touchUpInside)
@@ -221,6 +234,12 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     throttleButton.setTitleColor(.black, for: .normal)
     style(brakeButton, title: "BREMSE")
     NSLayoutConstraint.activate([
+      equipmentButton.trailingAnchor.constraint(equalTo: boostButton.trailingAnchor),
+      equipmentButton.bottomAnchor.constraint(equalTo: boostButton.bottomAnchor),
+      equipmentButton.widthAnchor.constraint(equalToConstant: 54), equipmentButton.heightAnchor.constraint(equalToConstant: 48),
+      cycleButton.trailingAnchor.constraint(equalTo: equipmentButton.leadingAnchor, constant: -8),
+      cycleButton.bottomAnchor.constraint(equalTo: equipmentButton.bottomAnchor),
+      cycleButton.widthAnchor.constraint(equalToConstant: 48), cycleButton.heightAnchor.constraint(equalToConstant: 48),
       boostButton.trailingAnchor.constraint(equalTo: root.safeAreaLayoutGuide.trailingAnchor, constant: -18),
       boostButton.bottomAnchor.constraint(equalTo: throttleButton.topAnchor, constant: -8),
       boostButton.widthAnchor.constraint(equalToConstant: 105), boostButton.heightAnchor.constraint(equalToConstant: 44)
@@ -355,6 +374,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     throttleButton.isHidden = !playing || mode != .driving
     brakeButton.isHidden = throttleButton.isHidden
     steeringPad.isHidden = !playing || (mode != .driving && mode != .onFoot)
+    equipmentButton.isHidden = !playing || mode != .onFoot || inventory.held != .blaster
+    cycleButton.isHidden = !playing || mode != .onFoot || !inventory.collected.isSuperset(of: [.sword,.blaster])
     boostButton.isHidden = !playing || mode != .driving || inventory.remaining <= 0
     let pickup = avatar.flatMap { district.pickup(at: $0.root.position(relativeTo: nil)) }
     let shop = avatar.flatMap { district.entry(at: $0.root.position(relativeTo: nil)) }
@@ -480,6 +501,10 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
 
   @objc private func resetCar() {
+    for mark in marks { mark.removeFromParent() }
+    marks.removeAll()
+    wingModel = nil
+    deployed = false
     district.reset()
     inventory = RallyInventory()
     placementGeneration += 1
@@ -639,6 +664,29 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
                                  localX: local.x)
   }
 
+  @MainActor @objc private func cycleEquipment() {
+    guard let avatar, mode == .onFoot else { return }
+    inventory.cycle()
+    equip(avatar)
+    updateMessage()
+  }
+
+  @MainActor @objc private func firePulse() {
+    guard mode == .onFoot, inventory.held == .blaster, phase == .ready, settingsPanel.isHidden else { return }
+    let center = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
+    guard let hit = arView.raycast(from: center, allowing: .existingPlaneGeometry, alignment: .any).first,
+          hit.anchor is ARPlaneAnchor else { return }
+    let anchor = AnchorEntity(world: hit.worldTransform)
+    let spot = ModelEntity(mesh: .generateSphere(radius: 0.0018), materials: [UnlitMaterial(color: .systemTeal)])
+    spot.scale.y = 0.12
+    spot.position.y = 0.00035
+    anchor.addChild(spot)
+    arView.scene.addAnchor(anchor)
+    marks.append(anchor)
+    if marks.count > 30 { marks.removeFirst().removeFromParent() }
+    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+  }
+
   @objc private func toggleBoost() {
     guard phase == .ready, mode == .driving, inventory.remaining > 0 else { return }
     if inventory.boosting { inventory.stopBoost() } else { inventory.boosting = true }
@@ -723,6 +771,13 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
         avatar.root.removeFromParent()
         self.avatar = nil
         inventory.enterVehicle()
+        if inventory.wings, wingModel == nil, let wing = RallyItem.wings.model(), let pose = vehiclePose {
+          wing.scale *= 2
+          wing.position = [0,0.02,-0.006]
+          pose.addChild(wing)
+          wingModel = wing
+          physics.wings(true)
+        }
         mode = .driving
         calibrateSteering()
         physics.setPaused(false)
@@ -799,6 +854,13 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       }
       self.applyVehicleTransforms(state, chassisTransform: chassisTransform, pose: pose,
                                   visualRoot: visualRoot)
+      let airborne = self.inventory.wings && state.groundedWheelCount == 0
+      if airborne != self.deployed, let wing = self.wingModel {
+        self.deployed = airborne
+        var transform = wing.transform
+        transform.scale.x = RallyScale.factor * (airborne ? 7 : 2)
+        wing.move(to: transform, relativeTo: wing.parent, duration: 0.18)
+      }
       let wasStopped = self.lastSpeed <= 0.01
       self.lastSpeed = state.speedMetersPerSecond
       if wasStopped != (self.lastSpeed <= 0.01) { self.updateMessage() }
@@ -1227,6 +1289,7 @@ private final class SerializedJoltWorld {
   }
 
   func removeVehicle() { queue.async { [world] in world.removeVehicle() } }
+  func wings(_ enabled: Bool) { queue.async { [world] in world.setWingsInstalled(enabled) } }
   func boost(_ enabled: Bool) { queue.async { [world] in world.setBoostEnabled(enabled) } }
   func setPaused(_ paused: Bool) { queue.async { [world] in world.setPaused(paused) } }
   func setThrottle(_ throttle: Float, brake: Float, steering: Float) {

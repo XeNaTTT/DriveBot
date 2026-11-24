@@ -51,6 +51,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)isReady;
 /// Signed throttle in [-1, 1]. Negative values request reverse.
 - (void)setThrottle:(float)throttle brake:(float)brake steering:(float)steering;
+- (void)setWingsInstalled:(BOOL)installed;
 - (void)setBoostEnabled:(BOOL)enabled;
 - (void)setPaused:(BOOL)paused;
 - (void)replaceStaticMesh:(NSUUID *)identifier
