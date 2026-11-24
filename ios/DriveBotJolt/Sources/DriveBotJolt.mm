@@ -142,7 +142,8 @@ static Profile ProfileNamed(NSString *name) {
   float _throttle, _brake, _steering;
   double _accumulator;
   BOOL _paused;
-  float _baseTorque, _vehicleMass;
+  float _baseTorque, _vehicleMass, _baseFinalDrive, _boostSpeedLimit;
+  BOOL _boostEnabled;
   BOOL _wingsInstalled;
   Vec3 _lastVelocity;
   NSInteger _simulationStep;
@@ -265,6 +266,11 @@ static Profile ProfileNamed(NSString *name) {
     settings.mWheels.push_back(wheel);
   }
   auto *controller = new WheeledVehicleControllerSettings;
+  // Steady level-floor speeds measured for these 50 mm profiles in pinned Jolt.
+  const float cruiseSpeed = [name isEqualToString:@"sport"] ? 1.05f :
+                            [name isEqualToString:@"offroad"] ? 1.03f : 1.04f;
+  _boostSpeedLimit = 1.5f * cruiseSpeed;
+  _boostEnabled = NO;
   _vehicleMass = profile.mass;
   _wingsInstalled = NO;
   _baseTorque = profile.torque;
@@ -277,6 +283,7 @@ static Profile ProfileNamed(NSString *name) {
   controller->mDifferentials.resize(1);
   controller->mDifferentials[0].mLeftWheel = 2;
   controller->mDifferentials[0].mRightWheel = 3;
+  _baseFinalDrive = controller->mDifferentials[0].mDifferentialRatio;
   settings.mController = controller;
   if (settings.mWheels.size() != 4 || settings.mController == nullptr) {
     bodies.RemoveBody(_car); bodies.DestroyBody(_car); _car = BodyID();
@@ -315,6 +322,8 @@ static Profile ProfileNamed(NSString *name) {
 - (void)setBoostEnabled:(BOOL)enabled {
   if (!_vehicle) return;
   auto *controller = static_cast<WheeledVehicleController *>(_vehicle->GetController());
+  _boostEnabled = enabled;
+  controller->GetDifferentials()[0].mDifferentialRatio = _baseFinalDrive * (enabled ? .8f : 1.f);
   controller->GetEngine().mMaxTorque = _baseTorque * (enabled ? 1.6f : 1.f);
   controller->GetEngine().mMaxRPM = enabled ? 9000.f : 6000.f;
 }
@@ -421,7 +430,12 @@ static Profile ProfileNamed(NSString *name) {
       auto *controller = static_cast<WheeledVehicleController *>(_vehicle->GetController());
       const float speed = _physics->GetBodyInterface().GetLinearVelocity(_car).Length();
       const float steeringLimit = std::max(.45f, 1.f - speed / 2.f);
-      controller->SetDriverInput(_throttle, _steering * steeringLimit, _brake, _brake);
+      float drive = _throttle;
+      if (_boostEnabled && drive > 0) {
+        const Vec3 v = _physics->GetBodyInterface().GetLinearVelocity(_car);
+        drive *= std::clamp((_boostSpeedLimit - std::hypot(v.GetX(), v.GetZ())) / .015f, 0.f, 1.f);
+      }
+      controller->SetDriverInput(drive, _steering * steeringLimit, _brake, _brake);
       if (_throttle != 0 || _steering != 0 || _brake != 0)
         _physics->GetBodyInterface().ActivateBody(_car);
       if (_wingsInstalled && _simulationStep > 0) {
