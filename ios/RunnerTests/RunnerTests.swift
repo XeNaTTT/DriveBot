@@ -10,6 +10,8 @@ class RunnerTests: XCTestCase {
   @MainActor func testMiniatureScaleAndBuildingClearances() {
     XCTAssertEqual(RallyScale.metres(6.5), 0.05, accuracy: 0.00001)
     XCTAssertLessThan(RallyScale.metres(1.8), RallyScale.metres(2.1))
+    XCTAssertTrue(RallyDistrict.canReach([0.009,0,0], item: .zero))
+    XCTAssertFalse(RallyDistrict.canReach([0.011,0,0], item: .zero))
     let far = SIMD3<Float>(1,0,0)
     XCTAssertTrue(RallyDistrict.clearSite(.zero, player: far, car: far, occupied: []))
     XCTAssertFalse(RallyDistrict.clearSite(.zero, player: .zero, car: far, occupied: []))

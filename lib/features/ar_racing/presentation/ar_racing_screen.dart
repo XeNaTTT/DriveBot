@@ -92,6 +92,7 @@ class _GarageView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final model = caravanModels[selected];
+    double dragDistance = 0;
     final landscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
     return Container(
@@ -220,12 +221,24 @@ class _GarageView extends StatelessWidget {
                                 child: KeyedSubtree(
                                   key: ValueKey(model.id),
                                   child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onHorizontalDragStart: (_) =>
+                                        dragDistance = 0,
+                                    onHorizontalDragUpdate: (details) =>
+                                        dragDistance += details.delta.dx,
                                     onHorizontalDragEnd: (details) {
                                       final speed =
                                           details.primaryVelocity ?? 0;
-                                      if (speed.abs() > 80) {
+                                      if (dragDistance.abs() >= 32 ||
+                                          speed.abs() > 80) {
                                         onSelect(
-                                          (selected + (speed < 0 ? 1 : -1)) %
+                                          (selected +
+                                                  ((dragDistance.abs() >= 32
+                                                              ? dragDistance
+                                                              : speed) <
+                                                          0
+                                                      ? 1
+                                                      : -1)) %
                                               caravanModels.length,
                                         );
                                       }

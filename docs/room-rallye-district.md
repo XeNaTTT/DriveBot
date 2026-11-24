@@ -25,3 +25,5 @@ Export USDZ with embedded textures, metres and Y up in Blender 4.5. Export armat
 - codemagic-testflight.md records baseline and split-workflow timings.
 
 On a physical iPhone verify portrait and landscape gestures, visibility and grounding of every miniature, all four doorways, hand alignment during the walk cycle, reflections, sound, scene reconstruction on furniture, relocalization, boost distance, jump and landing, and sustained frame timing. Compare driving without upgrades with the installed reference. Simulator measurements cannot establish physical-device performance or art direction.
+
+The showroom gesture test in test/features/ar_racing/ar_racing_screen_test.dart verifies slow drags in both directions. Offline OpenUSD validation loaded all 12 packages, checked metres and Y-up axes, confirmed embedded PNG liveries on all three coachwork meshes and the pilot, and found 48 skeletal rotation samples. The Windows Flutter suite and Ruby contracts run separately from macOS XCTest and on-device checks.

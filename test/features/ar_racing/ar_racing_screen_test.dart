@@ -4,6 +4,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('swiping the showroom changes the selected race vehicle', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(theme: buildAppTheme(), home: const ArRacingScreen()),
+    );
+    await tester.tap(find.byKey(const Key('caravan-compact')));
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const ValueKey('compact')),
+      const Offset(-100, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('FAMILY CRUISER'), findsOneWidget);
+    await tester.drag(
+      find.byKey(const ValueKey('sport')),
+      const Offset(100, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('URBAN CAMPER'), findsOneWidget);
+  });
   testWidgets(
     'landscape garage shows every vehicle and start without scrolling',
     (tester) async {

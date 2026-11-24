@@ -68,6 +68,15 @@ final class RallyDistrict {
           }
         }
         guard supported else { continue }
+        let origin = p + SIMD3<Float>(0,0.014,0.006)
+        let blocked = [SIMD3<Float>(1,0,0),[-1,0,0],[0,0,1],[0,0,-1]].contains { direction in
+          let query = ARRaycastQuery(origin: origin, direction: direction,
+                                     allowing: .existingPlaneGeometry, alignment: .vertical)
+          guard let hit = view.session.raycast(query).first else { return false }
+          let wall = hit.worldTransform.columns.3
+          return simd_distance(origin, SIMD3(wall.x,wall.y,wall.z)) < 0.04
+        }
+        guard !blocked else { continue }
         let q = simd_quatf(angle: 0, axis: [0,1,0])
         guard view.scene.convexCast(convexShape: hull, fromPosition: p + [0,0.019,0.006],
           fromOrientation: q, toPosition: p + [0,0.017,0.006], toOrientation: q,
@@ -98,9 +107,13 @@ final class RallyDistrict {
     }
   }
 
+  static func canReach(_ p: SIMD3<Float>, item: SIMD3<Float>) -> Bool {
+    simd_distance(p, item) <= RallyScale.metres(1.3)
+  }
+
   func pickup(at p: SIMD3<Float>) -> RallyItem? {
     guard let inside, let item = anchors[inside].findEntity(named: "collectible"),
-          simd_distance(item.position(relativeTo: nil), p) <= RallyScale.metres(1.3) else { return nil }
+          Self.canReach(p, item: item.position(relativeTo: nil)) else { return nil }
     return RallyItem(rawValue: inside)
   }
 
