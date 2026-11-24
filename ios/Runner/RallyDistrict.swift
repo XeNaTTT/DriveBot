@@ -9,6 +9,8 @@ enum RallyScale {
 @preconcurrency @MainActor
 final class RallyDistrict {
   private var anchors: [AnchorEntity] = []
+  private var details: [(anchor: AnchorEntity, parts: [Entity], visible: Bool)] = []
+  private var lastLOD: TimeInterval = -.infinity
   private(set) var inside: Int?
   private var lastAttempt: TimeInterval = -.infinity
   private let hull = ShapeResource.generateBox(size: [0.066,0.029,0.069])
@@ -16,8 +18,21 @@ final class RallyDistrict {
   func reset() {
     for anchor in anchors { anchor.removeFromParent() }
     anchors.removeAll()
+    details.removeAll()
     inside = nil
     lastAttempt = -.infinity
+  }
+
+  func updateDetail(camera: SIMD3<Float>, time: TimeInterval) {
+    guard time - lastLOD > 0.35 else { return }
+    lastLOD = time
+    for index in details.indices {
+      let visible = simd_distance(details[index].anchor.position(relativeTo: nil), camera) < (details[index].visible ? 0.95 : 0.82)
+      if details[index].visible != visible {
+        for part in details[index].parts { part.isEnabled = visible }
+        details[index].visible = visible
+      }
+    }
   }
 
   static func clearSite(_ p: SIMD3<Float>, player: SIMD3<Float>, car: SIMD3<Float>,
@@ -30,6 +45,10 @@ final class RallyDistrict {
     let now = ProcessInfo.processInfo.systemUptime
     guard anchors.count < 4, now - lastAttempt > 0.6, plane.alignment == .horizontal,
           case .normal = view.session.currentFrame?.camera.trackingState else { return }
+    switch plane.classification {
+    case .table, .seat, .ceiling, .door, .window, .wall: return
+    default: break
+    }
     lastAttempt = now
     let floor = plane.transform * SIMD4(plane.center.x, plane.center.y, plane.center.z, 1)
     guard abs(floor.y - car.y) < 0.035 else { return }
@@ -63,6 +82,15 @@ final class RallyDistrict {
           display.position = [0,0.001,-0.008]
           anchor.addChild(display)
         }
+        var trim: [Entity] = []
+        func collectTrim(_ entity: Entity) {
+          if ["Seam","Sill","Mullion","Pull","Stock_shelving"].contains(where: { entity.name.hasPrefix($0) }) {
+            trim.append(entity)
+          }
+          for child in entity.children { collectTrim(child) }
+        }
+        collectTrim(model)
+        details.append((anchor,trim,true))
         view.scene.addAnchor(anchor)
         anchors.append(anchor)
         return

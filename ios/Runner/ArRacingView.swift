@@ -873,6 +873,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     displayLink = link
   }
   @MainActor private func frame(_ link: CADisplayLink) {
+    if phase == .ready { district.updateDetail(camera: arView.cameraTransform.translation, time: link.timestamp) }
     updatePlacementCandidate()
     guard phase == .ready, let pose = vehiclePose else {
       previousTime = 0
@@ -928,7 +929,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       self.lastSpeed = state.speedMetersPerSecond
       if wasStopped != (self.lastSpeed <= 0.01) { self.updateMessage() }
       self.pedals.observe(speed: state.speedMetersPerSecond, appliedBrake: state.appliedBrake)
-      self.speed.text = String(format: "%.2f m/s", state.speedMetersPerSecond)
+      self.speed.text = (self.inventory.wings ? "◇ " : "") + String(format: "%.2f m/s", state.speedMetersPerSecond)
       if self.inventory.boosting {
         let p = chassisTransform.columns.3
         self.inventory.sample([p.x,p.z], elapsed: Float(dt), speed: state.speedMetersPerSecond)
