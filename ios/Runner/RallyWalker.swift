@@ -16,12 +16,14 @@ enum RallyWalking {
   }
 }
 
-/// Procedural 18 mm figure. The root sits at the soles of the shoes.
+/// Animated pilot with a procedural fallback. The root sits at the soles of the shoes.
 final class RallyWalker {
   let root: Entity
   private let hips: Entity
   private var legs: [Entity] = []
   private var arms: [Entity] = []
+  private var pilot: Entity?
+  private var gait: AnimationPlaybackController?
   private var phase: Float = 0
 
   @MainActor init() {
@@ -29,6 +31,18 @@ final class RallyWalker {
     hips = Entity()
     root.addChild(hips)
     hips.position.y = 0.008
+    if let url = Bundle.main.url(forResource: "RallyPilot", withExtension: "usdz", subdirectory: "RallyAssets"),
+       let model = try? Entity.load(contentsOf: url) {
+      let bounds = model.visualBounds(relativeTo: model)
+      if bounds.extents.y > 0 {
+        let scale = (Float(1.8) / 130) / bounds.extents.y
+        model.scale = SIMD3(repeating: scale)
+        model.position.y = -bounds.min.y * scale
+        root.addChild(model)
+        pilot = model
+        return
+      }
+    }
     let denim = SimpleMaterial(color: UIColor(white: 0.13, alpha: 1), isMetallic: false)
     let jacket = SimpleMaterial(color: .systemTeal, isMetallic: false)
     let skin = SimpleMaterial(color: UIColor(red: 0.60, green: 0.37, blue: 0.25, alpha: 1), isMetallic: false)
@@ -60,6 +74,14 @@ final class RallyWalker {
 
   @MainActor func animate(dt: Float, velocity: SIMD3<Float>) {
     let speed = simd_length(velocity)
+    if let pilot {
+      if speed > 0 && gait == nil, let walk = pilot.availableAnimations.first {
+        gait = pilot.playAnimation(walk.repeat())
+      } else if speed == 0 {
+        gait?.stop()
+        gait = nil
+      }
+    }
     phase += dt * (speed > 0 ? speed * 620 : 2)
     let swing = speed > 0 ? sin(phase) * 0.45 : 0
     hips.position.y = 0.008 + abs(sin(phase)) * (speed > 0 ? 0.0003 : 0.00005)

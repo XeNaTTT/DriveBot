@@ -38,6 +38,7 @@ import UIKit
       ArRacingViewFactory(),
       withId: "drivebot/ar_racing_view"
     )
+    registrar.register(RallyShowroomFactory(), withId: "drivebot/rally_showroom")
     ArKitRuntimeController.shared.register(messenger: registrar.messenger())
   }
 }

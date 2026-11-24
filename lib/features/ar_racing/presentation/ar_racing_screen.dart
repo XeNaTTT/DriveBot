@@ -219,9 +219,40 @@ class _GarageView extends StatelessWidget {
                                 duration: const Duration(milliseconds: 220),
                                 child: KeyedSubtree(
                                   key: ValueKey(model.id),
-                                  child: CaravanArt(
-                                    model: model,
-                                    compact: landscape,
+                                  child: GestureDetector(
+                                    onHorizontalDragEnd: (details) {
+                                      final speed =
+                                          details.primaryVelocity ?? 0;
+                                      if (speed.abs() > 80) {
+                                        onSelect(
+                                          (selected + (speed < 0 ? 1 : -1)) %
+                                              caravanModels.length,
+                                        );
+                                      }
+                                    },
+                                    child:
+                                        !kIsWeb &&
+                                            defaultTargetPlatform ==
+                                                TargetPlatform.iOS
+                                        ? SizedBox(
+                                            width: landscape ? 160 : 250,
+                                            height: landscape ? 90 : 138,
+                                            child: IgnorePointer(
+                                              child: UiKitView(
+                                                viewType:
+                                                    'drivebot/rally_showroom',
+                                                creationParams: {
+                                                  'vehicleID': model.id,
+                                                },
+                                                creationParamsCodec:
+                                                    const StandardMessageCodec(),
+                                              ),
+                                            ),
+                                          )
+                                        : CaravanArt(
+                                            model: model,
+                                            compact: landscape,
+                                          ),
                                   ),
                                 ),
                               ),

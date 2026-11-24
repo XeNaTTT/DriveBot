@@ -90,6 +90,14 @@ struct RallyVehicleVisual {
       part("bumper guard", [0.31, 0.03, 0.012], [0, 0.008, 0.493], metal, bevel: 0.003)
     }
 
+    if let url = Bundle.main.url(forResource: profile, withExtension: "usdz", subdirectory: "RallyAssets"),
+       let body = try? Entity.load(contentsOf: url) {
+      for name in ["lower body", "hood", "cab", "camper shell"] {
+        root.findEntity(named: name)?.removeFromParent()
+      }
+      body.name = "camper shell"
+      root.addChild(body)
+    }
     let wheel = makeWheel(width: expedition ? 0.127 : 0.086, offroad: expedition)
     // Match Jolt's axle centres and tyre radius at the nominal 1.0 model length.
     let positions: [SIMD3<Float>] = [

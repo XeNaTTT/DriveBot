@@ -1,0 +1,6 @@
+RallyPilot.usdz is adapted from CesiumMan, copyright 2017 Cesium.
+Source https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CesiumMan
+Licensed under Creative Commons Attribution 4.0 International.
+https://creativecommons.org/licenses/by/4.0/
+Room Rallye replaced the original material and logo with a teal flight suit
+and converted the skinned mesh and walk animation to USDZ with Blender 4.5.

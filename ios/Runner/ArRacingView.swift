@@ -204,7 +204,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     root.addSubview(inputDiagnostics)
     style(resetButton, title: "Fahrzeug zurücksetzen")
     style(diagnosisButton, title: "Diagnose kopieren")
-    style(debugButton, title: "⚙︎")
+    style(debugButton, title: "")
+    debugButton.setImage(UIImage(systemName: "gearshape.fill"), for: .normal)
+    debugButton.accessibilityLabel = "Einstellungen"
     debugButton.accessibilityLabel = "Steuerung einstellen"
     style(scanButton, title: "Scan anzeigen")
     style(interaction, title: "Aussteigen")
