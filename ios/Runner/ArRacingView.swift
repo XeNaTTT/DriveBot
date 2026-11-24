@@ -65,6 +65,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private var mode: PlayMode = .driving
   private let interaction = UIButton(type: .system)
   private var avatar: RallyWalker?
+  private let district = RallyDistrict()
   @MainActor private lazy var walkingSurface = RallyWalkingSurface(view: arView)
   private var walkInput = SIMD2<Float>.zero
   private var outsideDoor = SIMD3<Float>.zero
@@ -345,12 +346,13 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     throttleButton.isHidden = !playing || mode != .driving
     brakeButton.isHidden = throttleButton.isHidden
     steeringPad.isHidden = !playing || (mode != .driving && mode != .onFoot)
-    interaction.isHidden = !playing || !(mode == .driving || (mode == .onFoot && nearDoor))
+    let shop = avatar.flatMap { district.entry(at: $0.root.position(relativeTo: nil)) }
+    interaction.isHidden = !playing || !(mode == .driving || (mode == .onFoot && (nearDoor || shop != nil || district.inside != nil)))
     interaction.isEnabled = mode == .onFoot || lastSpeed <= 0.01
     interaction.alpha = interaction.isEnabled ? 1 : 0.45
     for arrow in walkingArrows { arrow.isHidden = mode != .onFoot }
     steeringPad.accessibilityLabel = mode == .onFoot ? "Gehen" : "Lenken"
-    interaction.setTitle(mode == .onFoot ? "Einsteigen" : "Aussteigen", for: .normal)
+    interaction.setTitle(mode == .onFoot ? (district.inside != nil ? "Verlassen" : shop != nil ? "Interagieren" : "Einsteigen") : "Aussteigen", for: .normal)
     if mode != .driving { speed.text = "ZU FUSS" }
     else if phase == .ready && lastSpeed.isFinite { speed.text = String(format: "%.2f m/s", lastSpeed) }
     scanButton.isHidden = phase != .ready
@@ -396,7 +398,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       showPlacementFailure("Das Fahrzeugmodell enthält ungültige Geometrie.")
       return
     }
-    let uniformScale = Float(0.05) / modelLength
+    let uniformScale = RallyScale.metres(6.5) / modelLength
     visualRoot.scale = SIMD3(repeating: uniformScale)
     Self.logger.notice("[Placement] 05 visual model loaded")
 
@@ -467,6 +469,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
 
   @objc private func resetCar() {
+    district.reset()
     placementGeneration += 1
     avatar?.root.removeFromParent()
     avatar = nil
@@ -654,6 +657,11 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       message.text = "Neben der Fahrertür ist kein freier Boden erkannt."
       message.isHidden = false
     case .onFoot:
+      if let avatar, let shop = district.inside ?? district.entry(at: avatar.root.position(relativeTo: nil)) {
+        district.toggle(shop, walker: avatar.root)
+        updateMessage()
+        return
+      }
       guard nearDoor, let avatar else { return }
       releaseInputs()
       outsideDoor = avatar.root.position(relativeTo: nil)
@@ -688,14 +696,16 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     let camera = arView.cameraTransform.matrix.columns.0
     let velocity = RallyWalking.velocity(input: walkInput, cameraRight: [camera.x, camera.y, camera.z])
     let start = avatar.root.position(relativeTo: nil)
+    let previousShop = district.entry(at: start)
     let wasNear = nearDoor
     if dt > 0, simd_length(velocity) > 0.001,
       let next = walkingSurface.position(start + velocity * dt, from: start,
         vehiclePose: vehiclePose, hasSceneReconstruction: hasSceneReconstruction) {
+      guard district.permits(next) else { return }
       avatar.root.setPosition(next, relativeTo: nil)
       avatar.animate(dt: dt, velocity: velocity)
     } else { avatar.animate(dt: dt, velocity: .zero) }
-    if wasNear != nearDoor { updateMessage() }
+    if previousShop != district.entry(at: avatar.root.position(relativeTo: nil)) || wasNear != nearDoor { updateMessage() }
   }
 
   private func startDisplayLink() {
@@ -899,6 +909,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
         if carAnchor == nil && !trackingInterrupted && !physicsFailed { phase = .aiming }
         installPlaneCollider(plane)
         visualizeFloor(plane)
+        if phase == .ready, let car = vehiclePose?.position(relativeTo: nil) {
+          district.expand(on: plane, in: arView, player: avatar?.root.position(relativeTo: nil) ?? car, car: car)
+        }
       }
       if #available(iOS 13.4, *), let mesh = anchor as? ARMeshAnchor { schedule(mesh) }
     }

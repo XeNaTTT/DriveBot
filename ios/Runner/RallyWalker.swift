@@ -35,7 +35,7 @@ final class RallyWalker {
        let model = try? Entity.load(contentsOf: url) {
       let bounds = model.visualBounds(relativeTo: model)
       if bounds.extents.y > 0 {
-        let scale = (Float(1.8) / 130) / bounds.extents.y
+        let scale = RallyScale.metres(1.8) / bounds.extents.y
         model.scale = SIMD3(repeating: scale)
         model.position.y = -bounds.min.y * scale
         root.addChild(model)

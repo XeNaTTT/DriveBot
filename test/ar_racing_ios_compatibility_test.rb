@@ -81,7 +81,7 @@ class ArRacingIosCompatibilityTest < Minitest::Test
 
   def test_five_centimetre_hierarchy_is_bounds_normalized_once
     assert_includes SOURCE, 'let bounds = visualRoot.visualBounds(relativeTo: visualRoot)'
-    assert_includes SOURCE, 'let uniformScale = Float(0.05) / modelLength'
+    assert_includes SOURCE, 'let uniformScale = RallyScale.metres(6.5) / modelLength'
     assert_includes SOURCE, 'visualRoot.scale = SIMD3(repeating: uniformScale)'
     assert_equal 1, SOURCE.scan(/visualRoot\.scale =/).size
   end
