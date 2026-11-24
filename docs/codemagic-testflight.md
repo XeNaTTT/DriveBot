@@ -172,3 +172,13 @@ script records boot time, Xcode's build timing summary and test-only elapsed
 time in separate logs. Boot and build overlap, so use the Codemagic step
 wall time for comparisons. Compare successful runs on the same machine class
 and record cache state, total elapsed time and publish time separately.
+
+### Measured paired run on 24 November 2026
+
+| GitHub check | Sum of published Codemagic steps | GitHub elapsed including queue | Native build and test step |
+| --- | ---: | ---: | ---: |
+| [Previous combined TestFlight](https://github.com/XeNaTTT/DriveBot/runs/138271407718) | 28m 16s | 33m 13s | 14m 55s |
+| [Fast TestFlight](https://github.com/XeNaTTT/DriveBot/runs/138286284423) | 5m 34s | 40m 09s | omitted by design |
+| [Full Gameplay Regression](https://github.com/XeNaTTT/DriveBot/runs/138283783571) | 29m 56s | 34m 14s | 20m 49s |
+
+Fast saved 22m 42s of reported work (80%). Its queue-inclusive time increased by 6m 56s when both workflows shared capacity. The full native step increased by 5m 54s. The simulator test-without-building invocation took 4m 19.101s, including 33.161s in XCTest and 23.831s in the RealityKit vehicle visual test. The remaining 16m 30s of the full native step includes the test build and simulator preparation. Separate boot-only timing cannot be inferred from overlapping stages. These are single-run observations. Cache warmth, host load and queueing affect subsequent measurements.

@@ -463,6 +463,7 @@ static Profile ProfileNamed(NSString *name) {
   state.chassis = TransformValue(transform, -1);
   if (state.chassis == nil)
     return failure(kBridgeFailed, @"Chassis konnte nicht in skalare Bridge-Werte konvertiert werden.");
+  state.engineLimitRPM = static_cast<WheeledVehicleController *>(_vehicle->GetController())->GetEngine().mMaxRPM;
   state.speedMetersPerSecond = std::hypot(velocity.GetX(), velocity.GetZ());
   state.appliedThrottle = _throttle;
   state.appliedBrake = _brake;

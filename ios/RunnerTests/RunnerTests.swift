@@ -7,6 +7,74 @@ import XCTest
 @testable import Runner
 
 class RunnerTests: XCTestCase {
+  @MainActor func testMiniatureScaleAndBuildingClearances() {
+    XCTAssertEqual(RallyScale.metres(6.5), 0.05, accuracy: 0.00001)
+    XCTAssertLessThan(RallyScale.metres(1.8), RallyScale.metres(2.1))
+    let far = SIMD3<Float>(1,0,0)
+    XCTAssertTrue(RallyDistrict.clearSite(.zero, player: far, car: far, occupied: []))
+    XCTAssertFalse(RallyDistrict.clearSite(.zero, player: .zero, car: far, occupied: []))
+    XCTAssertFalse(RallyDistrict.clearSite(.zero, player: far, car: far, occupied: [[0.08,0,0]]))
+  }
+
+  func testBoostChangesEngineLimitAndRestoresItForEachVehicle() throws {
+    let world = DBJoltWorld()
+    for profile in ["compact","sport","offroad"] {
+      try world.prepareVehicle(at: .zero, heading: 0, profile: profile)
+      let baseline = world.step(0)
+      XCTAssertTrue(baseline.success)
+      XCTAssertGreaterThan(baseline.engineLimitRPM, 0)
+      world.setBoostEnabled(true)
+      XCTAssertEqual(world.step(0).engineLimitRPM, baseline.engineLimitRPM * 1.5)
+      world.setBoostEnabled(false)
+      XCTAssertEqual(world.step(0).engineLimitRPM, baseline.engineLimitRPM)
+    }
+  }
+
+  @MainActor func testBundledArtLoadsWithPositiveBounds() throws {
+    for name in ["compact","sport","offroad","RallyPilot","Shop0","Shop1","Shop2","Shop3","Item0","Item1","Item2","Item3"] {
+      let url = try XCTUnwrap(Bundle.main.url(forResource: name, withExtension: "usdz", subdirectory: "RallyAssets"))
+      let entity = try Entity.load(contentsOf: url)
+      XCTAssertGreaterThan(entity.visualBounds(relativeTo: entity).extents.y, 0, name)
+    }
+  }
+
+  func testTransportInstallConsumptionAndLanding() {
+    var bag = RallyInventory()
+    XCTAssertTrue(bag.pick(.nos))
+    XCTAssertFalse(bag.pick(.nos))
+    XCTAssertTrue(bag.pick(.wings))
+    XCTAssertEqual(bag.remaining, 0)
+    XCTAssertFalse(bag.shouldGlide(groundedWheels: 0))
+    bag.enterVehicle()
+    XCTAssertEqual(bag.remaining, 10)
+    XCTAssertTrue(bag.shouldGlide(groundedWheels: 0))
+    XCTAssertFalse(bag.shouldGlide(groundedWheels: 1))
+    bag.boosting = true
+    for step in 0...10 { bag.sample([Float(step) * 0.1,0], elapsed: 0.1, speed: 1) }
+    XCTAssertEqual(bag.remaining, 9, accuracy: 0.0001)
+    bag.sample([20,0], elapsed: 0.1, speed: 1)
+    XCTAssertEqual(bag.remaining, 9, accuracy: 0.0001)
+    bag.stopBoost()
+    bag.sample([30,0], elapsed: 0.1, speed: 1)
+    XCTAssertEqual(bag.remaining, 9, accuracy: 0.0001)
+    bag.boosting = true
+    for step in 0...100 { bag.sample([Float(step) * 0.1,0], elapsed: 0.1, speed: 1) }
+    XCTAssertFalse(bag.boosting)
+    bag.enterVehicle()
+    XCTAssertEqual(bag.remaining, 0)
+    XCTAssertTrue(bag.wings)
+  }
+
+  func testWalkingEquipmentSurvivesReentry() {
+    var bag = RallyInventory()
+    XCTAssertTrue(bag.pick(.sword))
+    XCTAssertTrue(bag.pick(.blaster))
+    bag.enterVehicle()
+    XCTAssertEqual(bag.held, .blaster)
+    bag.cycle()
+    XCTAssertEqual(bag.held, .sword)
+  }
+
   func testReverseRequiresReleasingBrakeAfterStandstillAndPressingAgain() {
     var pedals = RacingPedals()
     pedals.setGas(pressed: true)

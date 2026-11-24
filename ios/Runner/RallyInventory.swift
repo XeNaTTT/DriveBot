@@ -8,6 +8,19 @@ enum RallyItem: Int, CaseIterable {
   @MainActor func model() -> Entity? {
     guard let url = Bundle.main.url(forResource: "Item" + String(rawValue), withExtension: "usdz", subdirectory: "RallyAssets"),
           let model = try? Entity.load(contentsOf: url) else { return nil }
+    if self == .sword {
+      func illuminate(_ entity: Entity) {
+        if let blade = entity as? ModelEntity, entity.name.lowercased().contains("blade") {
+          var finish = PhysicallyBasedMaterial()
+          finish.baseColor = .init(tint: .cyan)
+          finish.emissiveColor = .init(color: .cyan)
+          finish.emissiveIntensity = 2.4
+          blade.model?.materials = [finish]
+        }
+        for child in entity.children { illuminate(child) }
+      }
+      illuminate(model)
+    }
     model.scale = SIMD3(repeating: RallyScale.factor)
     return model
   }
@@ -47,6 +60,8 @@ struct RallyInventory {
     remaining = max(0, remaining - distance)
     if remaining == 0 { spent = true; stopBoost() }
   }
+
+  func shouldGlide(groundedWheels: Int) -> Bool { wings && groundedWheels == 0 }
 
   mutating func cycle() {
     guard collected.contains(.sword), collected.contains(.blaster) else { return }

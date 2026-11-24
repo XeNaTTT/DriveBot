@@ -425,8 +425,11 @@ class _Stat extends StatelessWidget {
           borderRadius: BorderRadius.circular(2),
         ),
         alignment: Alignment.centerLeft,
-        child: FractionallySizedBox(
-          widthFactor: value / 100,
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(end: value / 100),
+          duration: const Duration(milliseconds: 320),
+          builder: (context, fraction, child) =>
+              FractionallySizedBox(widthFactor: fraction, child: child),
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: color,

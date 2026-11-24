@@ -23,6 +23,8 @@ final class RallyWalker {
   private var legs: [Entity] = []
   private var arms: [Entity] = []
   private var pilot: Entity?
+  private weak var skin: ModelEntity?
+  private var handChain: [Int] = []
   private var gait: AnimationPlaybackController?
   private var phase: Float = 0
 
@@ -40,6 +42,18 @@ final class RallyWalker {
         model.position.y = -bounds.min.y * scale
         root.addChild(model)
         pilot = model
+        func bind(_ entity: Entity) {
+          if let mesh = entity as? ModelEntity,
+             let hand = mesh.jointNames.first(where: { $0.hasSuffix("Skeleton_arm_joint_R__3_") }) {
+            let segments = hand.split(separator: "/")
+            handChain = segments.indices.compactMap { index in
+              mesh.jointNames.firstIndex(of: segments[...index].joined(separator: "/"))
+            }
+            skin = mesh
+          }
+          for child in entity.children { bind(child) }
+        }
+        bind(model)
         return
       }
     }
@@ -73,6 +87,13 @@ final class RallyWalker {
   }
 
   @MainActor func animate(dt: Float, velocity: SIMD3<Float>) {
+    if let skin, let held = root.findEntity(named: "held item"), !handChain.isEmpty {
+      let joints = skin.jointTransforms
+      var hand = matrix_identity_float4x4
+      for index in handChain where index < joints.count { hand = hand * joints[index].matrix }
+      let p = hand.columns.3
+      held.position = skin.convert(position: [p.x,p.y,p.z], to: root)
+    }
     let speed = simd_length(velocity)
     if let pilot {
       if speed > 0 && gait == nil, let walk = pilot.availableAnimations.first {

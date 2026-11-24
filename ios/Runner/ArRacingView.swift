@@ -76,7 +76,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private var stripes: Entity?
   private var plume: Entity?
   private let boostButton = UIButton(type: .system)
-  private let district = RallyDistrict()
+  private lazy var district = MainActor.assumeIsolated { RallyDistrict() }
   @MainActor private lazy var walkingSurface = RallyWalkingSurface(view: arView)
   private var walkInput = SIMD2<Float>.zero
   private var outsideDoor = SIMD3<Float>.zero
@@ -238,13 +238,13 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     throttleButton.setTitleColor(.black, for: .normal)
     style(brakeButton, title: "BREMSE")
     NSLayoutConstraint.activate([
-      equipmentButton.trailingAnchor.constraint(equalTo: boostButton.trailingAnchor),
-      equipmentButton.bottomAnchor.constraint(equalTo: boostButton.bottomAnchor),
+      equipmentButton.trailingAnchor.constraint(equalTo: throttleButton.trailingAnchor),
+      equipmentButton.bottomAnchor.constraint(equalTo: throttleButton.bottomAnchor),
       equipmentButton.widthAnchor.constraint(equalToConstant: 54), equipmentButton.heightAnchor.constraint(equalToConstant: 48),
       cycleButton.trailingAnchor.constraint(equalTo: equipmentButton.leadingAnchor, constant: -8),
       cycleButton.bottomAnchor.constraint(equalTo: equipmentButton.bottomAnchor),
       cycleButton.widthAnchor.constraint(equalToConstant: 48), cycleButton.heightAnchor.constraint(equalToConstant: 48),
-      boostButton.trailingAnchor.constraint(equalTo: root.safeAreaLayoutGuide.trailingAnchor, constant: -18),
+      boostButton.trailingAnchor.constraint(equalTo: interaction.leadingAnchor, constant: -8),
       boostButton.bottomAnchor.constraint(equalTo: throttleButton.topAnchor, constant: -8),
       boostButton.widthAnchor.constraint(equalToConstant: 105), boostButton.heightAnchor.constraint(equalToConstant: 44)
     ])
@@ -381,14 +381,22 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     equipmentButton.isHidden = !playing || mode != .onFoot || inventory.held != .blaster
     cycleButton.isHidden = !playing || mode != .onFoot || !inventory.collected.isSuperset(of: [.sword,.blaster])
     boostButton.isHidden = !playing || mode != .driving || inventory.remaining <= 0
+    speed.accessibilityValue = inventory.wings ? "Glider Wings installiert" : nil
+    if mode == .driving && inventory.wings {
+      speed.layer.borderWidth = 1
+      speed.layer.borderColor = UIColor.systemTeal.cgColor
+    } else { speed.layer.borderWidth = 0 }
     let pickup = avatar.flatMap { district.pickup(at: $0.root.position(relativeTo: nil)) }
     let shop = avatar.flatMap { district.entry(at: $0.root.position(relativeTo: nil)) }
-    interaction.isHidden = !playing || !(mode == .driving || (mode == .onFoot && (nearDoor || shop != nil || district.inside != nil)))
+    let canReturnToCar = mode == .onFoot && nearDoor
+    let canUseShop = mode == .onFoot && (shop != nil || district.inside != nil)
+    interaction.isHidden = !playing || !(mode == .driving || canReturnToCar || canUseShop)
     interaction.isEnabled = mode == .onFoot || lastSpeed <= 0.01
     interaction.alpha = interaction.isEnabled ? 1 : 0.45
     for arrow in walkingArrows { arrow.isHidden = mode != .onFoot }
     steeringPad.accessibilityLabel = mode == .onFoot ? "Gehen" : "Lenken"
     interaction.setTitle(mode == .onFoot ? (pickup != nil ? "Aufnehmen" : district.inside != nil ? "Verlassen" : shop != nil ? "Interagieren" : "Einsteigen") : "Aussteigen", for: .normal)
+    interaction.setImage(pickup.flatMap { UIImage(systemName: $0.symbol) }, for: .normal)
     if mode != .driving { speed.text = "ZU FUSS" }
     else if phase == .ready && lastSpeed.isFinite { speed.text = String(format: "%.2f m/s", lastSpeed) }
     scanButton.isHidden = phase != .ready
@@ -909,7 +917,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       }
       self.applyVehicleTransforms(state, chassisTransform: chassisTransform, pose: pose,
                                   visualRoot: visualRoot)
-      let airborne = self.inventory.wings && state.groundedWheelCount == 0
+      let airborne = self.inventory.shouldGlide(groundedWheels: state.groundedWheelCount)
       if airborne != self.deployed, let wing = self.wingModel {
         self.deployed = airborne
         var transform = wing.transform

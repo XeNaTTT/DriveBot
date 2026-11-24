@@ -20,6 +20,12 @@ final class RallyDistrict {
     lastAttempt = -.infinity
   }
 
+  static func clearSite(_ p: SIMD3<Float>, player: SIMD3<Float>, car: SIMD3<Float>,
+                        occupied: [SIMD3<Float>]) -> Bool {
+    simd_distance(p, player) > 0.09 && simd_distance(p, car) > 0.09 &&
+      occupied.allSatisfy { simd_distance($0, p) > 0.12 }
+  }
+
   func expand(on plane: ARPlaneAnchor, in view: ARView, player: SIMD3<Float>, car: SIMD3<Float>) {
     let now = ProcessInfo.processInfo.systemUptime
     guard anchors.count < 4, now - lastAttempt > 0.6, plane.alignment == .horizontal,
@@ -32,8 +38,8 @@ final class RallyDistrict {
         let point = plane.transform * SIMD4(plane.center.x + x * plane.extent.x, plane.center.y,
                                              plane.center.z + z * plane.extent.z, 1)
         let p = SIMD3(point.x, point.y, point.z)
-        guard simd_distance(p, player) > 0.09, simd_distance(p, car) > 0.09,
-              anchors.allSatisfy({ simd_distance($0.position(relativeTo: nil), p) > 0.12 }) else { continue }
+        let occupied = anchors.map { $0.position(relativeTo: nil) }
+        guard Self.clearSite(p, player: player, car: car, occupied: occupied) else { continue }
         let supported = [-0.035,0.035].allSatisfy { (dx: Float) in
           [-0.027,0.045].allSatisfy { (dz: Float) in
             let query = ARRaycastQuery(origin: p + SIMD3(dx,0.05,dz), direction: [0,-1,0],
@@ -83,6 +89,11 @@ final class RallyDistrict {
   func toggle(_ index: Int, walker: Entity) {
     let leaving = inside != nil
     anchors[index].findEntity(named: "Roof")?.isEnabled = leaving
+    if let door = anchors[index].findEntity(named: "EntryDoor") {
+      var open = door.transform
+      open.translation.x = leaving ? -0.48 : -1.45
+      door.move(to: open, relativeTo: door.parent, duration: 0.18)
+    }
     walker.setPosition(leaving ? doorway(index) : anchors[index].position(relativeTo: nil) + [0,0,0.012], relativeTo: nil)
     inside = leaving ? nil : index
   }
