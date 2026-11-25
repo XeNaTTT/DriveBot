@@ -50,7 +50,11 @@ class RunnerTests: XCTestCase {
 
   @MainActor func testEntranceRangeUsesFrontAndMatchingFloor() {
     XCTAssertTrue(RallyDistrict.nearEntrance([0,0,RallyScale.metres(2)]))
-    XCTAssertFalse(RallyDistrict.nearEntrance([0,0,RallyScale.metres(4)]))
+    for side in [-1, 1] as [Float] {
+      XCTAssertTrue(RallyDistrict.nearEntrance([side * RallyScale.metres(4.5), 0, RallyScale.metres(5)]))
+      XCTAssertFalse(RallyDistrict.nearEntrance([side * RallyScale.metres(4.6), 0, 0]))
+    }
+    XCTAssertFalse(RallyDistrict.nearEntrance([0, 0, RallyScale.metres(5.1)]))
     XCTAssertFalse(RallyDistrict.nearEntrance([0,0,-0.01]))
     XCTAssertFalse(RallyDistrict.nearEntrance([0,0.02,0]))
   }

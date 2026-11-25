@@ -127,9 +127,10 @@ final class RallyDistrict {
   }
 
   static func nearEntrance(_ local: SIMD3<Float>) -> Bool {
-    let radius = RallyScale.metres(3.4)
-    return abs(local.y) < RallyScale.metres(1) && local.z >= 0
-      && simd_length(SIMD2(local.x,local.z)) <= radius
+    let halfWidth = RallyScale.metres(4.5)
+    let depth = RallyScale.metres(5)
+    return abs(local.y) < RallyScale.metres(1) && abs(local.x) <= halfWidth
+      && (0...depth).contains(local.z)
   }
 
   func entry(at p: SIMD3<Float>) -> Int? {
