@@ -18,6 +18,18 @@ class ArRacingIosCompatibilityTest < Minitest::Test
     assert_includes cancellation, 'avatar.root.isEnabled = true'
   end
 
+  def test_firing_is_a_passive_hud_action
+    fire = SOURCE.split('func firePulse()', 2).fetch(1).split('@MainActor @objc private func', 2).first
+    assert_includes fire, 'pulseEffects.emit'
+    refute_match(/walkInput\s*=|mode\s*=(?!=)|releaseInputs|setPaused|playAnimation/, fire)
+    assert_includes SOURCE, 'equipmentButton.isExclusiveTouch = false'
+    assert_includes SOURCE, 'steeringPad.isExclusiveTouch = false'
+    fx = File.read(File.expand_path('../ios/Runner/RallyPulseEffects.swift', __dir__))
+    assert_includes fx, 'alignment: .vertical'
+    assert_includes fx, 'plane.classification == .wall'
+    refute_match(/cameraTransform|\.camera\b|CollisionComponent|PhysicsBodyComponent/, fx)
+  end
+
   def test_directional_indicator_geometry
     Dir.mktmpdir do |directory|
       binary = File.join(directory, 'indicator_test' + RbConfig::CONFIG.fetch('EXEEXT', ''))

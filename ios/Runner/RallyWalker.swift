@@ -7,6 +7,12 @@ enum RallyWalking {
     localX < -0.012 && distance < 0.032
   }
 
+  static func horizontalRight(_ current: SIMD3<Float>, previous: SIMD3<Float>) -> SIMD3<Float> {
+    let flat = SIMD3(current.x, 0, current.z)
+    let length = simd_length(flat)
+    return length.isFinite && length > 0.1 ? flat / length : previous
+  }
+
   static func velocity(input: SIMD2<Float>, cameraRight: SIMD3<Float>) -> SIMD3<Float> {
     let horizontal = SIMD3(cameraRight.x, 0, cameraRight.z)
     guard simd_length(horizontal) > 0.1 else { return .zero }

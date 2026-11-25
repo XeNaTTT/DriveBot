@@ -363,6 +363,25 @@ class RunnerTests: XCTestCase {
     XCTAssertGreaterThan(try XCTUnwrap(settled.chassis).positionY, 0)
   }
 
+  @MainActor func testRepeatedPulsesPreserveWalkingAndDoorEligibility() throws {
+    let effects = RallyPulseEffects()
+    let stick = SIMD2<Float>(0.3,-0.8)
+    let right = SIMD3<Float>(1,0,0)
+    let walking = RallyWalking.velocity(input: stick, cameraRight: right)
+    XCTAssertGreaterThan(simd_length(walking),0)
+    for (time, accepted) in [(1.0,true),(1.01,false),(1.2,true),(1.4,true)] {
+      XCTAssertEqual(effects.acceptShot(at: time), accepted)
+      let retained = RallyWalking.horizontalRight([0,1,0], previous: right)
+      XCTAssertEqual(RallyWalking.velocity(input: stick, cameraRight: retained), walking)
+    }
+    XCTAssertTrue(RallyWalking.canEnter(distance: 0.02, localX: -0.023))
+    let heading = try XCTUnwrap(RallyPulseEffects.heading([3,0,4]))
+    XCTAssertEqual(heading.y, 0)
+    XCTAssertEqual(RallyPulseEffects.heading([3,8,4]),heading)
+    XCTAssertEqual(RallyPulseEffects.heading([3,-12,4]),heading)
+    XCTAssertNil(RallyPulseEffects.heading([0,1,0]))
+  }
+
   func testWalkerUsesCameraAxesAndDoorSide() {
     let forward = RallyWalking.velocity(input: [0,-1], cameraRight: [0,0,1])
     XCTAssertEqual(forward.x, 0.026, accuracy: 0.0001)

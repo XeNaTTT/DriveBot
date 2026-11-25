@@ -74,7 +74,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private var inventory = RallyInventory()
   private let equipmentButton = UIButton(type: .system)
   private let cycleButton = UIButton(type: .system)
-  private var marks: [AnchorEntity] = []
+  private lazy var pulseEffects = MainActor.assumeIsolated { RallyPulseEffects() }
+  private var walkingRight = SIMD3<Float>(1,0,0)
   private var wingModel: Entity?
   private var deployed = false
   private var sounds: [String: AVAudioPlayer] = [:]
@@ -227,6 +228,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     debugButton.setImage(UIImage(systemName: "gearshape.fill"), for: .normal)
     debugButton.accessibilityLabel = "Steuerung einstellen"
     style(scanButton, title: "Scan anzeigen")
+    root.isMultipleTouchEnabled = true
+    steeringPad.isExclusiveTouch = false
+    equipmentButton.isExclusiveTouch = false
     style(equipmentButton, title: "")
     equipmentButton.setImage(UIImage(systemName: "scope"), for: .normal)
     equipmentButton.accessibilityLabel = "Energieimpuls"
@@ -528,8 +532,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
 
   @objc private func resetCar() {
-    for mark in marks { mark.removeFromParent() }
-    marks.removeAll()
+    pulseEffects.reset()
+
     wingModel = nil
     stripes = nil
     plume = nil
@@ -747,28 +751,18 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
 
   @MainActor @objc private func firePulse() {
-    guard mode == .onFoot, inventory.held == .blaster, phase == .ready, settingsPanel.isHidden else { return }
+    guard mode == .onFoot, inventory.held == .blaster, phase == .ready, settingsPanel.isHidden,
+          let avatar, let prop = avatar.root.findEntity(named: "held item"),
+          let stage = carAnchor, pulseEffects.acceptShot(at: CACurrentMediaTime()) else { return }
+    let emitter = prop.findEntity(named: "Silhouette") ?? prop
+    let muzzle = emitter.visualBounds(relativeTo: prop)
+    let origin = prop.convert(position: [muzzle.center.x, muzzle.center.y, muzzle.max.z], to: nil)
+    let facing = avatar.root.transformMatrix(relativeTo: nil).columns.2
+    guard let heading = RallyPulseEffects.heading([facing.x,facing.y,facing.z]),
+          [origin.x,origin.y,origin.z].allSatisfy({ $0.isFinite }) else { return }
     play("pulse")
-    if let hand = avatar?.root.findEntity(named: "held item") {
-      let flash = ModelEntity(mesh: .generateSphere(radius: 0.0016), materials: [UnlitMaterial(color: .cyan)])
-      avatar?.root.addChild(flash)
-      flash.position = hand.position(relativeTo: avatar?.root) + [0,0.001,0.002]
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { flash.removeFromParent() }
-    }
-    let center = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
-    guard let hit = arView.raycast(from: center, allowing: .existingPlaneGeometry, alignment: .any).first,
-          hit.anchor is ARPlaneAnchor else { return }
-    let anchor = AnchorEntity(world: hit.worldTransform)
-    let spot = ModelEntity(mesh: .generateSphere(radius: 0.0018), materials: [UnlitMaterial(color: .systemTeal)])
-    spot.scale.y = 0.12
-    spot.position.y = 0.00035
-    anchor.addChild(spot)
-    arView.scene.addAnchor(anchor)
-    marks.append(anchor)
-    if marks.count > 30 { marks.removeFirst().removeFromParent() }
-    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    pulseEffects.emit(from: origin, heading: heading, stage: stage, session: arView.session)
   }
-
   @MainActor @objc private func toggleBoost() {
     guard phase == .ready, mode == .driving, inventory.remaining > 0 else { return }
     if inventory.boosting { inventory.stopBoost() } else { inventory.boosting = true }
@@ -898,8 +892,14 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       updateMessage()
       return
     }
-    let camera = arView.cameraTransform.matrix.columns.0
-    let velocity = RallyWalking.velocity(input: walkInput, cameraRight: [camera.x, camera.y, camera.z])
+    // ARKit's raw camera X axis is sensor-oriented. In landscape it can
+    // become vertical, leaving the walking controller with no horizontal axis.
+    if let camera = arView.session.currentFrame?.camera,
+       let orientation = root.window?.windowScene?.interfaceOrientation {
+      let right = camera.viewMatrix(for: orientation).inverse.columns.0
+      walkingRight = RallyWalking.horizontalRight([right.x,right.y,right.z], previous: walkingRight)
+    }
+    let velocity = RallyWalking.velocity(input: walkInput, cameraRight: walkingRight)
     let start = avatar.root.position(relativeTo: nil)
 
 
