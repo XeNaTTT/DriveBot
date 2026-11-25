@@ -1,4 +1,5 @@
 require 'minitest/autorun'
+require 'tmpdir'
 
 class ArRacingIosCompatibilityTest < Minitest::Test
   SOURCE = File.read(File.expand_path('../ios/Runner/ArRacingView.swift', __dir__))
@@ -15,6 +16,15 @@ class ArRacingIosCompatibilityTest < Minitest::Test
     cancellation = SOURCE.split('func interrupted()', 2).last.split('private var door:', 2).first
     assert_includes cancellation, 'avatar.root.setPosition(visit.start, relativeTo: nil)'
     assert_includes cancellation, 'avatar.root.isEnabled = true'
+  end
+
+  def test_directional_indicator_geometry
+    Dir.mktmpdir do |directory|
+      binary = File.join(directory, 'indicator_test' + RbConfig::CONFIG.fetch('EXEEXT', ''))
+      source = File.join(__dir__, 'rally_indicator_math_test.c')
+      assert system(ENV.fetch('CC', 'clang'), '-std=c11', '-Wall', '-Werror', source, '-o', binary)
+      assert system(binary)
+    end
   end
 
   def test_wheels_use_ios_15_mesh_generation

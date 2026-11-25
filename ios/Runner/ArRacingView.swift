@@ -49,6 +49,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private let steeringKnob = UIView()
   private let throttleButton = UIButton(type: .system)
   private let brakeButton = UIButton(type: .system)
+  @MainActor private lazy var directionHUD = RallyDirectionHUD(root: root)
+  private var carModelCenter = SIMD3<Float>.zero
+  private var carRadius: Float = 0
   private var carAnchor: AnchorEntity?
   private var vehiclePose: Entity?
   private var vehicleVisualRoot: Entity?
@@ -450,6 +453,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     }
     let uniformScale = RallyScale.metres(6.5) / modelLength
     visualRoot.scale = SIMD3(repeating: uniformScale)
+    carModelCenter = bounds.center
+    carRadius = simd_length(bounds.extents) * uniformScale / 2
     Self.logger.notice("[Placement] 05 visual model loaded")
 
     let anchor = AnchorEntity(world: p)
@@ -918,6 +923,21 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     displayLink = link
   }
   @MainActor private func frame(_ link: CADisplayLink) {
+    if phase == .ready, settingsPanel.isHidden, let visual = vehicleVisualRoot,
+       let camera = arView.session.currentFrame?.camera, case .normal = camera.trackingState,
+       let orientation = root.window?.windowScene?.interfaceOrientation {
+      let height = RallyScale.metres(1.8)
+      let walker = avatar.flatMap { model -> SIMD3<Float>? in
+        guard rrTrackWalker(mode == .driving, true, model.root.isEnabled) else { return nil }
+        return model.root.convert(position: [0,height/2,0], to: nil)
+      }
+      directionHUD.update(root: root, camera: camera, orientation: orientation,
+        vehicle: visual.convert(position: carModelCenter, to: nil), vehicleRadius: carRadius,
+        walker: walker, walkerRadius: height * 0.56,
+        avoiding: [resetButton, diagnosisButton, debugButton, scanButton, interaction,
+                   throttleButton, brakeButton, boostButton, equipmentButton, cycleButton,
+                   steeringPad, speed, message, inputDiagnostics])
+    } else { directionHUD.hide() }
     if phase == .ready, let pose = vehiclePose {
       let camera = arView.cameraTransform.translation
       district.updateDetail(camera: camera, time: link.timestamp)
@@ -1013,6 +1033,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     physicsFailed = true
     releaseInputs()
     physics.setPaused(true)
+    MainActor.assumeIsolated { directionHUD.hide() }
     displayLink?.isPaused = true
     phase = .interrupted
     let failure = error as? PhysicsFailure

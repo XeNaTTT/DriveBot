@@ -397,14 +397,13 @@ class _SunsetBackdrop extends StatelessWidget {
 }
 
 class _ArtCrop extends StatelessWidget {
-  const _ArtCrop(this.region, {this.alignment = Alignment.center});
+  const _ArtCrop(this.region);
   final Rect region;
-  final Alignment alignment;
+
   @override
   Widget build(BuildContext context) => ClipRect(
     child: FittedBox(
       fit: BoxFit.cover,
-      alignment: alignment,
       child: SizedBox(
         width: region.width,
         height: region.height,

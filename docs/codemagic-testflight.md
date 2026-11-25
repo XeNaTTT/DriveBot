@@ -182,3 +182,9 @@ and record cache state, total elapsed time and publish time separately.
 | [Full Gameplay Regression](https://github.com/XeNaTTT/DriveBot/runs/138283783571) | 29m 56s | 34m 14s | 20m 49s |
 
 Fast saved 22m 42s of reported work (80%). Its queue-inclusive time increased by 6m 56s when both workflows shared capacity. The full native step increased by 5m 54s. The simulator test-without-building invocation took 4m 19.101s, including 33.161s in XCTest and 23.831s in the RealityKit vehicle visual test. The remaining 16m 30s of the full native step includes the test build and simulator preparation. Separate boot-only timing cannot be inferred from overlapping stages. These are single-run observations. Cache warmth, host load and queueing affect subsequent measurements.
+
+### Flutter analyzer and HUD regression checks
+
+The successful Fast TestFlight build at e5995a1 and the failing menu revision both pin Flutter 3.50.1 stable and Xcode 27.2. The failing analysis produced 30 informational Material deprecation notices and one fatal warning. Removing the unused optional alignment argument from the private artwork crop widget restores the default centered FittedBox alignment. Both workflows still treat analyzer warnings and errors as failures. Flutter documents the standalone Material migration separately: https://docs.flutter.dev/release/breaking-changes/material-ui-and-cupertino-ui.
+
+The directional HUD uses the current ARKit camera matrices, orientation and viewport on the existing display link. Its portable C geometry suite runs through the Ruby integration checks in Full Gameplay Regression. It requires a C11 compiler (clang by default or set CC). Fast TestFlight retains its existing checks.
