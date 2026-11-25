@@ -94,6 +94,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private lazy var settingsPanel = MainActor.assumeIsolated {
     RallySteeringPanel(controls: controls) { [weak self] in self?.toggleDebug() }
   }
+  private var meshRevisions: [UUID: UUID] = [:]
   private var meshWork: [UUID: DispatchWorkItem] = [:]
   private let meshQueue = DispatchQueue(label: "de.drivebot.mesh", qos: .utility)
   private var debugVisible = false
@@ -1133,6 +1134,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       }
       meshWork[anchor.identifier]?.cancel()
       meshWork.removeValue(forKey: anchor.identifier)
+      meshRevisions.removeValue(forKey: anchor.identifier)
       physics.removeStaticMesh(anchor.identifier)
       debugEntities.removeValue(forKey: anchor.identifier)?.removeFromParent()
       floorEntities.removeValue(forKey: anchor.identifier)?.removeFromParent()
@@ -1199,60 +1201,26 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
                          heading: heading, identifier: plane.identifier)
   }
   @available(iOS 13.4, *) private func schedule(_ anchor: ARMeshAnchor) {
-    meshWork[anchor.identifier]?.cancel()
-    let geometry = anchor.geometry
-    let transform = anchor.transform
     let id = anchor.identifier
+    meshWork.removeValue(forKey: id)?.cancel()
+    let revision = UUID()
+    meshRevisions[id] = revision
+    guard let snapshot = RallyMeshSnapshot(anchor.geometry) else { return }
+    let transform = anchor.transform
     let item = DispatchWorkItem { [weak self] in
-      var vertices: [SIMD3<Float>] = []
-      vertices.reserveCapacity(geometry.vertices.count)
-      for i in 0..<geometry.vertices.count {
-        let p = geometry.vertex(at: i)
-        let world = transform * SIMD4(p.x, p.y, p.z, 1)
-        vertices.append([world.x, world.y, world.z])
+      guard let (vertices, indices) = snapshot.decode(transform: transform) else { return }
+      DispatchQueue.main.async { [weak self] in
+        guard let self, self.meshRevisions[id] == revision else { return }
+        self.meshWork.removeValue(forKey: id)
+        self.replaceCollider(id: id, vertices: vertices, indices: indices)
       }
-      var indices: [UInt32] = []
-      indices.reserveCapacity(geometry.faces.count * 3)
-      let faces: ARGeometryElement = geometry.faces
-      let indicesPerFace: Int = faces.indexCountPerPrimitive
-      guard faces.primitiveType == .triangle, indicesPerFace == 3,
-        let indicesPerFace32 = UInt32(exactly: indicesPerFace),
-        let vertexCount32 = UInt32(exactly: geometry.vertices.count)
-      else { return }
-
-      for faceIndex in 0..<faces.count {
-        // Plane anchors already provide the floor collider. Classification is
-        // optional, so an absent/unknown value must not discard valid geometry.
-        if geometry.classification(at: faceIndex) == .floor { continue }
-        guard let faceIndex32 = UInt32(exactly: faceIndex) else { continue }
-
-        var triangleIndices: [UInt32] = []
-        triangleIndices.reserveCapacity(indicesPerFace)
-        for cornerIndex in UInt32(0)..<indicesPerFace32 {
-          guard let vertexIndex = geometry.vertexIndex(
-            of: faceIndex32, corner: cornerIndex),
-            vertexIndex < vertexCount32
-          else {
-            triangleIndices.removeAll()
-            break
-          }
-          triangleIndices.append(vertexIndex)
-        }
-        indices.append(contentsOf: triangleIndices)
-      }
-      self?.replaceCollider(id: id, vertices: vertices, indices: indices)
     }
     meshWork[id] = item
     meshQueue.asyncAfter(deadline: .now() + 0.35, execute: item)
   }
+
   private func replaceCollider(id: UUID, vertices: [SIMD3<Float>], indices: [UInt32]) {
     guard !vertices.isEmpty, !indices.isEmpty else { return }
-    if !Thread.isMainThread {
-      DispatchQueue.main.async {
-        self.replaceCollider(id: id, vertices: vertices, indices: indices)
-      }
-      return
-    }
     let vertexData = vertices.withUnsafeBytes { Data($0) }
     let indexData = indices.withUnsafeBytes { Data($0) }
     physics.replaceStaticMesh(id, vertices: vertexData, indices: indexData)
@@ -1468,55 +1436,93 @@ private final class SerializedJoltWorld {
   }
 }
 
-@available(iOS 13.4, *) extension ARMeshGeometry {
-  fileprivate func vertex(at i: Int) -> SIMD3<Float> {
-    let p = vertices.buffer.contents().advanced(by: vertices.offset + i * vertices.stride)
-    return p.assumingMemoryBound(to: SIMD3<Float>.self).pointee
-  }
-  fileprivate func vertexIndex(of face: UInt32, corner: UInt32) -> UInt32? {
-    let faces: ARGeometryElement = self.faces
-    guard let faceIndex = Int(exactly: face), let cornerIndex = Int(exactly: corner),
-      faceIndex < faces.count, cornerIndex < faces.indexCountPerPrimitive,
-      faces.bytesPerIndex == MemoryLayout<UInt16>.size
-        || faces.bytesPerIndex == MemoryLayout<UInt32>.size
-    else { return nil }
+// Capture only validated byte ranges before dispatching work off the session callback.
+struct RallyMeshSnapshot {
+  let vertices: Data
+  let vertexCount: Int
+  let stride: Int
+  let faces: Data
+  let indexWidth: Int
+  let classes: Data?
+  let classStride: Int
+  let classCount: Int
 
-    let (primitiveOffset, primitiveOverflow) = faceIndex.multipliedReportingOverflow(
-      by: faces.indexCountPerPrimitive)
-    let (flatIndex, indexOverflow) = primitiveOffset.addingReportingOverflow(cornerIndex)
-    let (byteOffset, byteOffsetOverflow) = flatIndex.multipliedReportingOverflow(
-      by: faces.bytesPerIndex)
-    let (bufferEnd, bufferEndOverflow) = byteOffset.addingReportingOverflow(faces.bytesPerIndex)
-    guard !primitiveOverflow, !indexOverflow, !byteOffsetOverflow, !bufferEndOverflow,
-      byteOffset >= 0, bufferEnd <= faces.buffer.length
-    else { return nil }
-
-    let pointer = faces.buffer.contents().advanced(by: byteOffset)
-    if faces.bytesPerIndex == MemoryLayout<UInt16>.size {
-      return UInt32(pointer.load(as: UInt16.self))
+  init?(_ mesh: ARMeshGeometry) {
+    let source = mesh.vertices
+    let triangles = mesh.faces
+    let packedSize = 3 * MemoryLayout<Float>.size
+    guard source.format == .float3,
+          let v = Self.copy(source, width: packedSize),
+          triangles.primitiveType == .triangle, triangles.indexCountPerPrimitive == 3,
+          [2,4].contains(triangles.bytesPerIndex), triangles.count > 0,
+          triangles.count <= triangles.buffer.length / (3 * triangles.bytesPerIndex),
+          UInt32(exactly: source.count) != nil else { return nil }
+    vertices = v
+    vertexCount = source.count
+    stride = source.stride
+    indexWidth = triangles.bytesPerIndex
+    faces = Data(bytes: triangles.buffer.contents(), count: triangles.count * 3 * triangles.bytesPerIndex)
+    if let c = mesh.classification, c.format == .uchar {
+      classes = Self.copy(c, width: 1)
+      classStride = c.stride
+      classCount = c.count
+    } else {
+      classes = nil
+      classStride = 0
+      classCount = 0
     }
-    return pointer.load(as: UInt32.self)
   }
 
-  fileprivate func classification(at face: Int) -> ARMeshClassification {
-    guard face >= 0, let classifications = classification,
-      face < faces.count, face < classifications.count,
-      classifications.format == .uchar, classifications.offset >= 0,
-      classifications.stride > 0
-    else { return .none }
+  private static func copy(_ source: ARGeometrySource, width: Int) -> Data? {
+    let length = source.buffer.length
+    guard source.count > 0, source.offset >= 0, source.stride >= width,
+          source.offset <= length, width <= length - source.offset,
+          source.count - 1 <= (length - source.offset - width) / source.stride else { return nil }
+    return Data(bytes: source.buffer.contents().advanced(by: source.offset),
+                count: (source.count - 1) * source.stride + width)
+  }
 
-    let (faceOffset, overflow) = face.multipliedReportingOverflow(by: classifications.stride)
-    guard !overflow else { return .none }
-    let (byteOffset, additionOverflow) = classifications.offset.addingReportingOverflow(faceOffset)
-    guard !additionOverflow, byteOffset >= 0, byteOffset < classifications.buffer.length else {
-      return .none
+  // ARKit packs float3 into twelve bytes. Swift SIMD3<Float> occupies sixteen.
+  static func packedVertex(_ bytes: UnsafeRawBufferPointer, offset: Int) -> SIMD3<Float> {
+    SIMD3(bytes.loadUnaligned(fromByteOffset: offset, as: Float.self),
+          bytes.loadUnaligned(fromByteOffset: offset + 4, as: Float.self),
+          bytes.loadUnaligned(fromByteOffset: offset + 8, as: Float.self))
+  }
+
+  func decode(transform: simd_float4x4) -> ([SIMD3<Float>], [UInt32])? {
+    var points: [SIMD3<Float>] = []
+    points.reserveCapacity(vertexCount)
+    let valid = vertices.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) -> Bool in
+      for i in 0..<vertexCount {
+        let offset = i * stride
+        let p = transform * SIMD4(Self.packedVertex(bytes, offset: offset), 1)
+        guard p.x.isFinite, p.y.isFinite, p.z.isFinite else { return false }
+        points.append([p.x,p.y,p.z])
+      }
+      return true
     }
-
-    let rawValue = classifications.buffer.contents().advanced(by: byteOffset).load(as: UInt8.self)
-    return ARMeshClassification(rawValue: Int(rawValue)) ?? .none
+    guard valid else { return nil }
+    var indices: [UInt32] = []
+    indices.reserveCapacity(faces.count / indexWidth)
+    faces.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
+      for face in 0..<(bytes.count / (3 * indexWidth)) {
+        if let classes, face < classCount,
+           Int(classes[face * classStride]) == ARMeshClassification.floor.rawValue { continue }
+        func index(_ corner: Int) -> UInt32 {
+          let offset = (3 * face + corner) * indexWidth
+          return indexWidth == 2 ? UInt32(bytes.loadUnaligned(fromByteOffset: offset, as: UInt16.self))
+                                 : bytes.loadUnaligned(fromByteOffset: offset, as: UInt32.self)
+        }
+        let a = index(0), b = index(1), c = index(2)
+        guard a < vertexCount, b < vertexCount, c < vertexCount else { continue }
+        indices.append(a)
+        indices.append(b)
+        indices.append(c)
+      }
+    }
+    return (points, indices)
   }
 }
-
 enum SteeringInput {
   static let deadZone = sin(3.0 * .pi / 180.0)
 

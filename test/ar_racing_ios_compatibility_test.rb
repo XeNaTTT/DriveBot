@@ -65,23 +65,22 @@ class ArRacingIosCompatibilityTest < Minitest::Test
   end
 
   def test_mesh_classification_reads_the_optional_source_safely
-    assert_includes SOURCE, 'let classifications = classification'
-    assert_includes SOURCE, 'classifications.format == .uchar'
-    assert_includes SOURCE, 'byteOffset < classifications.buffer.length'
-    assert_includes SOURCE, 'ARMeshClassification(rawValue: Int(rawValue)) ?? .none'
+    assert_includes SOURCE, 'if let c = mesh.classification, c.format == .uchar'
+    assert_includes SOURCE, 'Self.copy(c, width: 1)'
+    assert_includes SOURCE, 'face < classCount'
+    assert_includes SOURCE, 'ARMeshClassification.floor.rawValue'
   end
 
-  def test_mesh_indices_use_the_geometry_helper_and_checked_width_conversion
-    assert_includes SOURCE, 'UInt32(exactly: faceIndex)'
-    assert_includes SOURCE, 'geometry.vertexIndex('
-    refute_includes SOURCE, 'geometry.faces.index(of:'
+  def test_mesh_indices_validate_width_and_every_corner
+    assert_includes SOURCE, '[2,4].contains(triangles.bytesPerIndex)'
+    assert_includes SOURCE, 'triangles.count <= triangles.buffer.length / (3 * triangles.bytesPerIndex)'
+    assert_includes SOURCE, 'guard a < vertexCount, b < vertexCount, c < vertexCount'
   end
 
-  def test_mesh_index_reader_checks_layout_and_buffer_bounds
-    assert_includes SOURCE, 'faces.bytesPerIndex == MemoryLayout<UInt16>.size'
-    assert_includes SOURCE, 'bufferEnd <= faces.buffer.length'
-    assert_includes SOURCE, 'let vertexCount32 = UInt32(exactly: geometry.vertices.count)'
-    assert_includes SOURCE, 'vertexIndex < vertexCount32'
+  def test_mesh_snapshot_checks_last_element_and_owns_its_bytes
+    assert_includes SOURCE, 'source.count - 1 <= (length - source.offset - width) / source.stride'
+    assert_includes SOURCE, 'Data(bytes: source.buffer.contents().advanced(by: source.offset)'
+    assert_match(/RallyMeshSnapshot\(anchor.geometry\).*?DispatchWorkItem.*?snapshot.decode/m, SOURCE)
   end
 
   def test_placement_is_guarded_and_transactional

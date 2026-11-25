@@ -7,6 +7,14 @@ import XCTest
 @testable import Runner
 
 class RunnerTests: XCTestCase {
+  func testPackedMeshLastVertexEndsAtBufferBoundary() {
+    let coordinates = (0..<192).map { Float($0) }
+    coordinates.withUnsafeBytes { bytes in
+      XCTAssertEqual(bytes.count, 768)
+      XCTAssertEqual(RallyMeshSnapshot.packedVertex(bytes, offset: 63 * 12), SIMD3(189, 190, 191))
+    }
+  }
+
   @MainActor func testMiniatureScaleAndBuildingClearances() {
     XCTAssertEqual(RallyScale.metres(6.5), 0.05, accuracy: 0.00001)
     XCTAssertLessThan(RallyScale.metres(1.8), RallyScale.metres(2.1))
