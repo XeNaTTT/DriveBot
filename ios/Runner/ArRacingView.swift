@@ -106,6 +106,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
   private var actorBatchPending = false
   private var lastActorBatch: TimeInterval = 0
+  private var localMeshes: Set<UUID> = []
+  private var dirtyMeshes: Set<UUID> = []
+  private var nextMeshSelection: TimeInterval = 0
   private var meshRevisions: [UUID: UUID] = [:]
   private var meshWork: [UUID: DispatchWorkItem] = [:]
   private let meshQueue = DispatchQueue(label: "de.drivebot.mesh", qos: .utility)
@@ -123,6 +126,12 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private var neutralTilt: Double?
   private let vehicleID: String
   private var placementGeneration = 0
+  private let previousPlacement = UserDefaults.standard.string(forKey: "DriveBot.placementStage")
+  private var awaitingFirstStep = false
+  private func placementStage(_ stage: String) {
+    let build = Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "?"
+    UserDefaults.standard.set("Build " + build + " · " + vehicleID + " · " + stage, forKey:"DriveBot.placementStage")
+  }
   private var lastSuccessfulOperation = "initialization"
 
   init(frame: CGRect, viewIdentifier: Int64, messenger: FlutterBinaryMessenger, vehicleID: String) {
@@ -432,7 +441,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     else if phase == .ready && lastSpeed.isFinite { speed.text = String(format: "%.2f m/s", lastSpeed) + "\n" + damageText }
     scanButton.isHidden = phase != .ready
     resetButton.isHidden = phase != .ready && !physicsFailed
-    diagnosisButton.isHidden = !physicsFailed
+    diagnosisButton.isHidden = !physicsFailed && previousPlacement == nil
     inputDiagnostics.isHidden = phase != .ready || !debugVisible
   }
 
@@ -464,6 +473,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     placementFloorY = p.y
     Self.logger.notice("[Placement] 04 vehicle configuration found")
 
+    placementStage("Fahrzeugmodell laden")
     let vehicle = RallyVehicleVisual.build(profile: profile)
     let visualRoot = vehicle.root
     let builtWheels = vehicle.wheels
@@ -502,9 +512,11 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     if placementPhysicsMode == .visualOnly {
       setScanVisible(false)
       phase = .ready
+      UserDefaults.standard.removeObject(forKey:"DriveBot.placementStage")
       Self.logger.notice("[Placement] visual-only ready (Jolt intentionally skipped)")
       return
     }
+    placementStage("Jolt-Fahrzeug und erster Bodenkontakt")
     physics.prepareVehicle(at: p, heading: 0, profile: profile) {
       [weak self] result in
       guard let self else { return }
@@ -525,6 +537,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
           self.showPlacementFailure("Jolt lieferte eine ungültige Fahrzeugtransformation.")
           return
         }
+        self.placementStage("Erste Radtransformationen und Fahransicht")
+        self.awaitingFirstStep = true
         self.applyVehicleTransforms(state, chassisTransform: transform, pose: pose,
                                     visualRoot: visualRoot)
         self.lastSuccessfulOperation = state.operation
@@ -539,6 +553,10 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
 
   private func showPlacementFailure(_ text: String) {
+    if let currentCar { district.fleet.cars.removeAll { $0 === currentCar } }
+    currentCar = nil
+    awaitingFirstStep = false
+    UserDefaults.standard.removeObject(forKey:"DriveBot.placementStage")
     Self.logger.error("Placement rejected: \(text, privacy: .public)")
     physics.removeVehicle()
     if let carAnchor { arView.scene.removeAnchor(carAnchor) }
@@ -555,6 +573,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
 
   @objc private func resetCar() {
+    awaitingFirstStep = false
+    UserDefaults.standard.removeObject(forKey:"DriveBot.placementStage")
     pulseEffects.reset()
 
     wingModel = nil
@@ -598,7 +618,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     phase = hasFloor ? .aiming : .scanning
   }
   @objc private func shareDiagnosis() {
-    guard let report = PhysicsDiagnostics.load() else { return }
+    let report = [previousPlacement.map { "Letzter unvollständiger Platzierungsvorgang: " + $0 },PhysicsDiagnostics.load()]
+      .compactMap { $0 }.joined(separator:"\n\n")
+    guard !report.isEmpty else { return }
     let controller = UIActivityViewController(activityItems: [report], applicationActivities: nil)
     controller.popoverPresentationController?.sourceView = diagnosisButton
     controller.popoverPresentationController?.sourceRect = diagnosisButton.bounds
@@ -1009,7 +1031,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
           hasSceneReconstruction: hasSceneReconstruction) ?? route.start
         avatar.root.setPosition(safeExit, relativeTo: nil)
         district.finish(route.index)
-        if let item = RallyItem(rawValue: route.index), inventory.pick(item) {
+        if let item = district.reward(route.index), inventory.pick(item) {
           equip(avatar)
           play("pickup")
           updateMessage()
@@ -1102,6 +1124,12 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     } else { directionHUD.hide() }
     if phase == .ready, let pose = vehiclePose {
       let camera = arView.cameraTransform.translation
+      if let floorY = placementFloorY {
+        let car = pose.position(relativeTo:nil)
+        district.explore(in: arView,time:link.timestamp,floorY:floorY,player:avatar?.root.position(relativeTo:nil) ?? car,
+                         car:car,install:replaceCollider)
+      }
+      refreshLocalMeshes(around:pose.position(relativeTo:nil),time:link.timestamp)
       let publish = !actorBatchPending && link.timestamp - lastActorBatch >= 1.0 / 30.0
       var actors: [(UUID,SIMD3<Float>,SIMD3<Float>,Float)] = []
       district.updateDetail(view: arView, camera: camera, time: link.timestamp,
@@ -1163,6 +1191,10 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
           NSLocalizedDescriptionKey: "Bodenkontakt verloren. Fahrzeug bitte zurücksetzen."
         ]))
         return
+      }
+      if self.awaitingFirstStep {
+        self.awaitingFirstStep = false
+        UserDefaults.standard.removeObject(forKey:"DriveBot.placementStage")
       }
       self.applyVehicleTransforms(state, chassisTransform: chassisTransform, pose: pose,
                                   visualRoot: visualRoot)
@@ -1290,7 +1322,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     placementPlane = plane
     if placementMarker == nil {
       let marker = ModelEntity(
-        mesh: .generateBox(size: [0.12, 0.002, 0.12], cornerRadius: 0.02),
+        mesh: .generateBox(size: [0.12, 0.002, 0.12], cornerRadius: 0.0009),
         materials: [SimpleMaterial(color: .systemTeal.withAlphaComponent(0.72), isMetallic: false)])
       let anchor = AnchorEntity(world: position)
       anchor.addChild(marker)
@@ -1349,6 +1381,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
         placementPlane = nil
         placementMarker?.isEnabled = false
       }
+      localMeshes.remove(anchor.identifier)
+      dirtyMeshes.remove(anchor.identifier)
       meshWork[anchor.identifier]?.cancel()
       meshWork.removeValue(forKey: anchor.identifier)
       meshRevisions.removeValue(forKey: anchor.identifier)
@@ -1372,11 +1406,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
         if carAnchor == nil && !trackingInterrupted && !physicsFailed { phase = .aiming }
         installPlaneCollider(plane)
         visualizeFloor(plane)
-        if phase == .ready, let car = vehiclePose?.position(relativeTo: nil) {
-          district.expand(on: plane, in: arView, player: avatar?.root.position(relativeTo: nil) ?? car, car: car, install: replaceCollider)
-        }
       }
-      if #available(iOS 13.4, *), let mesh = anchor as? ARMeshAnchor { schedule(mesh) }
+      if anchor is ARMeshAnchor, localMeshes.contains(anchor.identifier) { dirtyMeshes.insert(anchor.identifier) }
     }
   }
   private func visualizeFloor(_ plane: ARPlaneAnchor) {
@@ -1417,20 +1448,49 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     physics.replaceFloor(at: [center.x, center.y, center.z], extent: extent,
                          heading: heading, identifier: plane.identifier)
   }
+  private func refreshLocalMeshes(around car: SIMD3<Float>,time: TimeInterval) {
+    guard hasSceneReconstruction,time >= nextMeshSelection,let frame = arView.session.currentFrame,
+          case .normal = frame.camera.trackingState else { return }
+    nextMeshSelection = time+0.20
+    let nearest = frame.anchors.compactMap { anchor -> (ARMeshAnchor,Float)? in
+      guard let mesh = anchor as? ARMeshAnchor else { return nil }
+      let p = mesh.transform.columns.3
+      let distance = simd_distance(car,[p.x,p.y,p.z])
+      return distance < 3 ? (mesh,distance) : nil
+    }.sorted { $0.1 < $1.1 }.prefix(48)
+    let selected = Set(nearest.map { $0.0.identifier })
+    for id in localMeshes.subtracting(selected) {
+      meshWork.removeValue(forKey:id)?.cancel()
+      meshRevisions.removeValue(forKey:id)
+      physics.removeStaticMesh(id)
+    }
+    dirtyMeshes.formIntersection(selected)
+    dirtyMeshes.formUnion(selected.subtracting(localMeshes))
+    localMeshes = selected
+    for (mesh,_) in nearest where dirtyMeshes.contains(mesh.identifier) && meshWork[mesh.identifier] == nil {
+      guard meshWork.count < 8 else { break }
+      dirtyMeshes.remove(mesh.identifier)
+      schedule(mesh)
+    }
+  }
+
   @available(iOS 13.4, *) private func schedule(_ anchor: ARMeshAnchor) {
     let id = anchor.identifier
     // One immutable snapshot per anchor in flight. A busy mesh must still reach Jolt.
-    guard meshWork[id] == nil else { return }
+    guard meshWork[id] == nil, meshWork.count < 8 else { return }
     let revision = UUID()
-    meshRevisions[id] = revision
     guard let snapshot = RallyMeshSnapshot(anchor.geometry) else { return }
+    meshRevisions[id] = revision
     let transform = anchor.transform
     let item = DispatchWorkItem { [weak self] in
       let decoded = snapshot.decode(transform: transform)
       DispatchQueue.main.async { [weak self] in
         guard let self, self.meshRevisions[id] == revision else { return }
         self.meshWork.removeValue(forKey: id)
-        if let (vertices,indices) = decoded { self.replaceCollider(id: id, vertices: vertices, indices: indices) }
+        if let (vertices,indices) = decoded {
+          if indices.isEmpty { self.physics.removeStaticMesh(id) }
+          else { self.replaceCollider(id:id,vertices:vertices,indices:indices) }
+        }
       }
     }
     meshWork[id] = item

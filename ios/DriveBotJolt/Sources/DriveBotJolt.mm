@@ -376,13 +376,18 @@ static Profile ProfileNamed(NSString *name) {
   if (triangles.empty()) return;
   auto result = MeshShapeSettings(vertices, triangles).Create();
   if (result.HasError()) return;
+  const std::string key(identifier.UUIDString.UTF8String);
+  auto &bodies = _physics->GetBodyInterface();
+  const auto existing = _meshes.find(key);
+  if (existing != _meshes.end()) {
+    bodies.SetShape(existing->second, result.Get(), false, EActivation::DontActivate);
+    return;
+  }
   BodyCreationSettings body(result.Get(), RVec3::sZero(), Quat::sIdentity(),
                             EMotionType::Static, Layers::STATIC);
   Body *created = _physics->GetBodyInterface().CreateBody(body);
   if (!created) return;
-  std::string key(identifier.UUIDString.UTF8String);
-  [self removeStaticMesh:identifier];
-  _physics->GetBodyInterface().AddBody(created->GetID(), EActivation::DontActivate);
+  bodies.AddBody(created->GetID(), EActivation::DontActivate);
   _meshes[key] = created->GetID();
 }
 - (void)replaceFloorAt:(simd_float3)center extent:(simd_float2)extent
@@ -392,14 +397,21 @@ static Profile ProfileNamed(NSString *name) {
       extent.x < .02f || extent.y < .02f) return;
   constexpr float halfThickness = .025f;
   const RefConst<Shape> shape = new BoxShape(Vec3(extent.x / 2, halfThickness, extent.y / 2), .001f);
-  BodyCreationSettings body(shape, RVec3(center.x, center.y - halfThickness, center.z),
-    Quat::sRotation(Vec3::sAxisY(), heading), EMotionType::Static, Layers::STATIC);
+  const RVec3 position(center.x, center.y - halfThickness, center.z);
+  const Quat rotation = Quat::sRotation(Vec3::sAxisY(), heading);
+  const std::string key(identifier.UUIDString.UTF8String);
   auto &bodies = _physics->GetBodyInterface();
+  const auto existing = _meshes.find(key);
+  if (existing != _meshes.end()) {
+    bodies.SetShape(existing->second, shape, false, EActivation::DontActivate);
+    bodies.SetPositionAndRotationWhenChanged(existing->second, position, rotation, EActivation::DontActivate);
+    return;
+  }
+  BodyCreationSettings body(shape, position, rotation, EMotionType::Static, Layers::STATIC);
   Body *created = bodies.CreateBody(body);
   if (!created) return;
-  [self removeStaticMesh:identifier];
   bodies.AddBody(created->GetID(), EActivation::DontActivate);
-  _meshes[identifier.UUIDString.UTF8String] = created->GetID();
+  _meshes[key] = created->GetID();
 }
 - (void)updateActor:(NSUUID *)identifier center:(simd_float3)center halfSize:(simd_float3)halfSize heading:(float)heading {
   if (!IsFinite(center) || !IsFinite(halfSize) || !std::isfinite(heading) ||

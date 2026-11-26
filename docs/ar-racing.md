@@ -319,3 +319,11 @@ Its logs and result bundle are retained by the Codemagic workflow.
 6. Repeat on phones with and without scene reconstruction. Use Instruments
    to record frame times during mesh refinement, walking and turning. Check
    contact shadows and occlusion over both dark carpet and reflective floors.
+
+### Investigation of termination immediately after placement
+
+TestFlight 1.1.1 (20261126191026), incident 640D5695-3F4E-4301-BB9D-CA00D0B94718, terminated with EXC_BREAKPOINT / SIGTRAP on thread 28. The symbolicated stack goes through SerializedJoltWorld.step, DBJoltWorld.step, PhysicsSystem::Update, QuadTree::UpdatePrepare and QuadTree::ValidateTree. The ARM register x3 holds 0x63d (1597), matching the assertion line argument in the pinned Jolt source. At that line Jolt checks that the cached child-node box contains the child's actual bounds or that the actual bounds are invalid. The report identifies the failing check; it does not identify the body update that first invalidated the bounds.
+
+RallyPhysicsSystem.cpp builds the same pinned PhysicsSystem using Jolt's direct body-bounds broad phase. The pod excludes the original PhysicsSystem translation unit to compile it exactly once. This removes the failing tree maintenance path while retaining wheel casts, contacts, constraints and debug assertions. Direct queries scan the registered bodies. The race streams up to 48 reconstructed mesh anchors within three metres of the current car, prioritizes nearby anchors and decodes at most eight snapshots at once. An independent Windows test with the same PhysicsSystem translation unit completed 1,200 simulation steps and 19,200 collider replacements, then exercised acceleration, braking and reverse. Recheck CPU time and wheel contact on device under sustained AR mesh updates. [Pinned Jolt tree validation](https://github.com/jrouwe/JoltPhysics/blob/e77f175595e64cb44218cc9d9d56fc365ad0e36a/Jolt/Physics/Collision/BroadPhase/QuadTree.cpp#L1591-L1597)
+
+The placement path also keeps an incomplete-stage marker until the first successful driving step. After an interrupted attempt **Diagnose kopieren** includes that marker and build information. An incomplete marker may also result from closing the app. The earlier packed AR mesh reader fix remains in place.

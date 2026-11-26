@@ -19,6 +19,10 @@ struct RallyVehicleVisual {
   let root: Entity
   let wheels: [Entity]
 
+  static func bevel(_ requested: Float, for size: SIMD3<Float>) -> Float {
+    min(requested,0.49*min(size.x,min(size.y,size.z)))
+  }
+
   static func build(profile: String) -> Self {
     let root = Entity()
     let van = profile == "compact"
@@ -38,7 +42,7 @@ struct RallyVehicleVisual {
 
     func part(_ name: String, _ size: SIMD3<Float>, _ position: SIMD3<Float>,
               _ material: RealityKit.Material, bevel: Float = 0.008, pitch: Float = 0) {
-      let model = ModelEntity(mesh: .generateBox(size: size, cornerRadius: bevel),
+      let model = ModelEntity(mesh: .generateBox(size: size, cornerRadius: Self.bevel(bevel,for:size)),
                               materials: [material])
       model.name = name
       model.position = position
@@ -124,7 +128,7 @@ struct RallyVehicleVisual {
       let trim = finish(0x29333A, roughness: 0.45)
       let chrome = finish(0xD5D9CD, roughness: 0.17, metallic: true)
       func part(_ size: SIMD3<Float>, _ p: SIMD3<Float>, _ mat: RealityKit.Material, _ radius: Float = 0.012) {
-        let unit = ModelEntity(mesh: .generateBox(size: size, cornerRadius: radius), materials: [mat])
+        let unit = ModelEntity(mesh: .generateBox(size: size, cornerRadius: Self.bevel(radius,for:size)), materials: [mat])
         unit.position = p
         shell.addChild(unit)
       }

@@ -28,6 +28,7 @@ final class StreetCar {
   var speed: Float = 0
   var cooldown: Float = 0
   var goal = 0
+  var roadRoute: [SIMD3<Float>] = []
   var nextProbe: TimeInterval = 0
   var desiredYaw: Float = 0
   var clear = false
@@ -65,6 +66,9 @@ final class StreetCar {
 @preconcurrency @MainActor
 final class RallyTraffic {
   var cars: [StreetCar] = []
+  var network = RallyRoadNetwork()
+  private var bayDistricts: [Int] = []
+  private var bayApproaches: [SIMD3<Float>] = []
   private var bays: [SIMD3<Float>] = []
   private var prototypes: [StreetModel: Entity] = [:]
   private let probe = ShapeResource.generateBox(size: [0.021,0.011,0.035])
@@ -74,14 +78,24 @@ final class RallyTraffic {
     for car in cars { car.departed?.root.removeFromParent() }
     cars.removeAll()
     bays.removeAll()
+    bayDistricts.removeAll()
+    bayApproaches.removeAll()
+    network = RallyRoadNetwork()
 
   }
 
-  func spawn(tile: Entity, block: Int, count: Int) {
+  func spawn(tile: Entity, block: Int, count: Int, center: SIMD3<Float>? = nil,
+             orientation: simd_quatf = simd_quatf(angle:0,axis:[0,1,0])) {
+    func world(_ local: SIMD3<Float>) -> SIMD3<Float> {
+      if let center { return center + orientation.act(local) }
+      return tile.convert(position:local,to:nil)
+    }
     for slot in 0..<2 {
       let spot = SIMD3<Float>(slot == 0 ? -0.048 : 0.048,0,0)
-      let bay = tile.convert(position: spot, to: nil)
+      let bay = world(spot)
       bays.append(bay)
+      bayDistricts.append(block)
+      bayApproaches.append(world(spot+[0,0,0.074]))
       guard slot < count else { continue }
       let model = StreetModel.allCases[cars.count % StreetModel.allCases.count]
       let pose = Entity()
@@ -122,9 +136,12 @@ final class RallyTraffic {
   }
 
   func tick(view: ARView, dt: Float, time: TimeInterval, camera: SIMD3<Float>, obstacles: [SIMD3<Float>],
-            buildings: [BoundingBox], publish: (UUID,SIMD3<Float>,SIMD3<Float>,Float) -> Void) {
+            buildings: [BoundingBox], mappedFloor: (SIMD3<Float>,Float)->Bool, publish: (UUID,SIMD3<Float>,SIMD3<Float>,Float) -> Void) {
     advance(dt: dt,time: time,camera: camera,obstacles: obstacles,buildings: buildings,publish: publish) { car,look,heading in
-      self.navigable(view: view,car: car,look: look,heading: heading)
+      if simd_distance(camera,look) > 2.6 {
+        return mappedFloor([look.x,car.floorY,look.z],car.half.z)
+      }
+      return self.navigable(view: view,car: car,look: look,heading: heading)
     }
   }
 
@@ -160,23 +177,38 @@ final class RallyTraffic {
     for car in cars where car.control != .player {
       defer { if car.control != .reserved { publish(car.id,car.position,car.half,car.yaw) } }
       guard car.control != .reserved && car.control != .vacant, let model = car.model else { continue }
+      guard bays.indices.contains(car.goal) else { continue }
       if car.control == .parked {
         car.cooldown -= dt
         guard car.cooldown <= 0 else { continue }
         let available = bays.indices.filter { i in
-          i != car.goal && !cars.contains { $0 !== car && $0.control != .player && $0.goal == i }
+          i != car.goal && network.path(bayDistricts[car.goal],bayDistricts[i]) != nil && !cars.contains { $0 !== car && $0.control != .player && $0.goal == i }
         }
         guard let target = available.randomElement() else { continue }
         car.route.removeAll()
         car.nextRoute = 0
+        if let road = network.path(bayDistricts[car.goal],bayDistricts[target]), !road.isEmpty {
+          var waypoints = [bayApproaches[car.goal]]
+          for point in road + [bayApproaches[target]] {
+            let start = waypoints[waypoints.count-1]
+            let steps = max(1,Int(ceil(simd_distance(start,point)/0.07)))
+            for step in 1...steps { waypoints.append(start+(point-start)*(Float(step)/Float(steps))) }
+          }
+          car.roadRoute = waypoints
+        }
         car.goal = target
         car.control = .driving
       }
       let p = car.position
-      var delta = bays[car.goal] - p
+      while let next = car.roadRoute.first, hypot(next.x-p.x,next.z-p.z) < 0.016 {
+        car.roadRoute.removeFirst()
+        car.nextRoute = 0
+      }
+      let destination = car.roadRoute.first ?? bays[car.goal]
+      var delta = destination - p
       delta.y = 0
       let distance = simd_length(delta)
-      if distance < 0.004 && car.speed < 0.009 {
+      if car.roadRoute.isEmpty && distance < 0.004 && car.speed < 0.009 {
         car.speed = 0
         car.control = .parked
         car.cooldown = .random(in: 3...8)
@@ -184,7 +216,7 @@ final class RallyTraffic {
       }
       let neighbors = obstacles + cars.filter { $0 !== car && $0.control != .player }.map { $0.position }
       if time >= car.nextRoute {
-        car.route = StreetRoute.plan(from: p, to: bays[car.goal], clearance: car.half.x + 0.003,
+        car.route = StreetRoute.plan(from: p, to: destination, clearance: car.half.x + 0.003,
           buildings: buildings, obstacles: neighbors)
         car.nextRoute = time + (car.control == .waiting ? 0.85 : 2.5)
       }
@@ -244,6 +276,7 @@ enum StreetMotion {
 enum StreetRoute {
   static func plan(from start: SIMD3<Float>, to goal: SIMD3<Float>, clearance: Float,
                    buildings: [BoundingBox], obstacles: [SIMD3<Float>]) -> [SIMD3<Float>] {
+    guard [start.x,start.y,start.z,goal.x,goal.y,goal.z].allSatisfy({ $0.isFinite && abs($0)<1000 }) else { return [] }
     let step: Float = 0.018
     let margin = 5
     let origin = SIMD2(min(start.x,goal.x),min(start.z,goal.z)) - SIMD2(repeating: Float(margin)*step)

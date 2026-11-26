@@ -20,17 +20,18 @@ Pod::Spec.new do |s|
   # case-insensitive, so exporting Jolt/Math/Math.h there can shadow the SDK's
   # <math.h>. The headers remain available through the single, non-recursive
   # Jolt include root below.
-  s.source_files = 'Sources/**/*.{h,mm}', 'Vendor/Jolt/Jolt/**/*.cpp'
+  s.source_files = 'Sources/**/*.{h,mm,cpp}', 'Vendor/Jolt/Jolt/**/*.cpp'
   # The checkout is the complete pinned upstream tree, while the app target
   # deliberately omits desktop GPU backends, debug rendering and shader tests.
-  s.exclude_files = 'Vendor/Jolt/Jolt/Compute/DX12/**/*.cpp',
+  s.exclude_files = 'Vendor/Jolt/Jolt/Physics/PhysicsSystem.cpp',
+                    'Vendor/Jolt/Jolt/Compute/DX12/**/*.cpp',
                     'Vendor/Jolt/Jolt/Compute/VK/**/*.cpp',
                     'Vendor/Jolt/Jolt/Renderer/DebugRendererPlayback.cpp',
                     'Vendor/Jolt/Jolt/Renderer/DebugRendererRecorder.cpp',
                     'Vendor/Jolt/Jolt/Renderer/DebugRendererSimple.cpp',
                     'Vendor/Jolt/Jolt/Shaders/TestComputeWrapper.cpp'
   s.public_header_files = 'Sources/DriveBotJolt.h'
-  s.preserve_paths = 'Vendor/Jolt/LICENSE', 'Vendor/Jolt/Jolt/**/*.{h,inl}'
+  s.preserve_paths = 'Vendor/Jolt/Jolt/Physics/PhysicsSystem.cpp', 'Vendor/Jolt/LICENSE', 'Vendor/Jolt/Jolt/**/*.{h,inl}'
   s.pod_target_xcconfig = {
     'HEADER_SEARCH_PATHS' => '"${PODS_TARGET_SRCROOT}/Vendor/Jolt"',
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',

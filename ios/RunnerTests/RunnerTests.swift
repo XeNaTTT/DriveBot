@@ -103,6 +103,31 @@ class RunnerTests: XCTestCase {
     XCTAssertEqual(inventory.remaining,10)
   }
 
+  func testPlacementWithChangingFloorsAndKinematicTraffic() throws {
+    let world = DBJoltWorld()
+    let floorID = UUID()
+    let actors = (0..<14).map { _ in UUID() }
+    world.replaceFloor(at:.zero,extent:[1,1],heading:0,identifier:floorID)
+    try world.prepareVehicle(at:.zero,heading:0,profile:"compact")
+    world.setPaused(false)
+    for step in 0..<1200 {
+      if step.isMultiple(of:10) {
+        let width = step.isMultiple(of:20) ? Float(1.01) : Float(1)
+        world.replaceFloor(at:.zero,extent:[width,1],heading:0.01,identifier:floorID)
+      }
+      for (i,id) in actors.enumerated() {
+        if step.isMultiple(of:30) { world.removeStaticMesh(id) }
+        world.updateActor(id,center:[Float(i)*0.035,0.008,0.2+0.02*sin(Float(step)*0.04)],
+                          halfSize:[0.008,0.006,0.017],heading:0.2)
+      }
+      let state = world.step(1.0/60)
+      XCTAssertTrue(state.success)
+      XCTAssertTrue(state.transformsFinite)
+      XCTAssertEqual(state.wheels.count,4)
+      if step == 1199 { XCTAssertGreaterThan(state.groundedWheelCount,0) }
+    }
+  }
+
   func testPackedMeshLastVertexEndsAtBufferBoundary() {
     let coordinates = (0..<192).map { Float($0) }
     coordinates.withUnsafeBytes { bytes in
@@ -122,11 +147,47 @@ class RunnerTests: XCTestCase {
     XCTAssertFalse(RallyDistrict.clearSite(.zero, player: far, car: far, occupied: [[0.08,0,0]]))
   }
 
-  @MainActor func testDistrictPopulationAndStreetCircuit() {
-    let blocks = RallyDistrict.blocks.indices
-    XCTAssertEqual(blocks.count, 5)
-    XCTAssertEqual(blocks.map { RallyDistrict.carCount(on: $0) }.reduce(0, +), 8)
-    XCTAssertEqual(blocks.map { RallyDistrict.pedestrianCount(on: $0) }.reduce(0, +), 6)
+  func testRoomMapRequiresRepeatedSupportAndSkipsBlockedCorridors() throws {
+    var map = RallyFloorMap()
+    let cell = RallyCell(-3,0)
+    map.observe(cell,floor:0,time:0)
+    XCTAssertNil(map.floor(cell))
+    map.observe(cell,floor:0,time:0.5)
+    XCTAssertEqual(map.floor(cell),0)
+    let a = cell.point(0), b = RallyCell(3,0).point(0)
+    XCTAssertNil(map.road(from:a,to:b,clear:{ _ in true }))
+    for z in -4...4 {
+      for x in -5...5 {
+        map.observe(RallyCell(x,z),floor:0,time:1)
+        map.observe(RallyCell(x,z),floor:0,time:2)
+      }
+    }
+    let road = try XCTUnwrap(map.road(from:a,to:b,clear:{ _ in true }))
+    XCTAssertEqual(road.first,a)
+    XCTAssertEqual(road.last,b)
+    XCTAssertGreaterThan(road.count,2)
+    for z in -4...4 { map.observe(RallyCell(0,z),floor:nil,time:3) }
+    XCTAssertNil(map.road(from:a,to:b,clear:{ _ in true }))
+  }
+
+  func testSeededLotsAndNetworkSurviveAdditionalConnections() throws {
+    let cell = RallyCell(-7,12)
+    let original = RallyNeighborhood(cell:cell,floor:0,ordinal:1)
+    let same = RallyNeighborhood(cell:cell,floor:0,ordinal:1)
+    XCTAssertEqual(original.lots,same.lots)
+    XCTAssertEqual(original.angles,same.angles)
+    XCTAssertEqual(original.kind,1)
+    XCTAssertEqual(original.lots.count,3)
+    var network = RallyRoadNetwork()
+    let a = cell.point(0), b = cell.offset(10,0).point(0), c = cell.offset(10,12).point(0)
+    network.connect(0,1,points:[a,b])
+    XCTAssertNil(network.path(0,2))
+    network.connect(1,2,points:[b,c])
+    XCTAssertEqual(network.path(1,0),[b,a])
+    XCTAssertEqual(network.path(0,2)?.last,c)
+  }
+
+  @MainActor func testPedestrianCircuit() {
     for radius: Float in [0.070, 0.056] {
       let (start, _) = RallyDistrict.loop(0, radius: radius)
       let (corner, _) = RallyDistrict.loop(2 * radius, radius: radius)

@@ -1,6 +1,6 @@
 # Room Rallye miniature district
 
-The Flutter garage embeds a non-AR RealityKit showroom and forwards the selected profile to the race. The race keeps its existing world-coordinate Jolt chassis and independent wheel transforms. The district derives miniature dimensions from a 6.5 m vehicle displayed at 50 mm (1:130). Floor updates sample a random position for a five-block district spanning 48 × 32 cm. Placement requires supported tile corners, reconstructed-geometry clearance and space around the player and vehicle. Shared streets surround ten buildings, including the four reward shops and residences with one to five floors. Eight NPC cars travel between parking bays and six animated pedestrians follow the pavement. Rectangular bounds from each building supply a static Jolt collision mesh and walking clearance. Reset removes the district and its collider. Buildings keep their original world-space anchors. Walking, entry, pickup and return transitions run on the native game view. Collected equipment belongs to the current placement and resets with the vehicle.
+The Flutter garage embeds a non-AR RealityKit showroom and forwards the selected profile to the race. The race keeps its existing world-coordinate Jolt chassis and independent wheel transforms. The district derives miniature dimensions from a 6.5 m vehicle displayed at 50 mm (1:130). Ocean District, Downtown and Palm Heights appear incrementally on stable, scanned floor. Further exploration can add shopping, entertainment and motor districts. World-space cell coordinates seed each neighborhood's orientation and lot positions. Rectangular bounds from each building supply a static Jolt collision mesh and walking clearance. Reset removes the district and its collider. Buildings keep their original world-space anchors. Walking, entry, pickup and return transitions run on the native game view. Collected equipment belongs to the current placement and resets with the vehicle.
 
 ## Asset manifest
 
@@ -39,7 +39,7 @@ Each shop has named Entry and Exit points. In front of the door, within 3.4 full
 Local verification included re-import and rendering of the shipped USDZ with Blender, OpenUSD geometry and animation inspection, and Ruby integration checks. Native XCTest adds entrance direction, radius, floor tolerance, waiting, exit position and duplicate reward coverage. The existing RealityKit loading test includes the pilot asset. On an iPhone verify actual skinning and hand alignment, entrance reachability in a furnished room, control recovery after tracking loss, and automatic NOS and wing installation after returning to the camper.
 ## Living district
 
-The five blocks share ten parking bays. Eight cars start in separate bays with staggered departure times. RallyTraffic selects an unclaimed destination, plans intermediate points on a bounded grid and checks the upcoming segment against recognized floor, vertical planes, reconstructed geometry, buildings and nearby actors. The display link advances traffic off screen while tracking is ready. Distant cars probe less often. A single outstanding actor batch updates Jolt on its serial queue.
+Each lot contributes two parking bays. Ocean District starts with two NPC cars, Downtown adds four and Palm Heights adds two. Eight cars start in separate bays with staggered departure times. RallyTraffic selects an unclaimed destination, plans intermediate points on a bounded grid and checks the upcoming segment against recognized floor, vertical planes, reconstructed geometry, buildings and nearby actors. The display link advances traffic off screen while tracking is ready. Distant cars probe the logical floor map less often. A single outstanding actor batch updates Jolt on its serial queue.
 
 The Marina Cabrio, Bay Pickup and Ocean Sedan use reusable procedural bodies, independent wheels and visible seated drivers. Each profile supplies its own chassis size, mass, torque, brake response, steering, speed limit and impact resistance. The district combines the original functional storefronts with new frontage, venue signs, palms, parking stripes, pumps and lighting.
 
@@ -47,7 +47,18 @@ On foot, approach the left door of a stationary car and tap **Fahrzeug übernehm
 
 AR session callbacks use the main queue. Mesh capture validates CPU-accessible buffers and copies the packed bytes before background decoding. Mesh updates allow one pending decode per anchor and discard obsolete results after anchor removal.
 
+### Session map, roads and streaming
+
+RallyFloorMap records 8 cm cells after two consistent observations. Four floor samples, reconstructed-geometry clearance and vertical-plane checks gate each cell. A neighborhood needs a roughly half-metre open area. Centers must be more than 74 cm apart. These distances are in real AR metres at the existing 1:130 vehicle scale.
+
+RallyNeighborhood chooses two lots in Ocean District and Palm Heights and three in Downtown. The room scan runs only with normal tracking. New lots and highway links are installed individually. District IDs derive from the cell coordinate. One background planning job at a time searches connected cells for a 9.1 cm corridor, rounds turns with quadratic Bézier segments and checks the sampled strip. The main thread revalidates the route against the latest map before adding the roadway and exposing the link to traffic. NPCs select reachable bays and follow road waypoints between districts.
+
+The session retains lot definitions, reward state, traffic and the road graph. Scenery beyond 3 m is detached and rebuilt from the stored lot when the camera returns within 2.6 m. Functional anchors, collision geometry and actors persist. The implementation caps the map at 16,384 cells, neighborhoods at 12, active NPC traffic at eight cars and six regular walkers. Reset starts a new map. Non-LiDAR devices rely on recognized planes and have less information about furniture.
+
 ### Physical-device acceptance
+
+- Scan an L-shaped room with furniture and an initially unscanned hallway. Confirm the road waits for the corridor, follows free floor into the next room and leaves narrow doorways clear. Revisit each district after a tracking interruption and check lot positions, rewards, traffic and memory.
+- Compare the downtown tower heights, spacing, parking and boulevard width with Ocean District and Palm Heights. Exercise NOS on a highway and acquire an NPC after it crosses a district boundary.
 
 - Scan a furnished room with and without scene reconstruction. Observe several departures, off-screen trips, parking and repeat departures. Block a lane with the player vehicle, then clear it. Check following distance, edge support and route recovery.
 - Acquire each profile, return to the camper, then repeat. Check driver exit, immediate steering, four-wheel floor contact, active-car indicator, damage, NOS balance, wings and held items. Visit the four shops and use the existing equipment.

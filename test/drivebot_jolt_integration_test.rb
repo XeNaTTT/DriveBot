@@ -43,6 +43,15 @@ class DriveBotJoltIntegrationTest < Minitest::Test
     refute_match(/JPH_[A-Z0-9_]+=0/, podspec)
   end
 
+  def test_room_rallye_builds_one_physics_system_with_direct_body_bounds
+    podspec = File.read(PODSPEC)
+    bridge = File.read(File.join(File.dirname(WRAPPER), 'RallyPhysicsSystem.cpp'))
+    assert_includes podspec, "'Sources/**/*.{h,mm,cpp}'"
+    assert_includes podspec, "s.exclude_files = 'Vendor/Jolt/Jolt/Physics/PhysicsSystem.cpp'"
+    assert_includes podspec, "s.preserve_paths = 'Vendor/Jolt/Jolt/Physics/PhysicsSystem.cpp'"
+    assert_match(/#define BroadPhaseQuadTree BroadPhaseBruteForce\s+#include <Jolt\/Physics\/PhysicsSystem\.cpp>/, bridge)
+  end
+
   def test_vehicle_creation_checks_each_fallible_jolt_resource
     wrapper = File.read(WRAPPER)
 
