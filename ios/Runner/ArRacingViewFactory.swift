@@ -4,6 +4,9 @@ import RealityKit
 import Combine
 
 final class ArRacingViewFactory: NSObject, FlutterPlatformViewFactory {
+  let messenger: FlutterBinaryMessenger
+  init(messenger: FlutterBinaryMessenger) { self.messenger = messenger }
+
   func createArgsCodec() -> FlutterMessageCodec & NSObjectProtocol {
     FlutterStandardMessageCodec.sharedInstance()
   }
@@ -16,7 +19,7 @@ final class ArRacingViewFactory: NSObject, FlutterPlatformViewFactory {
     let parameters = args as? [String: Any]
     return ArRacingView(
       frame: frame,
-      viewIdentifier: viewId,
+      viewIdentifier: viewId, messenger: messenger,
       vehicleID: parameters?["vehicleID"] as? String ?? "compact")
   }
 }

@@ -12,6 +12,8 @@
 #include <Jolt/Physics/Collision/Shape/OffsetCenterOfMassShape.h>
 #include <Jolt/Physics/Vehicle/VehicleConstraint.h>
 #include <Jolt/Physics/Vehicle/WheeledVehicleController.h>
+#include <Jolt/Physics/Collision/ContactListener.h>
+#include <atomic>
 #include <algorithm>
 #include <cmath>
 #include <unordered_map>
@@ -20,6 +22,17 @@ using namespace JPH;
 namespace {
 namespace Layers { static constexpr ObjectLayer STATIC = 0, MOVING = 1; }
 NSString *const DBJoltErrorDomain = @"de.drivebot.jolt";
+
+// Only the player chassis uses MOVING. Ignore support contacts with the floor.
+class ChassisImpacts final : public ContactListener {
+ public:
+  std::atomic<bool> hit{false};
+  void OnContactAdded(const Body &a, const Body &b, const ContactManifold &m, ContactSettings &) override {
+    if (std::abs(m.mWorldSpaceNormal.GetY()) > .65f) return;
+    float closing = (a.GetLinearVelocity() - b.GetLinearVelocity()).Dot(m.mWorldSpaceNormal);
+    if (closing > .025f) hit.store(true);
+  }
+};
 
 class PairFilter final : public ObjectLayerPairFilter {
  public: bool ShouldCollide(ObjectLayer a, ObjectLayer b) const override {
@@ -145,7 +158,7 @@ static Profile ProfileNamed(NSString *name) {
   float _baseTorque, _vehicleMass, _baseFinalDrive, _boostSpeedLimit;
   BOOL _boostEnabled;
   BOOL _wingsInstalled;
-  Vec3 _lastVelocity;
+  ChassisImpacts _impacts;
   NSInteger _simulationStep;
 }
 @end
@@ -166,6 +179,7 @@ static Profile ProfileNamed(NSString *name) {
     _objectBroad = new ObjectBroadFilter;
     _physics = new PhysicsSystem;
     _physics->Init(4096, 0, 4096, 4096, *_broad, *_objectBroad, *_pairs);
+    _physics->SetContactListener(&_impacts);
     PhysicsSettings settings = _physics->GetPhysicsSettings();
     // Default penetration slop (20 mm) exceeds the 7 mm chassis height.
     settings.mPenetrationSlop = .0005f;
@@ -308,7 +322,7 @@ static Profile ProfileNamed(NSString *name) {
     new VehicleCollisionTesterCastSphere(Layers::MOVING, .002f));
   _physics->AddConstraint(_vehicle);
   _physics->AddStepListener(_vehicle);
-  _lastVelocity = Vec3::sZero(); _accumulator = 0; _paused = YES;
+  _impacts.hit.store(false); _accumulator = 0; _paused = YES;
   return YES;
 }
 - (void)setThrottle:(float)t brake:(float)b steering:(float)s {
@@ -377,6 +391,28 @@ static Profile ProfileNamed(NSString *name) {
   bodies.AddBody(created->GetID(), EActivation::DontActivate);
   _meshes[identifier.UUIDString.UTF8String] = created->GetID();
 }
+- (void)updateActor:(NSUUID *)identifier center:(simd_float3)center halfSize:(simd_float3)halfSize heading:(float)heading {
+  if (!IsFinite(center) || !IsFinite(halfSize) || !std::isfinite(heading) ||
+      std::min({halfSize.x, halfSize.y, halfSize.z}) <= .0001f) return;
+  auto &bodies = _physics->GetBodyInterface();
+  std::string key(identifier.UUIDString.UTF8String);
+  RVec3 position(center.x, center.y, center.z);
+  Quat rotation = Quat::sRotation(Vec3::sAxisY(), heading);
+  auto found = _meshes.find(key);
+  if (found != _meshes.end()) {
+    if (_paused) {
+      bodies.SetPositionAndRotation(found->second, position, rotation, EActivation::DontActivate);
+    } else {
+      bodies.MoveKinematic(found->second, position, rotation, 1.f / 60.f);
+    }
+    return;
+  }
+  RefConst<Shape> shape = new BoxShape(Vec3(halfSize.x, halfSize.y, halfSize.z), .0001f);
+  BodyCreationSettings settings(shape, position, rotation, EMotionType::Kinematic, Layers::STATIC);
+  BodyID id = bodies.CreateAndAddBody(settings, EActivation::DontActivate);
+  if (!id.IsInvalid()) _meshes[key] = id;
+}
+
 - (void)removeStaticMesh:(NSUUID *)identifier {
   auto iterator = _meshes.find(identifier.UUIDString.UTF8String);
   if (iterator == _meshes.end()) return;
@@ -483,8 +519,7 @@ static Profile ProfileNamed(NSString *name) {
   state.appliedBrake = _brake;
   const float steeringLimit = std::max(.45f, 1.f - state.speedMetersPerSecond / 2.f);
   state.appliedSteering = _steering * steeringLimit;
-  state.collided = (velocity - _lastVelocity).Length() > 1.5f;
-  _lastVelocity = velocity;
+  state.collided = _impacts.hit.exchange(false);
   NSMutableArray<DBJoltTransform *> *wheelTransforms = [NSMutableArray arrayWithCapacity:4];
   if (wheelTransforms == nil)
     return failure(kBridgeFailed, @"Der Ergebniscontainer für Räder konnte nicht erstellt werden.");

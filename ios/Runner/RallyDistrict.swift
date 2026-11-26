@@ -22,7 +22,6 @@ final class RallyDistrict {
     details.removeAll()
     traffic.removeAll()
     buildings.removeAll()
-    elapsed = 0
     lastFrame = nil
     lastLOD = -.infinity
     visited.removeAll()
@@ -30,16 +29,41 @@ final class RallyDistrict {
     lastAttempt = -.infinity
   }
 
-  func updateDetail(camera: SIMD3<Float>, time: TimeInterval) {
+  func updateDetail(camera: SIMD3<Float>, time: TimeInterval, walkerPosition: SIMD3<Float>?, parkedCar: Entity?,
+                    updateActor: (UUID, SIMD3<Float>, SIMD3<Float>, Float) -> Void) {
     let dt = Float(min(0.08, max(0, time - (lastFrame ?? time))))
     lastFrame = time
-    elapsed += dt
-    for actor in traffic {
+    for index in traffic.indices {
+      let actor = traffic[index]
       let speed: Float = actor.walker == nil ? 0.045 : 0.010
-      let (point, yaw) = Self.loop(actor.phase + elapsed * speed, radius: actor.radius)
-      actor.entity.position = actor.center + point
-      actor.entity.orientation = simd_quatf(angle: yaw, axis: [0,1,0])
-      actor.walker?.animate(dt: dt, velocity: [sin(yaw)*speed,0,cos(yaw)*speed])
+      let phase = actor.phase + dt * speed
+      let (point, yaw) = Self.loop(phase, radius: actor.radius)
+      let next = actor.center + point
+      var blocked = false
+      if let parent = actor.entity.parent {
+        let world = parent.convert(position: next, to: nil)
+        if let walkerPosition {
+          let delta = walkerPosition - world
+          let local = simd_quatf(angle: -yaw, axis: [0,1,0]).act(delta)
+          if abs(local.y) < 0.018 && abs(local.x) < actor.half.x + 0.003 &&
+             abs(local.z) < actor.half.z + 0.003 { blocked = true }
+        }
+        if let parkedCar {
+          let local = parkedCar.convert(position: world, from: nil)
+          let radius = max(actor.half.x, actor.half.z)
+          if abs(local.y) < 0.022 && abs(local.x) < 0.013 + radius &&
+             abs(local.z) < 0.025 + radius { blocked = true }
+        }
+      }
+      if !blocked {
+        traffic[index].phase = phase
+        actor.entity.position = next
+        actor.entity.orientation = simd_quatf(angle: yaw, axis: [0,1,0])
+      }
+      let center = actor.entity.convert(position: [0,actor.half.y,0], to: nil)
+      let forward = actor.entity.orientation.act(SIMD3<Float>(0, 0, 1))
+      updateActor(actor.id, center, actor.half, atan2(forward.x, forward.z))
+      actor.walker?.animate(dt: dt, velocity: blocked ? .zero : forward * speed)
     }
     guard time - lastLOD > 0.35 else { return }
     lastLOD = time
@@ -66,9 +90,9 @@ final class RallyDistrict {
   static func pedestrianCount(on block: Int) -> Int { block == 0 ? 2 : 1 }
 
   private var buildings: [BoundingBox] = []
-  private var traffic: [(entity: Entity, walker: RallyWalker?, center: SIMD3<Float>, phase: Float, radius: Float)] = []
+  private var traffic: [(entity: Entity, walker: RallyWalker?, center: SIMD3<Float>, phase: Float, radius: Float, id: UUID, half: SIMD3<Float>)] = []
+  var actorIDs: [UUID] { traffic.map { $0.id } }
   private var lastFrame: TimeInterval?
-  private var elapsed: Float = 0
   let colliderID = UUID()
 
   static func loop(_ distance: Float, radius: Float) -> (SIMD3<Float>, Float) {
@@ -216,12 +240,12 @@ final class RallyDistrict {
         for z: Float in [-0.009,0.009] { box([0.003,0.005,0.005], .black, at: [x,0.003,z], in: car) }
       }
       tile.addChild(car)
-      traffic.append((car,nil,.init(0,0.0003,0),Float(slot)*0.28,0.070))
+      traffic.append((car,nil,.init(0,0.0003,0),Float(slot)*0.28,0.070,UUID(),[0.0075,0.006,0.0145]))
     }
     for slot in 0..<Self.pedestrianCount(on: index) {
       let walker = RallyWalker()
       tile.addChild(walker.root)
-      traffic.append((walker.root,walker,[0,0.0008,0],Float(slot)*0.224,0.056))
+      traffic.append((walker.root,walker,[0,0.0008,0],Float(slot)*0.224,0.056,UUID(),[0.0025,0.007,0.0025]))
     }
   }
 
@@ -267,6 +291,11 @@ final class RallyDistrict {
     }
   }
   func permits(_ p: SIMD3<Float>) -> Bool {
+    for actor in traffic {
+      let local = actor.entity.convert(position: p, from: nil)
+      if abs(local.x) < actor.half.x + 0.002 && abs(local.z) < actor.half.z + 0.002 &&
+         abs(local.y - actor.half.y) < actor.half.y + 0.003 { return false }
+    }
     for box in buildings where p.x > box.min.x - 0.002 && p.x < box.max.x + 0.002 &&
       p.z > box.min.z - 0.002 && p.z < box.max.z + 0.002 { return false }
     return true

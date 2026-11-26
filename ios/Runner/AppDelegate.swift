@@ -35,7 +35,7 @@ import UIKit
       withId: "drivebot/arkit_view"
     )
     registrar.register(
-      ArRacingViewFactory(),
+      ArRacingViewFactory(messenger: registrar.messenger()),
       withId: "drivebot/ar_racing_view"
     )
     registrar.register(RallyShowroomFactory(), withId: "drivebot/rally_showroom")

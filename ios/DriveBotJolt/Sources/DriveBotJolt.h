@@ -58,6 +58,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)replaceStaticMesh:(NSUUID *)identifier
                   vertices:(NSData *)vertices
                    indices:(NSData *)indices;
+- (void)updateActor:(NSUUID *)identifier center:(simd_float3)center halfSize:(simd_float3)halfSize heading:(float)heading
+    NS_SWIFT_NAME(updateActor(_:center:halfSize:heading:));
 - (void)removeStaticMesh:(NSUUID *)identifier;
 - (void)replaceFloorAt:(simd_float3)center
                 extent:(simd_float2)extent

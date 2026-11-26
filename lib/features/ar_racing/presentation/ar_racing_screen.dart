@@ -430,7 +430,7 @@ class _ArtCrop extends StatelessWidget {
   );
 }
 
-class _RaceView extends StatelessWidget {
+class _RaceView extends StatefulWidget {
   const _RaceView({
     required this.onClose,
     required this.vehicleID,
@@ -442,17 +442,38 @@ class _RaceView extends StatelessWidget {
   final ArRaceBackgroundBuilder? backgroundBuilder;
 
   @override
+  State<_RaceView> createState() => _RaceViewState();
+}
+
+class _RaceViewState extends State<_RaceView> {
+  MethodChannel? _events;
+
+  void _bind(int id) {
+    _events = MethodChannel('drivebot/race/$id')
+      ..setMethodCallHandler((call) async {
+        if (mounted && call.method == 'wasted') widget.onClose();
+      });
+  }
+
+  @override
+  void dispose() {
+    _events?.setMethodCallHandler(null);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => Stack(
     key: const Key('ar-race-view'),
     fit: StackFit.expand,
     children: [
-      if (backgroundBuilder != null)
-        backgroundBuilder!(context)
+      if (widget.backgroundBuilder != null)
+        widget.backgroundBuilder!(context)
       else
         UiKitView(
           key: const Key('native-ar-racing-view'),
           viewType: 'drivebot/ar_racing_view',
-          creationParams: <String, Object>{'vehicleID': vehicleID},
+          onPlatformViewCreated: _bind,
+          creationParams: <String, Object>{'vehicleID': widget.vehicleID},
           creationParamsCodec: const StandardMessageCodec(),
           gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
             Factory<EagerGestureRecognizer>(EagerGestureRecognizer.new),
@@ -465,7 +486,7 @@ class _RaceView extends StatelessWidget {
             padding: const EdgeInsets.all(8),
             child: IconButton.filledTonal(
               key: const Key('close-ar-race'),
-              onPressed: onClose,
+              onPressed: widget.onClose,
               icon: const Icon(Icons.close),
               tooltip: 'Rennen schließen',
             ),

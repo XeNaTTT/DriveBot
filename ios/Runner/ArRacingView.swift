@@ -39,6 +39,11 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   #endif
   private let message = UILabel()
   private let speed = UILabel()
+  private let raceEvents: FlutterMethodChannel
+  private var damage = RallyCarDamage()
+  private var smokeTime: TimeInterval = 0
+  private var smoke: [(entity: ModelEntity, born: TimeInterval)] = []
+  private var damageText: String { "Schaden " + String(damage.percent) + " %" }
   private let inputDiagnostics = UILabel()
   private let resetButton = UIButton(type: .system)
   private let diagnosisButton = UIButton(type: .system)
@@ -113,7 +118,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private var placementGeneration = 0
   private var lastSuccessfulOperation = "initialization"
 
-  init(frame: CGRect, viewIdentifier: Int64, vehicleID: String) {
+  init(frame: CGRect, viewIdentifier: Int64, messenger: FlutterBinaryMessenger, vehicleID: String) {
+    raceEvents = FlutterMethodChannel(name: "drivebot/race/\(viewIdentifier)", binaryMessenger: messenger)
     self.vehicleID = vehicleID
     arView = ARView(frame: frame, cameraMode: .ar, automaticallyConfigureSession: false)
     super.init()
@@ -210,6 +216,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     speed.textColor = .white
     speed.text = "0.0 m/s"
     speed.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+    speed.numberOfLines = 2
+    speed.adjustsFontSizeToFitWidth = true
     speed.textAlignment = .center
     speed.layer.cornerRadius = 14
     speed.clipsToBounds = true
@@ -412,7 +420,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     interaction.setTitle(mode == .onFoot ? (canUseShop ? "Betreten" : "Einsteigen") : "Aussteigen", for: .normal)
 
     if mode != .driving { speed.text = "ZU FUSS" }
-    else if phase == .ready && lastSpeed.isFinite { speed.text = String(format: "%.2f m/s", lastSpeed) }
+    else if phase == .ready && lastSpeed.isFinite { speed.text = String(format: "%.2f m/s", lastSpeed) + "\n" + damageText }
     scanButton.isHidden = phase != .ready
     resetButton.isHidden = phase != .ready && !physicsFailed
     diagnosisButton.isHidden = !physicsFailed
@@ -540,6 +548,10 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     plume = nil
     deployed = false
     visit = nil
+    for id in district.actorIDs { physics.removeStaticMesh(id) }
+    damage = RallyCarDamage()
+    smoke.forEach { $0.entity.removeFromParent() }
+    smoke.removeAll()
     physics.removeStaticMesh(district.colliderID)
     district.reset()
     inventory = RallyInventory()
@@ -925,6 +937,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     displayLink = link
   }
   @MainActor private func frame(_ link: CADisplayLink) {
+    guard damage.percent < 100 else { return }
     if phase == .ready, settingsPanel.isHidden, let visual = vehicleVisualRoot,
        let camera = arView.session.currentFrame?.camera, case .normal = camera.trackingState,
        let orientation = root.window?.windowScene?.interfaceOrientation {
@@ -942,7 +955,10 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     } else { directionHUD.hide() }
     if phase == .ready, let pose = vehiclePose {
       let camera = arView.cameraTransform.translation
-      district.updateDetail(camera: camera, time: link.timestamp)
+      district.updateDetail(camera: camera, time: link.timestamp,
+                            walkerPosition: avatar?.root.position(relativeTo: nil),
+                            parkedCar: mode == .driving ? nil : pose, updateActor: physics.updateActor)
+      updateSmoke(pose, time: link.timestamp)
       let show = simd_distance(camera, pose.position(relativeTo: nil)) < (trimVisible ? 0.9 : 0.75)
       if show != trimVisible {
         for trim in vehicleTrim { trim.isEnabled = show }
@@ -1004,7 +1020,11 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       self.lastSpeed = state.speedMetersPerSecond
       if wasStopped != (self.lastSpeed <= 0.01) { self.updateMessage() }
       self.pedals.observe(speed: state.speedMetersPerSecond, appliedBrake: state.appliedBrake)
-      self.speed.text = (self.inventory.wings ? "◇ " : "") + String(format: "%.2f m/s", state.speedMetersPerSecond)
+      if state.collided, self.damage.hit(at: CACurrentMediaTime()), self.damage.percent == 100 {
+        self.finishWasted()
+        return
+      }
+      self.speed.text = (self.inventory.wings ? "◇ " : "") + String(format: "%.2f m/s", state.speedMetersPerSecond) + "\n" + self.damageText
       if self.inventory.boosting {
         let p = chassisTransform.columns.3
         self.inventory.sample([p.x,p.z], elapsed: Float(dt), speed: state.speedMetersPerSecond)
@@ -1013,6 +1033,44 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       }
       self.lastSuccessfulOperation = state.operation
       if state.collided { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+    }
+  }
+
+  private func updateSmoke(_ pose: Entity, time: TimeInterval) {
+    guard damage.smokeLevel > 0 else { return }
+    let heavy = damage.smokeLevel == 2
+    if time - smokeTime > (heavy ? 0.12 : 0.32) {
+      smokeTime = time
+      let puff = ModelEntity(mesh: .generateSphere(radius: heavy ? 0.003 : 0.0018),
+                             materials: [UnlitMaterial(color: (heavy ? UIColor.darkGray : .lightGray).withAlphaComponent(0.65))])
+      pose.addChild(puff)
+      puff.position = [0,0.014,0.009]
+      smoke.append((puff,time))
+    }
+    smoke.removeAll { puff in
+      let age = Float(time - puff.born)
+      if age > 0.85 { puff.entity.removeFromParent(); return true }
+      puff.entity.position.y = 0.014 + age * 0.025
+      puff.entity.position.x = sin(age * 5) * 0.002
+      puff.entity.scale = SIMD3(repeating: 1 + age)
+      return false
+    }
+  }
+
+  private func finishWasted() {
+    physics.setPaused(true)
+    root.isUserInteractionEnabled = false
+    let label = UILabel(frame: root.bounds)
+    label.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    label.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+    label.textColor = .systemRed
+    label.font = .systemFont(ofSize: 68, weight: .black)
+    label.textAlignment = .center
+    label.text = "WASTED"
+    root.addSubview(label)
+    speed.text = "0 m/s\n" + damageText
+    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+      self?.raceEvents.invokeMethod("wasted", arguments: nil)
     }
   }
 
@@ -1424,6 +1482,10 @@ private final class SerializedJoltWorld {
       expectedWheels: state.expectedWheelCount, outputWheels: state.outputWheelCount,
       transformsFinite: state.transformsFinite))
   }
+  func updateActor(_ id: UUID, _ center: SIMD3<Float>, _ halfSize: SIMD3<Float>, _ heading: Float) {
+    queue.async { [world] in world.updateActor(id, center: center, halfSize: halfSize, heading: heading) }
+  }
+
   func replaceStaticMesh(_ id: UUID, vertices: Data, indices: Data) {
     queue.async { [world] in world.replaceStaticMesh(id, vertices: vertices, indices: indices) }
   }
@@ -1524,6 +1586,19 @@ struct RallyMeshSnapshot {
     return (points, indices)
   }
 }
+struct RallyCarDamage {
+  private(set) var percent = 0
+  private var lastHit: TimeInterval = -.infinity
+  var smokeLevel: Int { min(2, percent * 3 / 100) }
+
+  mutating func hit(at time: TimeInterval) -> Bool {
+    guard percent < 100, time - lastHit >= 0.65 else { return false }
+    lastHit = time
+    percent = min(100, percent + 17)
+    return true
+  }
+}
+
 enum SteeringInput {
   static let deadZone = sin(3.0 * .pi / 180.0)
 

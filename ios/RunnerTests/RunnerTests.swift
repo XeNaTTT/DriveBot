@@ -7,6 +7,20 @@ import XCTest
 @testable import Runner
 
 class RunnerTests: XCTestCase {
+  func testCollisionDamageSmokeAndTerminalState() {
+    var damage = RallyCarDamage()
+    XCTAssertEqual(damage.percent, 0)
+    XCTAssertTrue(damage.hit(at: 0))
+    XCTAssertFalse(damage.hit(at: 0.1))
+    XCTAssertEqual(damage.smokeLevel, 0)
+    for (second, expectedSmoke) in [1, 1, 2, 2, 2].enumerated() {
+      XCTAssertTrue(damage.hit(at: Double(second + 1)))
+      XCTAssertEqual(damage.smokeLevel, expectedSmoke)
+    }
+    XCTAssertEqual(damage.percent, 100)
+    XCTAssertFalse(damage.hit(at: 10))
+  }
+
   func testPackedMeshLastVertexEndsAtBufferBoundary() {
     let coordinates = (0..<192).map { Float($0) }
     coordinates.withUnsafeBytes { bytes in
