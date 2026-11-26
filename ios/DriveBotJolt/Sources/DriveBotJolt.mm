@@ -121,6 +121,9 @@ static Profile ProfileNamed(NSString *name) {
   // SI values for a 50 mm car. Suspension retains millimetres of travel so it
   // stays above Jolt's numerical tolerances rather than being visually scaled
   // from the former 300 mm setup.
+  if ([name isEqualToString:@"convertible"]) return {.054f, .0086f, 34, .0014f,.0047f,5.1f,.78f};
+  if ([name isEqualToString:@"sedan"]) return {.066f,.0077f,30,.0015f,.0050f,4.8f,.76f};
+  if ([name isEqualToString:@"pickup"]) return {.090f,.0081f,26,.0020f,.0060f,4.3f,.75f};
   if ([name isEqualToString:@"sport"]) return {.075f, .009f, 30, .0015f, .0050f, 5.0f, .78f};
   if ([name isEqualToString:@"offroad"]) return {.095f, .008f, 26, .0020f, .0065f, 4.2f, .75f};
   return {.085f, .0085f, 28, .0018f, .0055f, 4.6f, .76f};
@@ -155,7 +158,7 @@ static Profile ProfileNamed(NSString *name) {
   float _throttle, _brake, _steering;
   double _accumulator;
   BOOL _paused;
-  float _baseTorque, _vehicleMass, _baseFinalDrive, _boostSpeedLimit;
+  float _baseTorque, _vehicleMass, _baseFinalDrive, _boostSpeedLimit, _streetSpeedLimit;
   BOOL _boostEnabled;
   BOOL _wingsInstalled;
   ChassisImpacts _impacts;
@@ -237,8 +240,11 @@ static Profile ProfileNamed(NSString *name) {
   const Profile profile = ProfileNamed(name);
   // ARKit and Jolt both use metres and +Y up, with the car's longitudinal axis
   // on Z. Visible length is 0.050 m; the simpler collider is 0.046 m long.
-  constexpr float halfWidth = .0115f, halfHeight = .0035f, halfLength = .023f;
-  constexpr float radius = .0045f, axleOffset = .0165f;
+  const float length = [name isEqualToString:@"convertible"] ? .035f :
+                       [name isEqualToString:@"sedan"] ? .039f :
+                       [name isEqualToString:@"pickup"] ? .043f : .050f;
+  const float halfWidth = length * .23f, halfHeight = .0035f, halfLength = length * .46f;
+  const float radius = length * .09f, axleOffset = length * .33f;
   auto shapeResult = OffsetCenterOfMassShapeSettings(
     Vec3(0, -.0015f, 0), new BoxShape(Vec3(halfWidth, halfHeight, halfLength), .001f)).Create();
   if (shapeResult.HasError()) {
@@ -275,15 +281,19 @@ static Profile ProfileNamed(NSString *name) {
     wheel->mSuspensionSpring.mFrequency = profile.frequency;
     wheel->mSuspensionSpring.mDamping = profile.damping;
     wheel->mMaxSteerAngle = index < 2 ? DegreesToRadians(profile.steer) : 0;
-    wheel->mMaxBrakeTorque = .018f;
+    wheel->mMaxBrakeTorque = [name isEqualToString:@"pickup"] ? .020f :
+                             [name isEqualToString:@"convertible"] ? .014f : .018f;
     wheel->mMaxHandBrakeTorque = index >= 2 ? .022f : 0;
     settings.mWheels.push_back(wheel);
   }
   auto *controller = new WheeledVehicleControllerSettings;
   // Steady level-floor speeds measured for these 50 mm profiles in pinned Jolt.
-  const float cruiseSpeed = [name isEqualToString:@"sport"] ? 1.05f :
+  const float cruiseSpeed = [name isEqualToString:@"convertible"] ? 1.18f :
+                            [name isEqualToString:@"pickup"] ? .86f :
+                            [name isEqualToString:@"sedan"] ? .97f : [name isEqualToString:@"sport"] ? 1.05f :
                             [name isEqualToString:@"offroad"] ? 1.03f : 1.04f;
   _boostSpeedLimit = 1.5f * cruiseSpeed;
+  _streetSpeedLimit = length < .050f ? cruiseSpeed : 0.f;
   _boostEnabled = NO;
   _vehicleMass = profile.mass;
   _wingsInstalled = NO;
@@ -467,9 +477,10 @@ static Profile ProfileNamed(NSString *name) {
       const float speed = _physics->GetBodyInterface().GetLinearVelocity(_car).Length();
       const float steeringLimit = std::max(.45f, 1.f - speed / 2.f);
       float drive = _throttle;
-      if (_boostEnabled && drive > 0) {
+      if ((_boostEnabled || _streetSpeedLimit > 0.f) && drive > 0) {
         const Vec3 v = _physics->GetBodyInterface().GetLinearVelocity(_car);
-        drive *= std::clamp((_boostSpeedLimit - std::hypot(v.GetX(), v.GetZ())) / .015f, 0.f, 1.f);
+        const float limit = _boostEnabled ? _boostSpeedLimit : _streetSpeedLimit;
+        drive *= std::clamp((limit - std::hypot(v.GetX(), v.GetZ())) / .015f, 0.f, 1.f);
       }
       controller->SetDriverInput(drive, _steering * steeringLimit, _brake, _brake);
       if (_throttle != 0 || _steering != 0 || _brake != 0)

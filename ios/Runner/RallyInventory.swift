@@ -26,9 +26,15 @@ enum RallyItem: Int, CaseIterable {
   }
 }
 
+struct RallyInstalledGear {
+  var remaining: Float = 0
+  var wings = false
+}
+
 struct RallyInventory {
   private(set) var collected: Set<RallyItem> = []
   private(set) var held: RallyItem?
+  private var installed: Set<RallyItem> = []
   private(set) var wings = false
   private(set) var remaining: Float = 0
   var boosting = false
@@ -41,15 +47,21 @@ struct RallyInventory {
   }
 
   mutating func enterVehicle() {
-    if collected.contains(.nos), remaining == 0, !spent { remaining = 10 }
-    wings = collected.contains(.wings)
+    if collected.contains(.nos), installed.insert(.nos).inserted { remaining = 10 }
+    if collected.contains(.wings), installed.insert(.wings).inserted { wings = true }
     if held == .nos || held == .wings {
       held = collected.contains(.sword) ? .sword : collected.contains(.blaster) ? .blaster : nil
     }
     stopBoost()
   }
 
-  private var spent = false
+  mutating func switchGear(to gear: RallyInstalledGear) -> RallyInstalledGear {
+    let old = RallyInstalledGear(remaining: remaining, wings: wings)
+    stopBoost()
+    remaining = gear.remaining
+    wings = gear.wings
+    return old
+  }
   mutating func stopBoost() { boosting = false; previous = nil }
   mutating func sample(_ position: SIMD2<Float>, elapsed: Float, speed: Float) {
     guard boosting, remaining > 0 else { previous = nil; return }
@@ -58,7 +70,7 @@ struct RallyInventory {
     let distance = simd_distance(previous, position)
     guard distance.isFinite, distance <= max(0.005, speed * min(elapsed,0.1) * 2 + 0.002) else { return }
     remaining = max(0, remaining - distance)
-    if remaining == 0 { spent = true; stopBoost() }
+    if remaining == 0 { stopBoost() }
   }
 
   func shouldGlide(groundedWheels: Int) -> Bool { wings && groundedWheels == 0 }

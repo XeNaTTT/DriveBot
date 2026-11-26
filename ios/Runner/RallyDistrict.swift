@@ -16,7 +16,10 @@ final class RallyDistrict {
   private var lastAttempt: TimeInterval = -.infinity
   private let hull = ShapeResource.generateBox(size: [0.16,0.078,0.16])
 
+  let fleet = RallyTraffic()
+
   func reset() {
+    fleet.reset()
     for anchor in anchors { anchor.removeFromParent() }
     anchors.removeAll()
     details.removeAll()
@@ -29,10 +32,13 @@ final class RallyDistrict {
     lastAttempt = -.infinity
   }
 
-  func updateDetail(camera: SIMD3<Float>, time: TimeInterval, walkerPosition: SIMD3<Float>?, parkedCar: Entity?,
+  func updateDetail(view: ARView, camera: SIMD3<Float>, time: TimeInterval, walkerPosition: SIMD3<Float>?, parkedCar: Entity?,
                     updateActor: (UUID, SIMD3<Float>, SIMD3<Float>, Float) -> Void) {
     let dt = Float(min(0.08, max(0, time - (lastFrame ?? time))))
     lastFrame = time
+    fleet.tick(view: view, dt: dt, time: time, camera: camera,
+      obstacles: [walkerPosition,parkedCar?.position(relativeTo: nil)].compactMap { $0 } + traffic.map { $0.entity.position(relativeTo: nil) },
+      buildings: buildings, publish: updateActor)
     for index in traffic.indices {
       let actor = traffic[index]
       let speed: Float = actor.walker == nil ? 0.045 : 0.010
@@ -48,6 +54,10 @@ final class RallyDistrict {
           if abs(local.y) < 0.018 && abs(local.x) < actor.half.x + 0.003 &&
              abs(local.z) < actor.half.z + 0.003 { blocked = true }
         }
+        if fleet.cars.contains(where: { car in
+          let local = car.pose.convert(position: world, from: nil)
+          return abs(local.y) < 0.025 && abs(local.x) < car.half.x + 0.003 && abs(local.z) < car.half.z + 0.003
+        }) { blocked = true }
         if let parkedCar {
           let local = parkedCar.convert(position: world, from: nil)
           let radius = max(actor.half.x, actor.half.z)
@@ -91,7 +101,7 @@ final class RallyDistrict {
 
   private var buildings: [BoundingBox] = []
   private var traffic: [(entity: Entity, walker: RallyWalker?, center: SIMD3<Float>, phase: Float, radius: Float, id: UUID, half: SIMD3<Float>)] = []
-  var actorIDs: [UUID] { traffic.map { $0.id } }
+  var actorIDs: [UUID] { traffic.map { $0.id } + fleet.cars.map { $0.id } }
   private var lastFrame: TimeInterval?
   let colliderID = UUID()
 
@@ -200,16 +210,27 @@ final class RallyDistrict {
   }
 
   private func box(_ size: SIMD3<Float>, _ color: UIColor, at point: SIMD3<Float>, in parent: Entity) {
-    let part = ModelEntity(mesh: .generateBox(size: size), materials: [SimpleMaterial(color: color, isMetallic: false)])
+    let part = ModelEntity(mesh: .generateBox(size: size, cornerRadius: min(size.x,min(size.y,size.z))*0.13), materials: [SimpleMaterial(color: color, isMetallic: false)])
     part.position = point
     parent.addChild(part)
   }
 
   private func residence(floors: Int) -> Entity {
     let house = Entity()
+    let paints: [UIColor] = [UIColor(red: 0.96,green: 0.72,blue: 0.66,alpha: 1), .systemTeal, .systemPink, UIColor(red: 0.62,green: 0.85,blue: 0.75,alpha: 1), .systemBrown]
     for level in 0..<floors {
       let y = Float(level) * 0.016
-      box([0.052,0.016,0.024], .systemOrange, at: [0,y+0.008,0], in: house)
+      box([0.052,0.016,0.024], paints[(floors-1)%paints.count], at: [0,y+0.008,0], in: house)
+      box([0.054,0.0013,0.026], .white, at: [0,y+0.015,0], in: house)
+      if level == 0 {
+        for side: Float in [-1,1] {
+          let awning = ModelEntity(mesh: .generateBox(size: [0.021,0.0008,0.009],cornerRadius: 0.00035),
+            materials: [SimpleMaterial(color: floors.isMultiple(of: 2) ? .systemPink : .systemTeal,isMetallic: false)])
+          awning.position = [side*0.014,0.013,0.015]
+          awning.orientation = simd_quatf(angle: 0.22,axis: [1,0,0])
+          house.addChild(awning)
+        }
+      }
       for x: Float in [-0.017,0,0.017] {
         box([0.009,0.007,0.0245], .darkGray, at: [x,y+0.009,0], in: house)
       }
@@ -226,22 +247,86 @@ final class RallyDistrict {
     let rear = residence(floors: index + 1)
     rear.position = [0,0.0008,-0.036]
     tile.addChild(rear)
+    let shops = ["PALM MOTOR WORKS","CORAL CURIOS","TIDE SUPPLY","KEYS AIR","SURF MOTEL"]
+    let venues = ["BAY DINER","OCEAN HOTEL","PALM SERVICE","LAGOON INN","COAST SUITES"]
+    for (text, z, y) in [(shops[index],Float(0.039),Float(0.027)),(venues[index],Float(-0.021),Float(0.013))] {
+      let letters = ModelEntity(mesh: .generateText(text, extrusionDepth: 0.012,
+        font: .boldSystemFont(ofSize: 1), containerFrame: .zero, alignment: .left, lineBreakMode: .byClipping),
+        materials: [UnlitMaterial(color: index.isMultiple(of: 2) ? .cyan : .systemPink)])
+      let width = letters.visualBounds(relativeTo: letters).extents.x
+      letters.scale = SIMD3(repeating: 0.043/max(1,width))
+      letters.position = [-0.0215,y,z+0.001]
+      box([0.047,0.008,0.002], .darkGray, at: [0,y+0.002,z], in: tile)
+      tile.addChild(letters)
+    }
+    // Facade elements sit on either side of the existing +Z entrance.
+    let coral = UIColor(red: 0.89,green: 0.46,blue: 0.43,alpha: 1)
+    let cream = UIColor(red: 0.98,green: 0.93,blue: 0.81,alpha: 1)
+    let frontage: [UIColor] = [cream,coral,.darkGray,.lightGray,.systemTeal]
+    for side: Float in [-1,1] {
+      box([0.017,0.024,0.002], frontage[index], at: [side*0.022,0.013,0.038], in: tile)
+      if index == 0 || index == 3 {
+        for slat in 0..<8 {
+          box([0.015,0.0012,0.001], .gray, at: [side*0.022,0.004+Float(slat)*0.0024,0.0394], in: tile)
+        }
+      } else {
+        box([0.015,0.017,0.001], .systemTeal, at: [side*0.022,0.012,0.0394], in: tile)
+        box([0.019,0.002,0.005], cream, at: [side*0.022,0.023,0.040], in: tile)
+      }
+    }
+    if index == 0 || index == 3 {
+      let bayX: Float = -0.048
+      for x: Float in [-0.014,0.014] {
+        for z: Float in [-0.023,0.023] {
+          let post = SIMD3<Float>(bayX+x,0.015,z)
+          box([0.0015,0.029,0.0015], cream, at: post, in: tile)
+          let half = SIMD3<Float>(0.00075,0.0145,0.00075)
+          buildings.append(BoundingBox(min: center+post-half,max: center+post+half))
+        }
+      }
+      box([0.032,0.002,0.052], frontage[index], at: [bayX,0.031,0], in: tile)
+    }
+    if index == 2 {
+      for x: Float in [-0.016,0.016] {
+        box([0.004,0.014,0.004], cream, at: [x,0.008,-0.010], in: tile)
+        box([0.007,0.007,0.005], coral, at: [x,0.006,-0.010], in: tile)
+      }
+      box([0.045,0.002,0.012], cream, at: [0,0.016,-0.010], in: tile)
+    }
+    let streetSign = Entity()
+    streetSign.position = [0.052,0,0.052]
+    tile.addChild(streetSign)
+    box([0.001,0.019,0.001], .lightGray, at: [0,0.010,0], in: streetSign)
+    box([0.014,0.004,0.0008], .systemGreen, at: [0,0.019,0], in: streetSign)
+    let streetName = ModelEntity(mesh: .generateText(["PALM AV","KEYS ST","BAY AV","REEF ST","SURF AV"][index],
+      extrusionDepth: 0.01, font: .boldSystemFont(ofSize: 1)), materials: [UnlitMaterial(color: .white)])
+    streetName.scale = SIMD3(repeating: 0.012/max(1,streetName.visualBounds(relativeTo: streetName).extents.x))
+    streetName.position = [-0.006,0.018,0.00045]
+    streetSign.addChild(streetName)
+    for side: Float in [-1,1] {
+      let x = side * 0.045
+      box([0.016,0.001,0.017], .systemGreen, at: [x,0.001,-0.040], in: tile)
+      box([0.002,0.029,0.002], .brown, at: [x,0.015,-0.04], in: tile)
+      for n in 0..<8 {
+        let angle = Float(n) * .pi / 4
+        let frond = ModelEntity(mesh: .generateSphere(radius: 0.009), materials: [SimpleMaterial(color: .systemGreen,isMetallic: false)])
+        frond.scale = [0.25,0.10,1]
+        frond.position = [x+sin(angle)*0.006,0.029,-0.04+cos(angle)*0.006]
+        frond.orientation = simd_quatf(angle: angle, axis: [0,1,0]) * simd_quatf(angle: 0.25, axis: [1,0,0])
+        tile.addChild(frond)
+      }
+      box([0.001,0.029,0.001], .darkGray, at: [side*0.059,0.015,0.048], in: tile)
+      box([0.005,0.002,0.002], .white, at: [side*0.059,0.030,0.048], in: tile)
+      for edge: Float in [-1,1] {
+        box([0.0008,0.0003,0.043], .white, at: [x+edge*0.012,0.001,0], in: tile)
+      }
+    }
     for building in [front, rear] {
       let bounds = building.visualBounds(relativeTo: tile)
       buildings.append(BoundingBox(min: center + bounds.min, max: center + bounds.max))
     }
 
-    for slot in 0..<Self.carCount(on: index) {
-      let car = Entity()
-      let colors: [UIColor] = [.systemBlue,.systemRed,.systemYellow,.white,.systemGreen]
-      box([0.013,0.006,0.029], colors[index], at: [0,0.005,0], in: car)
-      box([0.011,0.004,0.014], .darkGray, at: [0,0.010,-0.002], in: car)
-      for x: Float in [-0.006,0.006] {
-        for z: Float in [-0.009,0.009] { box([0.003,0.005,0.005], .black, at: [x,0.003,z], in: car) }
-      }
-      tile.addChild(car)
-      traffic.append((car,nil,.init(0,0.0003,0),Float(slot)*0.28,0.070,UUID(),[0.0075,0.006,0.0145]))
-    }
+    fleet.spawn(tile: tile, block: index, count: Self.carCount(on: index))
     for slot in 0..<Self.pedestrianCount(on: index) {
       let walker = RallyWalker()
       tile.addChild(walker.root)
@@ -291,6 +376,10 @@ final class RallyDistrict {
     }
   }
   func permits(_ p: SIMD3<Float>) -> Bool {
+    for car in fleet.cars where car.control != .player {
+      let local = car.pose.convert(position: p, from: nil)
+      if abs(local.x) < car.half.x + 0.002 && abs(local.z) < car.half.z + 0.002 && abs(local.y) < 0.025 { return false }
+    }
     for actor in traffic {
       let local = actor.entity.convert(position: p, from: nil)
       if abs(local.x) < actor.half.x + 0.002 && abs(local.z) < actor.half.z + 0.002 &&

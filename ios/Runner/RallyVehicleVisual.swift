@@ -116,6 +116,63 @@ struct RallyVehicleVisual {
     return Self(root: root, wheels: wheels)
   }
 
+  static func street(_ model: StreetModel, cache: inout [StreetModel: Entity]) -> Self {
+    let wheelNames = ["front right","front left","rear right","rear left"]
+    if cache[model] == nil {
+      let shell = Entity()
+      let paint = finish(model == .pickup ? 0x48998D : model == .sedan ? 0x87CED2 : 0xF1BE3B, roughness: 0.27, metallic: true)
+      let trim = finish(0x29333A, roughness: 0.45)
+      let chrome = finish(0xD5D9CD, roughness: 0.17, metallic: true)
+      func part(_ size: SIMD3<Float>, _ p: SIMD3<Float>, _ mat: RealityKit.Material, _ radius: Float = 0.012) {
+        let unit = ModelEntity(mesh: .generateBox(size: size, cornerRadius: radius), materials: [mat])
+        unit.position = p
+        shell.addChild(unit)
+      }
+      part([0.46,0.13,1],[0,0,0],paint,0.055)
+      part([0.42,0.045,0.34],[0,0.068,0.30],paint)
+      part([0.44,0.032,0.034],[0,-0.017,0.492],chrome)
+      for side: Float in [-1,1] {
+        part([0.1,0.041,0.016],[side*0.155,0.035,0.492],chrome)
+        part([0.035,0.14,0.025],[side*0.189,0.13,0.16],chrome)
+        part([0.075,0.036,0.018],[side*0.16,0.028,-0.495],finish(0xD23540,roughness: 0.22))
+        part([0.018,0.006,0.86],[side*0.23,0.018,0],chrome,0.002)
+      }
+      var glass = SimpleMaterial(color: UIColor.systemTeal.withAlphaComponent(0.27), isMetallic: false)
+      glass.roughness = 0.12
+      part([0.36,0.12,0.012],[0,0.135,0.16],glass,0.004)
+      if model != .convertible {
+        part([0.40,0.03,model == .pickup ? 0.27 : 0.45],[0,0.225,-0.02],paint)
+        part([0.37,0.14,0.025],[0,0.14,model == .pickup ? -0.15 : -0.24],trim)
+      }
+      if model == .pickup {
+        part([0.375,0.012,0.25],[0,0.068,-0.325],trim)
+        for side: Float in [-1,1] { part([0.036,0.08,0.3],[side*0.20,0.08,-0.33],paint) }
+      }
+      let driver = Entity()
+      driver.name = "driver"
+      driver.position = [-0.09,0.067,0.015]
+      let torso = ModelEntity(mesh: .generateBox(size: [0.095,0.085,0.063],cornerRadius: 0.023),materials: [trim])
+      torso.position.y = 0.035
+      let head = ModelEntity(mesh: .generateSphere(radius: 0.034),materials: [finish(0xB98464,roughness: 0.8)])
+      head.position.y = 0.108
+      driver.addChild(torso)
+      driver.addChild(head)
+      shell.addChild(driver)
+      let tyre = makeWheel(width: 0.086, offroad: model == .pickup)
+      for (i,name) in wheelNames.enumerated() {
+        let wheel = tyre.clone(recursive: true)
+        wheel.name = name
+        wheel.position = [i % 2 == 0 ? 0.23 : -0.23,-0.13,i < 2 ? 0.33 : -0.33]
+        wheel.orientation = simd_quatf(angle: .pi/2,axis: [0,0,1])
+        shell.addChild(wheel)
+      }
+      cache[model] = shell
+    }
+    let root = cache[model]!.clone(recursive: true)
+    root.scale = SIMD3(repeating: model.length)
+    return Self(root: root,wheels: wheelNames.compactMap { root.findEntity(named: $0) })
+  }
+
   private static let treadTexture: TextureResource? = {
     guard let url = Bundle.main.url(forResource: "tread", withExtension: "png", subdirectory: "RallyAssets") else { return nil }
     return try? TextureResource.load(contentsOf: url)

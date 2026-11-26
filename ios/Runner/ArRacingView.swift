@@ -72,7 +72,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private var pedals = RacingPedals()
   private var steering: Float = 0
   private var touchSteering = false
-  private enum PlayMode { case driving, exiting, onFoot, entering, visiting }
+  private enum PlayMode { case driving, exiting, onFoot, entering, visiting, takingOver }
   private var mode: PlayMode = .driving
   private let interaction = UIButton(type: .system)
   private var avatar: RallyWalker?
@@ -89,6 +89,11 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private let boostButton = UIButton(type: .system)
   private lazy var district = MainActor.assumeIsolated { RallyDistrict() }
   @MainActor private lazy var walkingSurface = RallyWalkingSurface(view: arView)
+  private var currentCar: StreetCar?
+  private var targetCar: StreetCar?
+  private var nearbyCar: StreetCar?
+  private var displacedDriver: RallyWalker?
+  private var preparingSwitch = false
   private var displayedEntry: Int?
   private var visit: RallyVisit?
   private var walkInput = SIMD2<Float>.zero
@@ -99,6 +104,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private lazy var settingsPanel = MainActor.assumeIsolated {
     RallySteeringPanel(controls: controls) { [weak self] in self?.toggleDebug() }
   }
+  private var actorBatchPending = false
+  private var lastActorBatch: TimeInterval = 0
   private var meshRevisions: [UUID: UUID] = [:]
   private var meshWork: [UUID: DispatchWorkItem] = [:]
   private let meshQueue = DispatchQueue(label: "de.drivebot.mesh", qos: .utility)
@@ -133,6 +140,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       arView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
     ])
     configureHUD()
+    arView.session.delegateQueue = .main
     arView.session.delegate = self
     NotificationCenter.default.addObserver(
       self, selector: #selector(interrupted), name: UIApplication.willResignActiveNotification,
@@ -409,15 +417,16 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
 
     let shop = avatar.flatMap { district.entry(at: $0.root.position(relativeTo: nil)) }
     let canReturnToCar = mode == .onFoot && nearDoor
+    nearbyCar = mode == .onFoot ? avatar.flatMap { district.fleet.nearby($0.root.position(relativeTo: nil)) } : nil
     let canUseShop = mode == .onFoot && shop != nil
     displayedEntry = canUseShop ? shop : nil
     district.highlight(displayedEntry)
-    interaction.isHidden = !playing || !(mode == .driving || canReturnToCar || canUseShop)
+    interaction.isHidden = !playing || !(mode == .driving || canReturnToCar || canUseShop || nearbyCar != nil)
     interaction.isEnabled = mode == .onFoot || lastSpeed <= 0.01
     interaction.alpha = interaction.isEnabled ? 1 : 0.45
     for arrow in walkingArrows { arrow.isHidden = mode != .onFoot }
     steeringPad.accessibilityLabel = mode == .onFoot ? "Gehen" : "Lenken"
-    interaction.setTitle(mode == .onFoot ? (canUseShop ? "Betreten" : "Einsteigen") : "Aussteigen", for: .normal)
+    interaction.setTitle(mode == .onFoot ? (nearbyCar != nil ? "Fahrzeug übernehmen" : canUseShop ? "Betreten" : "Einsteigen") : "Aussteigen", for: .normal)
 
     if mode != .driving { speed.text = "ZU FUSS" }
     else if phase == .ready && lastSpeed.isFinite { speed.text = String(format: "%.2f m/s", lastSpeed) + "\n" + damageText }
@@ -479,6 +488,11 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     carAnchor = anchor
     vehiclePose = pose
     vehicleVisualRoot = visualRoot
+    let original = StreetCar(pose: pose, visual: vehicle, model: nil, profile: profile, floorY: p.y)
+    original.goal = -1
+    original.control = .player
+    district.fleet.cars.append(original)
+    currentCar = original
     wheels = builtWheels
     let trimNames: Set<String> = ["door handle","grille insert","roof rack crossbar","roof floodlight","rock slider"]
     vehicleTrim = visualRoot.children.filter { trimNames.contains($0.name) }
@@ -554,6 +568,12 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     smoke.removeAll()
     physics.removeStaticMesh(district.colliderID)
     district.reset()
+    targetCar = nil
+    currentCar = nil
+    nearbyCar = nil
+    displacedDriver?.root.removeFromParent()
+    displacedDriver = nil
+    preparingSwitch = false
     inventory = RallyInventory()
     placementGeneration += 1
     avatar?.root.removeFromParent()
@@ -702,6 +722,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       self.visit = nil
       mode = .onFoot
     }
+    if mode == .takingOver && !preparingSwitch { cancelSwitch() }
     trackingInterrupted = true
     releaseInputs()
     physics.setPaused(true)
@@ -710,11 +731,12 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
 
   private var door: SIMD3<Float>? {
-    vehiclePose?.convert(position: [-0.017, 0, 0.008], to: nil)
+    vehiclePose?.convert(position: currentCar?.door ?? [-0.017, 0, 0.008], to: nil)
   }
   private var nearDoor: Bool {
     guard let door, let avatar else { return false }
     let local = avatar.root.position(relativeTo: vehiclePose)
+    if let car = currentCar, car.model != nil { return local.x < -car.half.x && simd_distance(door,avatar.root.position(relativeTo: nil)) < 0.025 }
     return RallyWalking.canEnter(distance: simd_distance(door, avatar.root.position(relativeTo: nil)),
                                  localX: local.x)
   }
@@ -804,12 +826,13 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
                                  allowing: .existingPlaneGeometry, alignment: .horizontal)
       guard let floor = arView.session.raycast(query).first else { return }
       let y = floor.worldTransform.columns.3.y
+      currentCar?.floorY = y
       guard abs(y - door.y) < 0.018 else { return }
       let start = SIMD3(door.x, y, door.z)
       for z: Float in [0.008, -0.002, 0.018] {
         let side = pose.convert(position: [-0.023, 0, z], to: nil)
         guard let spot = walkingSurface.position([side.x, y, side.z], from: start,
-          vehiclePose: pose, hasSceneReconstruction: hasSceneReconstruction) else { continue }
+          vehiclePose: pose, hasSceneReconstruction: hasSceneReconstruction), district.permits(spot) else { continue }
         releaseInputs()
         physics.setPaused(true)
         let walker = RallyWalker()
@@ -828,6 +851,24 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     case .onFoot:
       if let avatar {
         let position = avatar.root.position(relativeTo: nil)
+        if let target = district.fleet.nearby(position), let anchor = carAnchor {
+          releaseInputs()
+          targetCar = target
+          target.previousControl = target.control
+          target.control = .reserved
+          outsideDoor = position
+          transitionTime = 0
+          mode = .takingOver
+          if let driver = target.driver, driver.isEnabled {
+            let walker = RallyWalker()
+            anchor.addChild(walker.root)
+            walker.root.setPosition(driver.position(relativeTo: nil), relativeTo: nil)
+            driver.isEnabled = false
+            displacedDriver = walker
+          }
+          updateMessage()
+          return
+        }
         if let shop = district.entry(at: position),
            let route = district.visit(shop, from: position, now: CACurrentMediaTime()) {
           releaseInputs()
@@ -847,8 +888,113 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     }
   }
 
+  @MainActor private func switchVehicle(to target: StreetCar) {
+    guard let old = currentCar else { return }
+    preparingSwitch = true
+    let generation = placementGeneration
+    let p = target.position
+    let floor = ARRaycastQuery(origin: p + [0,0.03,0], direction: [0,-1,0], allowing: .existingPlaneGeometry, alignment: .horizontal)
+    guard let hit = arView.session.raycast(floor).first else { cancelSwitch(); return }
+    let ground = SIMD3(p.x,hit.worldTransform.columns.3.y,p.z)
+    physics.removeStaticMesh(target.id)
+    physics.prepareVehicle(at: ground,heading: target.yaw,profile: target.profile) { [weak self] result in
+      guard let self, self.placementGeneration == generation else { return }
+      guard case .success(let state) = result, let transform = state.chassis?.matrix else {
+        self.cancelSwitch()
+        let previous = old.position
+        self.preparingSwitch = true
+        self.mode = .takingOver
+        self.physics.prepareVehicle(at: [previous.x,old.floorY,previous.z], heading: old.yaw, profile: old.profile) { restored in
+          guard generation == self.placementGeneration else { return }
+          self.preparingSwitch = false
+          self.mode = .onFoot
+          if case .failure(let error) = restored { self.stopAfterPhysicsFailure(error); return }
+          self.physics.wings(self.inventory.wings)
+          self.updateMessage()
+        }
+        return
+      }
+      old.goal = -1
+      old.control = .vacant
+      old.damage = self.damage
+      old.gear = self.inventory.switchGear(to: target.gear)
+      self.damage = target.damage
+      self.stripes?.removeFromParent()
+      self.plume?.removeFromParent()
+      self.wingModel?.removeFromParent()
+      self.wingModel = nil
+      self.stripes = nil
+      self.plume = nil
+      self.deployed = false
+      target.floorY = ground.y
+      target.control = .player
+      self.currentCar = target
+      self.vehiclePose = target.pose
+      self.vehicleVisualRoot = target.visual.root
+      self.wheels = target.visual.wheels
+      self.vehicleTrim = []
+      self.placementFloorY = ground.y
+      self.carModelCenter = target.visual.root.visualBounds(relativeTo: target.visual.root).center
+      self.carRadius = simd_length(target.half)
+      self.applyVehicleTransforms(state,chassisTransform: transform,pose: target.pose,visualRoot: target.visual.root)
+      if let walker = self.displacedDriver {
+        walker.animate(dt: 0,velocity: .zero)
+        target.departed = walker
+        target.awayDirection = target.pose.orientation(relativeTo: nil).act([0,0,-1])
+        target.walkingAway = 3
+      }
+      self.displacedDriver = nil
+      self.targetCar = nil
+      self.preparingSwitch = false
+      self.outsideDoor = target.pose.convert(position: target.door,to: nil)
+      self.mode = .entering
+      self.transitionTime = 0.24
+      self.lastSpeed = 0
+      self.updateMessage()
+      let notice = target.title + (target.model.map { String(format: " · max. %.2f m/s",$0.topSpeed) } ?? "")
+      self.message.text = notice
+      self.message.isHidden = false
+      UIAccessibility.post(notification: .announcement, argument: notice)
+    }
+  }
+
+  @preconcurrency @MainActor private func cancelSwitch() {
+    if let targetCar { targetCar.control = targetCar.previousControl }
+    if displacedDriver != nil { targetCar?.driver?.isEnabled = true }
+    displacedDriver?.root.removeFromParent()
+    displacedDriver = nil
+    targetCar = nil
+    preparingSwitch = false
+    avatar?.root.setPosition(outsideDoor,relativeTo: nil)
+    mode = .onFoot
+    updateMessage()
+  }
+
   @MainActor private func tickWalking(_ dt: Float) {
-    guard let avatar else { return }
+    guard let avatar, !preparingSwitch else { return }
+    if mode == .takingOver, let target = targetCar {
+      transitionTime += dt
+      let threshold = target.pose.convert(position: target.door, to: nil)
+      let side = target.pose.convert(position: target.door + [-0.013,-0.008,0], to: nil)
+      let seat = target.pose.convert(position: [-0.004,0.002,0.002], to: nil)
+      let approach = min(1,transitionTime / 0.8)
+      let enter = min(1,max(0,(transitionTime-1.55)/0.85))
+      let previous = avatar.root.position(relativeTo: nil)
+      let next = outsideDoor + (threshold-outsideDoor)*approach + (seat-threshold)*enter
+      avatar.root.setPosition(next,relativeTo: nil)
+      avatar.animate(dt: dt,velocity: (next-previous)/max(dt,0.001))
+      if let walker = displacedDriver {
+        let step = min(1,max(0,(transitionTime-0.5)/0.9))
+        let walk = max(0,transitionTime-1.4)
+        let away = target.pose.orientation(relativeTo: nil).act(SIMD3<Float>(0,0,-0.012))
+        let p = seat + (side-seat)*step + away*walk
+        walker.root.setPosition(p,relativeTo: nil)
+        walker.root.orientation = simd_quatf(angle: target.yaw + .pi,axis: [0,1,0])
+        walker.animate(dt: dt,velocity: walk > 0 ? away : .zero)
+      }
+      if transitionTime >= 2.4 { switchVehicle(to: target) }
+      return
+    }
     if var route = visit {
       let step = route.sample(at: CACurrentMediaTime())
       visit = route
@@ -900,6 +1046,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
           physics.wings(true)
         }
         mode = .driving
+        if let model = currentCar?.model { speed.accessibilityValue = model.title + String(format: ", %.2f m/s",model.topSpeed) }
         calibrateSteering()
         physics.setPaused(false)
       } else { mode = .onFoot }
@@ -925,7 +1072,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       avatar.root.setPosition(next, relativeTo: nil)
       avatar.animate(dt: dt, velocity: velocity)
     } else { avatar.animate(dt: dt, velocity: .zero) }
-    if displayedEntry != district.entry(at: avatar.root.position(relativeTo: nil)) || wasNear != nearDoor { updateMessage() }
+    if nearbyCar !== district.fleet.nearby(avatar.root.position(relativeTo: nil)) || displayedEntry != district.entry(at: avatar.root.position(relativeTo: nil)) || wasNear != nearDoor { updateMessage() }
   }
 
   private func startDisplayLink() {
@@ -955,9 +1102,19 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     } else { directionHUD.hide() }
     if phase == .ready, let pose = vehiclePose {
       let camera = arView.cameraTransform.translation
-      district.updateDetail(camera: camera, time: link.timestamp,
+      let publish = !actorBatchPending && link.timestamp - lastActorBatch >= 1.0 / 30.0
+      var actors: [(UUID,SIMD3<Float>,SIMD3<Float>,Float)] = []
+      district.updateDetail(view: arView, camera: camera, time: link.timestamp,
                             walkerPosition: avatar?.root.position(relativeTo: nil),
-                            parkedCar: mode == .driving ? nil : pose, updateActor: physics.updateActor)
+                            parkedCar: pose) { id, point, half, yaw in
+        if publish { actors.append((id,point,half,yaw)) }
+      }
+      if !actors.isEmpty {
+        actorBatchPending = true
+        lastActorBatch = link.timestamp
+        physics.updateActors(actors) { [weak self] in self?.actorBatchPending = false }
+      }
+      district.fleet.walkAway(dt: Float(link.duration), surface: walkingSurface, reconstruction: hasSceneReconstruction, allowed: district.permits)
       updateSmoke(pose, time: link.timestamp)
       let show = simd_distance(camera, pose.position(relativeTo: nil)) < (trimVisible ? 0.9 : 0.75)
       if show != trimVisible {
@@ -1020,11 +1177,12 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       self.lastSpeed = state.speedMetersPerSecond
       if wasStopped != (self.lastSpeed <= 0.01) { self.updateMessage() }
       self.pedals.observe(speed: state.speedMetersPerSecond, appliedBrake: state.appliedBrake)
-      if state.collided, self.damage.hit(at: CACurrentMediaTime()), self.damage.percent == 100 {
+      if state.collided, self.damage.hit(at: CACurrentMediaTime(), amount: self.currentCar?.model == .pickup ? 13 : self.currentCar?.model == .convertible ? 20 : 17), self.damage.percent == 100 {
         self.finishWasted()
         return
       }
-      self.speed.text = (self.inventory.wings ? "◇ " : "") + String(format: "%.2f m/s", state.speedMetersPerSecond) + "\n" + self.damageText
+      let streetLabel = self.currentCar?.model.map { $0.title + " · " } ?? ""
+      self.speed.text = streetLabel + (self.inventory.wings ? "◇ " : "") + String(format: "%.2f m/s", state.speedMetersPerSecond) + "\n" + self.damageText
       if self.inventory.boosting {
         let p = chassisTransform.columns.3
         self.inventory.sample([p.x,p.z], elapsed: Float(dt), speed: state.speedMetersPerSecond)
@@ -1261,17 +1419,18 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   }
   @available(iOS 13.4, *) private func schedule(_ anchor: ARMeshAnchor) {
     let id = anchor.identifier
-    meshWork.removeValue(forKey: id)?.cancel()
+    // One immutable snapshot per anchor in flight. A busy mesh must still reach Jolt.
+    guard meshWork[id] == nil else { return }
     let revision = UUID()
     meshRevisions[id] = revision
     guard let snapshot = RallyMeshSnapshot(anchor.geometry) else { return }
     let transform = anchor.transform
     let item = DispatchWorkItem { [weak self] in
-      guard let (vertices, indices) = snapshot.decode(transform: transform) else { return }
+      let decoded = snapshot.decode(transform: transform)
       DispatchQueue.main.async { [weak self] in
         guard let self, self.meshRevisions[id] == revision else { return }
         self.meshWork.removeValue(forKey: id)
-        self.replaceCollider(id: id, vertices: vertices, indices: indices)
+        if let (vertices,indices) = decoded { self.replaceCollider(id: id, vertices: vertices, indices: indices) }
       }
     }
     meshWork[id] = item
@@ -1482,8 +1641,11 @@ private final class SerializedJoltWorld {
       expectedWheels: state.expectedWheelCount, outputWheels: state.outputWheelCount,
       transformsFinite: state.transformsFinite))
   }
-  func updateActor(_ id: UUID, _ center: SIMD3<Float>, _ halfSize: SIMD3<Float>, _ heading: Float) {
-    queue.async { [world] in world.updateActor(id, center: center, halfSize: halfSize, heading: heading) }
+  func updateActors(_ actors: [(UUID,SIMD3<Float>,SIMD3<Float>,Float)], completion: @escaping () -> Void) {
+    queue.async { [world] in
+      for (id,center,half,yaw) in actors { world.updateActor(id,center: center,halfSize: half,heading: yaw) }
+      DispatchQueue.main.async(execute: completion)
+    }
   }
 
   func replaceStaticMesh(_ id: UUID, vertices: Data, indices: Data) {
@@ -1513,6 +1675,7 @@ struct RallyMeshSnapshot {
   init?(_ mesh: ARMeshGeometry) {
     let source = mesh.vertices
     let triangles = mesh.faces
+    guard triangles.buffer.storageMode == .shared else { return nil }
     let packedSize = 3 * MemoryLayout<Float>.size
     guard source.format == .float3,
           let v = Self.copy(source, width: packedSize),
@@ -1537,6 +1700,7 @@ struct RallyMeshSnapshot {
   }
 
   private static func copy(_ source: ARGeometrySource, width: Int) -> Data? {
+    guard source.buffer.storageMode == .shared else { return nil }
     let length = source.buffer.length
     guard source.count > 0, source.offset >= 0, source.stride >= width,
           source.offset <= length, width <= length - source.offset,
@@ -1591,10 +1755,10 @@ struct RallyCarDamage {
   private var lastHit: TimeInterval = -.infinity
   var smokeLevel: Int { min(2, percent * 3 / 100) }
 
-  mutating func hit(at time: TimeInterval) -> Bool {
+  mutating func hit(at time: TimeInterval, amount: Int = 17) -> Bool {
     guard percent < 100, time - lastHit >= 0.65 else { return false }
     lastHit = time
-    percent = min(100, percent + 17)
+    percent = min(100, percent + amount)
     return true
   }
 }

@@ -33,7 +33,8 @@ static inline RRIndicator rrIndicator(double x, double y, double w, double exten
     double scale = fmin(tx, ty);
     result.visible = true;
     result.angle = atan2(dy, dx);
-    result.edge = (RRPoint){cx + dx * scale, cy + dy * scale};
+    result.edge = (RRPoint){tx <= ty ? (dx > 0 ? rim.right : rim.left) : cx + dx * scale,
+                            ty <= tx ? (dy > 0 ? rim.bottom : rim.top) : cy + dy * scale};
     return result;
 }
 

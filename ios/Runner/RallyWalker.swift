@@ -35,6 +35,11 @@ final class RallyWalker {
   private var gait: AnimationPlaybackController?
   private var phase: Float = 0
 
+  @MainActor private static let pilotTemplate: Entity? = {
+    guard let url = Bundle.main.url(forResource: "RallyPilot", withExtension: "usdz", subdirectory: "RallyAssets") else { return nil }
+    return try? Entity.load(contentsOf: url)
+  }()
+
   @MainActor init() {
     root = Entity()
     handAnchor.name = "RightHandGrip"
@@ -43,8 +48,7 @@ final class RallyWalker {
     hips = Entity()
     root.addChild(hips)
     hips.position.y = 0.008
-    if let url = Bundle.main.url(forResource: "RallyPilot", withExtension: "usdz", subdirectory: "RallyAssets"),
-       let model = try? Entity.load(contentsOf: url) {
+    if let model = Self.pilotTemplate?.clone(recursive: true) {
       let bounds = model.visualBounds(relativeTo: model)
       if bounds.extents.y > 0 {
         let scale = RallyScale.metres(1.8) / bounds.extents.y

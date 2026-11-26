@@ -21,6 +21,88 @@ class RunnerTests: XCTestCase {
     XCTAssertFalse(damage.hit(at: 10))
   }
 
+  func testTrafficStopsAndRestartsWithoutSpeedJumps() {
+    var speed: Float = 0
+    for _ in 0..<100 { speed = StreetMotion.advance(speed: speed,target: 0.045,dt: 0.02) }
+    XCTAssertEqual(speed,0.045,accuracy: 0.00001)
+    let slowing = StreetMotion.advance(speed: speed,target: 0,dt: 0.02)
+    XCTAssertGreaterThan(slowing,0)
+    XCTAssertLessThan(slowing,speed)
+    for _ in 0..<100 { speed = StreetMotion.advance(speed: speed,target: 0,dt: 0.02) }
+    XCTAssertEqual(speed,0)
+    XCTAssertGreaterThan(StreetMotion.advance(speed: speed,target: 0.045,dt: 0.02),0)
+  }
+
+  func testStreetRouteDetoursAroundBuilding() {
+    let goal = SIMD3<Float>(0.15,0,0)
+    let building = BoundingBox(min: [0.05,0,-0.024],max: [0.10,0.04,0.024])
+    let route = StreetRoute.plan(from: .zero,to: goal,clearance: 0.008,buildings: [building],obstacles: [])
+    XCTAssertEqual(route.last,goal)
+    XCTAssertTrue(route.contains { abs($0.z) > 0.032 })
+  }
+
+  @MainActor func testFleetOwnershipAndDriverDoor() throws {
+    let fleet = RallyTraffic()
+    let tile = AnchorEntity(world: SIMD3<Float>.zero)
+    fleet.spawn(tile: tile,block: 0,count: 2)
+    let car = try XCTUnwrap(fleet.cars.first)
+    let door = car.pose.convert(position: car.door, to: nil)
+    XCTAssertTrue(fleet.nearby(door) === car)
+    XCTAssertNotNil(car.driver)
+    for state: StreetControl in [.driving,.reserved,.player] {
+      car.control = state
+      XCTAssertNil(fleet.nearby(door))
+    }
+    car.control = .vacant
+    XCTAssertTrue(fleet.nearby(door) === car)
+    fleet.reset()
+    XCTAssertNil(fleet.nearby(door))
+  }
+
+  @MainActor func testOffscreenTrafficWaitsRestartsAndParksAtAnotherBay() throws {
+    let fleet = RallyTraffic()
+    let tile = Entity()
+    fleet.spawn(tile: tile,block: 0,count: 1)
+    let car = try XCTUnwrap(fleet.cars.first)
+    let start = car.position
+    var time = 0.0
+    func tick(clear: Bool) {
+      time += 0.02
+      fleet.advance(dt: 0.02,time: time,camera: [10,2,10],obstacles: [],buildings: [],
+        publish: { _,_,_,_ in }) { _,_,_ in clear }
+    }
+    for _ in 0..<150 { tick(clear: false) }
+    XCTAssertEqual(car.control,.waiting)
+    XCTAssertEqual(car.position,start)
+    for _ in 0..<1500 {
+      tick(clear: true)
+      if car.control == .parked { break }
+    }
+    XCTAssertEqual(car.control,.parked)
+    XCTAssertGreaterThan(simd_distance(start,car.position),0.08)
+    let parked = car.position
+    car.control = .reserved
+    for _ in 0..<100 { tick(clear: true) }
+    XCTAssertEqual(car.position,parked)
+  }
+
+  func testInstalledUpgradesStayWithCarAcrossRepeatedSwitches() {
+    var inventory = RallyInventory()
+    XCTAssertTrue(inventory.pick(.nos))
+    XCTAssertTrue(inventory.pick(.wings))
+    XCTAssertTrue(inventory.pick(.sword))
+    inventory.enterVehicle()
+    let original = inventory.switchGear(to: RallyInstalledGear())
+    inventory.enterVehicle()
+    XCTAssertFalse(inventory.wings)
+    XCTAssertEqual(inventory.remaining,0)
+    XCTAssertTrue(inventory.collected.contains(.sword))
+    _ = inventory.switchGear(to: original)
+    inventory.enterVehicle()
+    XCTAssertTrue(inventory.wings)
+    XCTAssertEqual(inventory.remaining,10)
+  }
+
   func testPackedMeshLastVertexEndsAtBufferBoundary() {
     let coordinates = (0..<192).map { Float($0) }
     coordinates.withUnsafeBytes { bytes in
@@ -57,7 +139,7 @@ class RunnerTests: XCTestCase {
 
   func testBoostChangesEngineLimitAndRestoresItForEachVehicle() throws {
     let world = DBJoltWorld()
-    for profile in ["compact","sport","offroad"] {
+    for profile in ["compact","sport","offroad","sedan","pickup","convertible"] {
       try world.prepareVehicle(at: .zero, heading: 0, profile: profile)
       let baseline = world.step(0)
       XCTAssertTrue(baseline.success)
