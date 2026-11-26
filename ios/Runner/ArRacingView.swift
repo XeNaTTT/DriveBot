@@ -540,6 +540,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     plume = nil
     deployed = false
     visit = nil
+    physics.removeStaticMesh(district.colliderID)
     district.reset()
     inventory = RallyInventory()
     placementGeneration += 1
@@ -1156,7 +1157,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
         installPlaneCollider(plane)
         visualizeFloor(plane)
         if phase == .ready, let car = vehiclePose?.position(relativeTo: nil) {
-          district.expand(on: plane, in: arView, player: avatar?.root.position(relativeTo: nil) ?? car, car: car)
+          district.expand(on: plane, in: arView, player: avatar?.root.position(relativeTo: nil) ?? car, car: car, install: replaceCollider)
         }
       }
       if #available(iOS 13.4, *), let mesh = anchor as? ARMeshAnchor { schedule(mesh) }

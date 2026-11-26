@@ -26,6 +26,21 @@ class RunnerTests: XCTestCase {
     XCTAssertFalse(RallyDistrict.clearSite(.zero, player: far, car: far, occupied: [[0.08,0,0]]))
   }
 
+  @MainActor func testDistrictPopulationAndStreetCircuit() {
+    let blocks = RallyDistrict.blocks.indices
+    XCTAssertEqual(blocks.count, 5)
+    XCTAssertEqual(blocks.map { RallyDistrict.carCount(on: $0) }.reduce(0, +), 8)
+    XCTAssertEqual(blocks.map { RallyDistrict.pedestrianCount(on: $0) }.reduce(0, +), 6)
+    for radius: Float in [0.070, 0.056] {
+      let (start, _) = RallyDistrict.loop(0, radius: radius)
+      let (corner, _) = RallyDistrict.loop(2 * radius, radius: radius)
+      let (end, _) = RallyDistrict.loop(8 * radius, radius: radius)
+      XCTAssertEqual(start, SIMD3(-radius,0,-radius))
+      XCTAssertEqual(corner, SIMD3(radius,0,-radius))
+      XCTAssertEqual(end, start)
+    }
+  }
+
   func testBoostChangesEngineLimitAndRestoresItForEachVehicle() throws {
     let world = DBJoltWorld()
     for profile in ["compact","sport","offroad"] {

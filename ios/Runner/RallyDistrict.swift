@@ -14,18 +14,33 @@ final class RallyDistrict {
   private var visited: Set<Int> = []
   private var highlighted: Int?
   private var lastAttempt: TimeInterval = -.infinity
-  private let hull = ShapeResource.generateBox(size: [0.066,0.029,0.069])
+  private let hull = ShapeResource.generateBox(size: [0.16,0.078,0.16])
 
   func reset() {
     for anchor in anchors { anchor.removeFromParent() }
     anchors.removeAll()
     details.removeAll()
+    traffic.removeAll()
+    buildings.removeAll()
+    elapsed = 0
+    lastFrame = nil
+    lastLOD = -.infinity
     visited.removeAll()
     highlighted = nil
     lastAttempt = -.infinity
   }
 
   func updateDetail(camera: SIMD3<Float>, time: TimeInterval) {
+    let dt = Float(min(0.08, max(0, time - (lastFrame ?? time))))
+    lastFrame = time
+    elapsed += dt
+    for actor in traffic {
+      let speed: Float = actor.walker == nil ? 0.045 : 0.010
+      let (point, yaw) = Self.loop(actor.phase + elapsed * speed, radius: actor.radius)
+      actor.entity.position = actor.center + point
+      actor.entity.orientation = simd_quatf(angle: yaw, axis: [0,1,0])
+      actor.walker?.animate(dt: dt, velocity: [sin(yaw)*speed,0,cos(yaw)*speed])
+    }
     guard time - lastLOD > 0.35 else { return }
     lastLOD = time
     for index in details.indices {
@@ -43,9 +58,34 @@ final class RallyDistrict {
       occupied.allSatisfy { simd_distance($0, p) > 0.12 }
   }
 
-  func expand(on plane: ARPlaneAnchor, in view: ARView, player: SIMD3<Float>, car: SIMD3<Float>) {
+  // Each tile has half a street around its pavement. Adjacent tiles share a street.
+  static let blocks: [SIMD3<Float>] = [
+    [-0.16,0,-0.08], [0,0,-0.08], [0.16,0,-0.08], [-0.16,0,0.08], [0,0,0.08]
+  ]
+  static func carCount(on block: Int) -> Int { block < 3 ? 2 : 1 }
+  static func pedestrianCount(on block: Int) -> Int { block == 0 ? 2 : 1 }
+
+  private var buildings: [BoundingBox] = []
+  private var traffic: [(entity: Entity, walker: RallyWalker?, center: SIMD3<Float>, phase: Float, radius: Float)] = []
+  private var lastFrame: TimeInterval?
+  private var elapsed: Float = 0
+  let colliderID = UUID()
+
+  static func loop(_ distance: Float, radius: Float) -> (SIMD3<Float>, Float) {
+    let side = 2 * radius
+    let along = distance.truncatingRemainder(dividingBy: side)
+    switch Int(distance / side) % 4 {
+    case 0: return ([-radius + along,0,-radius], .pi / 2)
+    case 1: return ([radius,0,-radius + along], 0)
+    case 2: return ([radius - along,0,radius], -.pi / 2)
+    default: return ([-radius,0,radius - along], .pi)
+    }
+  }
+
+  func expand(on plane: ARPlaneAnchor, in view: ARView, player: SIMD3<Float>, car: SIMD3<Float>,
+              install: (UUID, [SIMD3<Float>], [UInt32]) -> Void) {
     let now = ProcessInfo.processInfo.systemUptime
-    guard anchors.count < 4, now - lastAttempt > 0.6, plane.alignment == .horizontal,
+    guard anchors.isEmpty, now - lastAttempt > 0.6, plane.alignment == .horizontal,
           case .normal = view.session.currentFrame?.camera.trackingState else { return }
     switch plane.classification {
     case .table, .seat, .ceiling, .door, .window, .wall: return
@@ -54,39 +94,37 @@ final class RallyDistrict {
     lastAttempt = now
     let floor = plane.transform * SIMD4(plane.center.x, plane.center.y, plane.center.z, 1)
     guard abs(floor.y - car.y) < 0.035 else { return }
-    for x in [-0.34,0.34,-0.12,0.12] as [Float] {
-      for z in [-0.32,0.32,0] as [Float] {
-        let point = plane.transform * SIMD4(plane.center.x + x * plane.extent.x, plane.center.y,
-                                             plane.center.z + z * plane.extent.z, 1)
-        let p = SIMD3(point.x, point.y, point.z)
-        let occupied = anchors.map { $0.position(relativeTo: nil) }
-        guard Self.clearSite(p, player: player, car: car, occupied: occupied) else { continue }
-        let supported = [-0.035,0.035].allSatisfy { (dx: Float) in
-          [-0.027,0.045].allSatisfy { (dz: Float) in
-            let query = ARRaycastQuery(origin: p + SIMD3(dx,0.05,dz), direction: [0,-1,0],
-                                       allowing: .existingPlaneGeometry, alignment: .horizontal)
-            guard let hit = view.session.raycast(query).first else { return false }
-            return hit.anchor?.identifier == plane.identifier && abs(hit.worldTransform.columns.3.y-p.y) < 0.002
+    for _ in 0..<12 {
+      let x = Float.random(in: -0.45...0.45) * plane.extent.x
+      let z = Float.random(in: -0.45...0.45) * plane.extent.z
+      let candidate = plane.transform * SIMD4(plane.center.x+x, plane.center.y, plane.center.z+z, 1)
+      let centers = Self.blocks.map { $0 + SIMD3(candidate.x,candidate.y,candidate.z) }
+      guard centers.allSatisfy({ center in
+        for actor in [player, car] where abs(actor.x-center.x) < 0.11 && abs(actor.z-center.z) < 0.11 { return false }
+        for dx: Float in [-0.08,0.08] {
+          for dz: Float in [-0.08,0.08] {
+            let query = ARRaycastQuery(origin: center + [dx,0.05,dz], direction: [0,-1,0],
+              allowing: .existingPlaneGeometry, alignment: .horizontal)
+            guard let hit = view.session.raycast(query).first, hit.anchor?.identifier == plane.identifier,
+                  abs(hit.worldTransform.columns.3.y-center.y) < 0.002 else { return false }
           }
         }
-        guard supported else { continue }
-        let origin = p + SIMD3<Float>(0,0.014,0.006)
-        let blocked = [SIMD3<Float>(1,0,0),[-1,0,0],[0,0,1],[0,0,-1]].contains { direction in
-          let query = ARRaycastQuery(origin: origin, direction: direction,
-                                     allowing: .existingPlaneGeometry, alignment: .vertical)
-          guard let hit = view.session.raycast(query).first else { return false }
-          let wall = hit.worldTransform.columns.3
-          return simd_distance(origin, SIMD3(wall.x,wall.y,wall.z)) < 0.04
-        }
-        guard !blocked else { continue }
         let q = simd_quatf(angle: 0, axis: [0,1,0])
-        guard view.scene.convexCast(convexShape: hull, fromPosition: p + [0,0.019,0.006],
-          fromOrientation: q, toPosition: p + [0,0.017,0.006], toOrientation: q,
-          query: .any, mask: .sceneUnderstanding, relativeTo: nil).isEmpty else { continue }
-        guard let url = Bundle.main.url(forResource: "Shop" + String(anchors.count), withExtension: "usdz", subdirectory: "RallyAssets"),
-              let model = try? Entity.load(contentsOf: url) else { return }
+        return view.scene.convexCast(convexShape: hull, fromPosition: center + [0,0.045,0],
+          fromOrientation: q, toPosition: center + [0,0.041,0], toOrientation: q,
+          query: .any, mask: .sceneUnderstanding, relativeTo: nil).isEmpty
+      }) else { continue }
+      let shops = (0..<4).compactMap { index -> Entity? in
+        guard let url = Bundle.main.url(forResource: "Shop" + String(index), withExtension: "usdz",
+                                        subdirectory: "RallyAssets") else { return nil }
+        return try? Entity.load(contentsOf: url)
+      }
+      guard shops.count == 4 else { return }
+      for (index, center) in centers.enumerated() {
+        let p = center + SIMD3<Float>(0,0.0008,0.016)
+        let model = index < shops.count ? shops[index] : residence(floors: 2)
         let anchor = AnchorEntity(world: p)
-        model.scale = SIMD3(repeating: RallyScale.factor)
+        if index < shops.count { model.scale = SIMD3(repeating: RallyScale.factor) }
         anchor.addChild(model)
         if let item = RallyItem(rawValue: anchors.count), let display = item.model() {
           display.name = "collectible"
@@ -117,8 +155,73 @@ final class RallyDistrict {
         details.append((anchor,trim,true))
         view.scene.addAnchor(anchor)
         anchors.append(anchor)
-        return
+        buildBlock(index, center: center, anchor: anchor, front: model)
       }
+      var vertices: [SIMD3<Float>] = []
+      var indices: [UInt32] = []
+      for box in buildings {
+        let base = UInt32(vertices.count)
+        for y in [box.min.y,box.max.y] {
+          for z in [box.min.z,box.max.z] {
+            for x in [box.min.x,box.max.x] { vertices.append([x,y,z]) }
+          }
+        }
+        let faces: [UInt32] = [0,1,2,1,3,2,4,6,5,5,6,7,0,4,1,1,4,5,2,3,6,3,7,6,
+                               0,2,4,2,6,4,1,5,3,3,5,7]
+        indices.append(contentsOf: faces.map { base + $0 })
+      }
+      install(colliderID, vertices, indices)
+      return
+    }
+  }
+
+  private func box(_ size: SIMD3<Float>, _ color: UIColor, at point: SIMD3<Float>, in parent: Entity) {
+    let part = ModelEntity(mesh: .generateBox(size: size), materials: [SimpleMaterial(color: color, isMetallic: false)])
+    part.position = point
+    parent.addChild(part)
+  }
+
+  private func residence(floors: Int) -> Entity {
+    let house = Entity()
+    for level in 0..<floors {
+      let y = Float(level) * 0.016
+      box([0.052,0.016,0.024], .systemOrange, at: [0,y+0.008,0], in: house)
+      for x: Float in [-0.017,0,0.017] {
+        box([0.009,0.007,0.0245], .darkGray, at: [x,y+0.009,0], in: house)
+      }
+    }
+    return house
+  }
+
+  private func buildBlock(_ index: Int, center: SIMD3<Float>, anchor: AnchorEntity, front: Entity) {
+    let tile = Entity()
+    anchor.addChild(tile)
+    tile.position = [0,-0.0008,-0.016]
+    box([0.16,0.0003,0.16], .darkGray, at: [0,0.00015,0], in: tile)
+    box([0.122,0.0005,0.122], .lightGray, at: [0,0.00055,0], in: tile)
+    let rear = residence(floors: index + 1)
+    rear.position = [0,0.0008,-0.036]
+    tile.addChild(rear)
+    for building in [front, rear] {
+      let bounds = building.visualBounds(relativeTo: tile)
+      buildings.append(BoundingBox(min: center + bounds.min, max: center + bounds.max))
+    }
+
+    for slot in 0..<Self.carCount(on: index) {
+      let car = Entity()
+      let colors: [UIColor] = [.systemBlue,.systemRed,.systemYellow,.white,.systemGreen]
+      box([0.013,0.006,0.029], colors[index], at: [0,0.005,0], in: car)
+      box([0.011,0.004,0.014], .darkGray, at: [0,0.010,-0.002], in: car)
+      for x: Float in [-0.006,0.006] {
+        for z: Float in [-0.009,0.009] { box([0.003,0.005,0.005], .black, at: [x,0.003,z], in: car) }
+      }
+      tile.addChild(car)
+      traffic.append((car,nil,.init(0,0.0003,0),Float(slot)*0.28,0.070))
+    }
+    for slot in 0..<Self.pedestrianCount(on: index) {
+      let walker = RallyWalker()
+      tile.addChild(walker.root)
+      traffic.append((walker.root,walker,[0,0.0008,0],Float(slot)*0.224,0.056))
     }
   }
 
@@ -135,7 +238,7 @@ final class RallyDistrict {
 
   func entry(at p: SIMD3<Float>) -> Int? {
     anchors.indices.filter { i in
-      guard !visited.contains(i), let threshold = anchors[i].findEntity(named: "Entry") else { return false }
+      guard RallyItem(rawValue: i) != nil, !visited.contains(i), let threshold = anchors[i].findEntity(named: "Entry") else { return false }
       return Self.nearEntrance(threshold.convert(position: p, from: nil))
     }.min { simd_distance(p, anchors[$0].position(relativeTo: nil)) < simd_distance(p, anchors[$1].position(relativeTo: nil)) }
   }
@@ -164,11 +267,8 @@ final class RallyDistrict {
     }
   }
   func permits(_ p: SIMD3<Float>) -> Bool {
-    for anchor in anchors {
-      let d = p - anchor.position(relativeTo: nil)
-
-      if abs(d.x) < 0.033 && abs(d.z) < 0.025 { return false }
-    }
+    for box in buildings where p.x > box.min.x - 0.002 && p.x < box.max.x + 0.002 &&
+      p.z > box.min.z - 0.002 && p.z < box.max.z + 0.002 { return false }
     return true
   }
 }
