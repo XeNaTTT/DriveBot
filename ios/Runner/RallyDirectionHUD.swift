@@ -36,20 +36,23 @@ final class RallyDirectionHUD {
     }
   }
 
+  private let gate = Badge(icon:"flag.checkered",color:.systemYellow)
   private let car = Badge(icon: "car.fill", color: .systemPink)
   private let person = Badge(icon: "figure.walk", color: .systemTeal)
   init(root: UIView) {
+    root.addSubview(gate)
     root.addSubview(car)
     root.addSubview(person)
   }
 
   func hide() {
+    gate.show(false)
     car.show(false)
     person.show(false)
   }
 
   func update(root: UIView, camera: ARCamera, orientation: UIInterfaceOrientation,
-              vehicle: SIMD3<Float>?, vehicleRadius: Float, walker: SIMD3<Float>?, walkerRadius: Float,
+              vehicle: SIMD3<Float>?, vehicleRadius: Float, walker: SIMD3<Float>?, walkerRadius: Float, checkpoint: SIMD3<Float>? = nil,
               avoiding controls: [UIView]) {
     let size = root.bounds.size
     guard size.width > 50, size.height > 50, orientation != .unknown else { hide(); return }
@@ -82,6 +85,7 @@ final class RallyDirectionHUD {
       badge.show(true)
       blocked.append(rect(badge.frame.insetBy(dx: -pad, dy: -pad)))
     }
+    place(gate,target:checkpoint,radius:0.085)
     place(car,target: vehicle,radius: vehicleRadius)
     place(person,target: walker,radius: walkerRadius)
   }

@@ -49,13 +49,39 @@ AR session callbacks use the main queue. Mesh capture validates CPU-accessible b
 
 ### Session map, roads and streaming
 
-RallyFloorMap records 8 cm cells after two consistent observations. Four floor samples, reconstructed-geometry clearance and vertical-plane checks gate each cell. A neighborhood needs a roughly half-metre open area. Centers must be more than 74 cm apart. These distances are in real AR metres at the existing 1:130 vehicle scale.
+RallyFloorMap records 8 cm cells after two consistent observations. Four floor samples, reconstructed-geometry clearance and vertical-plane checks gate each cell. A neighborhood can start once its first lot and its small road junction are confirmed. Later lots keep their seeded locations and wait for their own floor coverage. Centers must be more than 74 cm apart. These distances are in real AR metres at the existing 1:130 vehicle scale.
 
 RallyNeighborhood chooses two lots in Ocean District and Palm Heights and three in Downtown. The room scan runs only with normal tracking. New lots and highway links are installed individually. District IDs derive from the cell coordinate. One background planning job at a time searches connected cells for a 9.1 cm corridor, rounds turns with quadratic Bézier segments and checks the sampled strip. The main thread revalidates the route against the latest map before adding the roadway and exposing the link to traffic. NPCs select reachable bays and follow road waypoints between districts.
 
 The session retains lot definitions, reward state, traffic and the road graph. Scenery beyond 3 m is detached and rebuilt from the stored lot when the camera returns within 2.6 m. Functional anchors, collision geometry and actors persist. The implementation caps the map at 16,384 cells, neighborhoods at 12, active NPC traffic at eight cars and six regular walkers. Reset starts a new map. Non-LiDAR devices rely on recognized planes and have less information about furniture.
 
+### TestFlight incident 47D0C969 and checkpoint racing
+
+Build 20261126195526 trapped on thread 16 in DriveBotJolt while integrating velocity, through Body::AddPositionStep at Body.h:365. The earlier mesh read fault occurred in a different component. The older QuadTree trap also had a different immediate call site. The new log does not identify the body or the expression of the three assertions on that source line.
+
+The bridge commanded kinematic actors to reach each target in one 1/60 s step. Publishing targets was limited to 30 Hz and the integrator could perform four fixed steps in one frame. Jolt retained the velocity after the first step. With four steps per sample the position error reverses sign and approximately triples before the next correction. A Windows A/B run with the pinned Jolt source, finite targets near 1 cm and four fixed steps produced infinity at sample 82 and NaN at sample 83 (zero-based). Resetting actor velocities after the target step gave zero measured target error over 4,800 steps. This reproduces the invalid position tested on the reported source line. Attribution of the specific device incident still requires device confirmation.
+
+The same serialized physics queue handles player and four rival chassis, all constructed by CreateRallyVehicle with four suspension wheels. Native control inputs are checked for finiteness. The bridge reads mesh scalars with alignment-independent copies and rejects incomplete triangles and invalid indices. ARKit mesh decoding continues to consume owned snapshots, with up to eight pending jobs. Enabled Jolt assertions log their expression and source location.
+
+RallyDistrict now samples around the placement target or vehicle, then around visible floor while the camera explores farther away. Building starts during aiming on verified floor. The previous quarter-metre clearance radius and simultaneous test of every future lot could suppress the first building indefinitely. Missing shop resources now use a procedural facade while preserving the entrance and reward. Pending local roads are retried on later scan updates. The optional scan display reports sampled areas, blocked cells, candidates, lots, attached buildings, loaded shop templates, outstanding road work and tracking. Its cell overlay is removed when hidden.
+
+RallyRace plans one fixed event from a snapshot of known floor. A serial worker checks corridors independent of the road network. A staged event has four street models with seated drivers and a fifth illuminated starting position. Stopping there starts the traffic-light countdown. Real Jolt poses drive both collision response and checkpoint progress. The existing traffic pathfinder and live AR probes guide opponents. The visible ring follows the player and uses the native direction indicator. The two ring meshes are cached. The finish includes checkered geometry, results, replay and free driving. Course-keyed best times and last finishing positions use local preferences. Movement between samples is tested against the gate plane in either direction. Losing tracking resets the time baseline and pauses simulation.
+
+The native implementation touches DriveBotJolt.h/.mm, ArRacingView.swift, RallyDistrict.swift, RallyWorld.swift, RallyTraffic.swift, RallyDirectionHUD.swift, RallyRace.swift, RallyGateMath.h, the Runner bridging header and Xcode target membership. Regression coverage is in RunnerTests.swift, drivebot_jolt_integration_test.rb and rally_indicator_math_test.c.
+
+### Verification on Windows
+
+- 229 Flutter tests passed. Flutter analysis reported 30 existing deprecation notices.
+- 25 Ruby integration and compatibility checks passed with 236 assertions. The suite compiled and ran the production C gate intersection checks, including a high-speed crossing, reverse crossing, misses and invalid input.
+- A standalone pinned-Jolt run using the vehicle construction logic exercised five vehicles for 108,000 fixed steps, equivalent to 30 simulated minutes. It completed 100 creations/removals. A separate placement and traffic run exercised 19,200 collider replacements.
+- Seven Swift files passed syntax parsing. Twelve source USDZ archives passed integrity checks and the Xcode Resources phase includes the asset folder. An archived iOS bundle, Apple SDK type checking, native XCTest and on-device rendering still require macOS or an iPhone.
+- The normal Codemagic workflow is unchanged. For extended native coverage set RALLY_STRESS=1 in the Xcode Test action and run RunnerTests/testFourOpponentChassisShareThePlayerWorldAndCanRestart. Production frame time and peak memory need measurement with Instruments.
+
 ### Physical-device acceptance
+
+- Place the car on a small clear patch. Compare scanned area, candidate count and attached building count before and after walking to a second room. Verify the first visible house, model scale and real obstacle clearance.
+- Start on bare floor, drive through the rings with NOS, interrupt tracking during countdown and racing, and test replay and free driving. Verify all four physical opponents, off-screen progress, traffic interactions, finish placement and stored best time.
+
 
 - Scan an L-shaped room with furniture and an initially unscanned hallway. Confirm the road waits for the corridor, follows free floor into the next room and leaves narrow doorways clear. Revisit each district after a tracking interruption and check lot positions, rewards, traffic and memory.
 - Compare the downtown tower heights, spacing, parking and boulevard width with Ocean District and Palm Heights. Exercise NOS on a highway and acquire an NPC after it crosses a district boundary.

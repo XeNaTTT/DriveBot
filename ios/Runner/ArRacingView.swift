@@ -54,6 +54,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   private let steeringKnob = UIView()
   private let throttleButton = UIButton(type: .system)
   private let brakeButton = UIButton(type: .system)
+  private lazy var checkpointRace = RallyRace(root: root)
+  private var nextScanReport = 0.0
   @MainActor private lazy var directionHUD = RallyDirectionHUD(root: root)
   private var carModelCenter = SIMD3<Float>.zero
   private var carRadius: Float = 0
@@ -240,6 +242,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     speed.clipsToBounds = true
     speed.translatesAutoresizingMaskIntoConstraints = false
     root.addSubview(speed)
+    inputDiagnostics.numberOfLines = 0
     inputDiagnostics.font = .monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
     inputDiagnostics.textColor = .white
     inputDiagnostics.backgroundColor = UIColor.black.withAlphaComponent(0.55)
@@ -362,8 +365,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       speed.heightAnchor.constraint(equalToConstant: 36),
       inputDiagnostics.topAnchor.constraint(equalTo: speed.bottomAnchor, constant: 6),
       inputDiagnostics.centerXAnchor.constraint(equalTo: speed.centerXAnchor),
-      inputDiagnostics.widthAnchor.constraint(equalToConstant: 210),
-      inputDiagnostics.heightAnchor.constraint(equalToConstant: 24),
+      inputDiagnostics.widthAnchor.constraint(equalToConstant: 310),
+      inputDiagnostics.heightAnchor.constraint(greaterThanOrEqualToConstant: 88),
       steeringPad.leadingAnchor.constraint(equalTo: guide.leadingAnchor, constant: 20),
       steeringPad.bottomAnchor.constraint(equalTo: guide.bottomAnchor, constant: -16),
       steeringPad.widthAnchor.constraint(equalToConstant: 120),
@@ -439,16 +442,17 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
 
     if mode != .driving { speed.text = "ZU FUSS" }
     else if phase == .ready && lastSpeed.isFinite { speed.text = String(format: "%.2f m/s", lastSpeed) + "\n" + damageText }
-    scanButton.isHidden = phase != .ready
+    scanButton.isHidden = phase == .building || phase == .placing
     resetButton.isHidden = phase != .ready && !physicsFailed
     diagnosisButton.isHidden = !physicsFailed && previousPlacement == nil
-    inputDiagnostics.isHidden = phase != .ready || !debugVisible
+    inputDiagnostics.isHidden = !debugVisible
   }
 
   @MainActor @objc private func place(_ gesture: UITapGestureRecognizer) {
     Self.logger.notice("[Placement] 01 tap received")
     guard phase == .aiming, let candidate = placementCandidate,
       let plane = placementPlane else { return }
+    guard district.permits(candidate) else { return }
     guard candidate.x.isFinite, candidate.y.isFinite, candidate.z.isFinite else {
       Self.logger.error("placement.reject invalid-transform")
       showPlacementFailure("Ungültiger Bodentreffer – bitte erneut anvisieren")
@@ -587,6 +591,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     smoke.forEach { $0.entity.removeFromParent() }
     smoke.removeAll()
     physics.removeStaticMesh(district.colliderID)
+    checkpointRace.reset()
+    for id in checkpointRace.drainRemoved() { physics.removeStaticMesh(id) }
     district.reset()
     targetCar = nil
     currentCar = nil
@@ -636,13 +642,17 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
   @objc private func toggleScan() { setScanVisible(!debugVisible) }
   private func setScanVisible(_ visible: Bool) {
     debugVisible = visible
+    if !visible { district.hideSamples() }
     if hasSceneReconstruction {
       if visible { arView.debugOptions.insert(.showSceneUnderstanding) }
       else { arView.debugOptions.remove(.showSceneUnderstanding) }
     }
+    if visible {
+      for case let plane as ARPlaneAnchor in arView.session.currentFrame?.anchors ?? [] where plane.alignment == .horizontal { visualizeFloor(plane) }
+    }
     for entity in debugEntities.values { entity.isEnabled = debugVisible }
     for entity in floorEntities.values { entity.isEnabled = debugVisible }
-    inputDiagnostics.isHidden = !visible || phase != .ready
+    inputDiagnostics.isHidden = !visible
     scanButton.setTitle(visible ? "Scan ausblenden" : "Scan anzeigen", for: .normal)
   }
 
@@ -715,9 +725,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     let requestedAngle = SteeringInput.angle(steering, sensitivity: controls.sensitivity,
                                              inverted: controls.inverted)
     physics.setThrottle(pedals.throttle, brake: pedals.brake, steering: requestedAngle)
-    guard !inputDiagnostics.isHidden else { return }
-    inputDiagnostics.text = String(
-      format: "Gas %+.1f | Bremse %.1f | Lenkung %+.2f", pedals.throttle, pedals.brake, requestedAngle)
+
   }
   private func calibrateSteering() { neutralTilt = nil }
   private func landscapeTilt(gravity: CMAcceleration) -> Double {
@@ -746,6 +754,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     }
     if mode == .takingOver && !preparingSwitch { cancelSwitch() }
     trackingInterrupted = true
+    checkpointRace.pause()
     releaseInputs()
     physics.setPaused(true)
     previousTime = 0
@@ -1106,6 +1115,13 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     displayLink = link
   }
   @MainActor private func frame(_ link: CADisplayLink) {
+    if debugVisible, link.timestamp >= nextScanReport {
+      nextScanReport = link.timestamp+0.75
+      let tracking = arView.session.currentFrame.map { String(describing:$0.camera.trackingState) } ?? "unbekannt"
+      inputDiagnostics.text = district.scanSummary + " · " + tracking + "\n" + String(format:"Gas %+.1f | Bremse %.1f | Lenkung %+.2f",pedals.throttle,pedals.brake,steering)
+      if case .normal = arView.session.currentFrame?.camera.trackingState { district.showSamples(near:arView.cameraTransform.translation,in:arView) }
+    }
+    if phase != .ready || mode != .driving || damage.percent >= 100 || !settingsPanel.isHidden { checkpointRace.pause() }
     guard damage.percent < 100 else { return }
     if phase == .ready, settingsPanel.isHidden, let visual = vehicleVisualRoot,
        let camera = arView.session.currentFrame?.camera, case .normal = camera.trackingState,
@@ -1117,8 +1133,8 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       }
       directionHUD.update(root: root, camera: camera, orientation: orientation,
         vehicle: visual.convert(position: carModelCenter, to: nil), vehicleRadius: carRadius,
-        walker: walker, walkerRadius: height * 0.56,
-        avoiding: [resetButton, diagnosisButton, debugButton, scanButton, interaction,
+        walker: walker, walkerRadius: height * 0.56, checkpoint: checkpointRace.target,
+        avoiding: [checkpointRace.overlay, resetButton, diagnosisButton, debugButton, scanButton, interaction,
                    throttleButton, brakeButton, boostButton, equipmentButton, cycleButton,
                    steeringPad, speed, message, inputDiagnostics])
     } else { directionHUD.hide() }
@@ -1126,9 +1142,14 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       let camera = arView.cameraTransform.translation
       if let floorY = placementFloorY {
         let car = pose.position(relativeTo:nil)
+        if district.raceReservation == nil { district.raceReservation = { [weak self] in self?.checkpointRace.reserves($0) ?? false } }
         district.explore(in: arView,time:link.timestamp,floorY:floorY,player:avatar?.root.position(relativeTo:nil) ?? car,
                          car:car,install:replaceCollider)
       }
+      if mode == .driving, settingsPanel.isHidden, case .normal = arView.session.currentFrame?.camera.trackingState {
+        checkpointRace.tick(view:arView,district:district,car:pose.position(relativeTo:nil),speed:lastSpeed,time:link.timestamp)
+      } else { checkpointRace.pause() }
+      for id in checkpointRace.drainRemoved() { physics.removeStaticMesh(id) }
       refreshLocalMeshes(around:pose.position(relativeTo:nil),time:link.timestamp)
       let publish = !actorBatchPending && link.timestamp - lastActorBatch >= 1.0 / 30.0
       var actors: [(UUID,SIMD3<Float>,SIMD3<Float>,Float)] = []
@@ -1151,6 +1172,9 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       }
     }
     updatePlacementCandidate()
+    if phase == .aiming, let floor = placementCandidate {
+      district.explore(in:arView,time:link.timestamp,floorY:floor.y,player:floor,car:floor,install:replaceCollider)
+    }
     guard phase == .ready, let pose = vehiclePose else {
       previousTime = 0
       return
@@ -1161,12 +1185,16 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
       tickWalking(Float(dt))
       return
     }
+    if checkpointRace.hasEvent {
+      guard settingsPanel.isHidden, case .normal = arView.session.currentFrame?.camera.trackingState else { previousTime = 0; return }
+    }
+    if checkpointRace.holding { previousTime = link.timestamp; return }
     guard placementPhysicsMode == .fullJolt, !physicsStepPending, !physicsFailed else { return }
     let dt = previousTime == 0 ? 0 : link.timestamp - previousTime
     previousTime = link.timestamp
     physicsStepPending = true
     let generation = placementGeneration
-    physics.step(dt) { [weak self, weak pose] result in
+    physics.step(dt,opponents:checkpointRace.commands) { [weak self, weak pose] result in
       guard let self else { return }
       guard generation == self.placementGeneration else { return }
       self.physicsStepPending = false
@@ -1196,6 +1224,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
         self.awaitingFirstStep = false
         UserDefaults.standard.removeObject(forKey:"DriveBot.placementStage")
       }
+      self.checkpointRace.apply(state.opponents)
       self.applyVehicleTransforms(state, chassisTransform: chassisTransform, pose: pose,
                                   visualRoot: visualRoot)
       let airborne = self.inventory.shouldGlide(groundedWheels: state.groundedWheelCount)
@@ -1405,7 +1434,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
         hasFloor = true
         if carAnchor == nil && !trackingInterrupted && !physicsFailed { phase = .aiming }
         installPlaneCollider(plane)
-        visualizeFloor(plane)
+        if debugVisible { visualizeFloor(plane) }
       }
       if anchor is ARMeshAnchor, localMeshes.contains(anchor.identifier) { dirtyMeshes.insert(anchor.identifier) }
     }
@@ -1430,11 +1459,7 @@ final class ArRacingView: NSObject, FlutterPlatformView, ARSessionDelegate {
     }
     floorAnchors[plane.identifier] = anchor
     floorEntities[plane.identifier] = entity
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { [weak entity] in
-      entity?.model?.materials = [
-        SimpleMaterial(color: .systemTeal.withAlphaComponent(0.12), isMetallic: false)
-      ]
-    }
+
   }
   private func installPlaneCollider(_ plane: ARPlaneAnchor) {
     let center = plane.transform * SIMD4(plane.center.x, plane.center.y, plane.center.z, 1)
@@ -1681,8 +1706,11 @@ private final class SerializedJoltWorld {
       world.setThrottle(throttle, brake: brake, steering: steering)
     }
   }
-  func step(_ elapsed: Double, completion: @escaping (Result<DBJoltVehicleState, Error>) -> Void) {
+  func step(_ elapsed: Double, opponents: [RaceDriverInput], completion: @escaping (Result<DBJoltVehicleState, Error>) -> Void) {
     queue.async { [world] in
+      for cmd in opponents {
+        world.driveOpponent(cmd.id,from:cmd.spawn,heading:cmd.heading,profile:cmd.profile,throttle:cmd.throttle,steering:cmd.steer,brake:cmd.brake)
+      }
       let state = world.step(elapsed)
       let result: Result<DBJoltVehicleState, Error>
       if state.success, state.wheels.count == 4, state.chassis != nil {

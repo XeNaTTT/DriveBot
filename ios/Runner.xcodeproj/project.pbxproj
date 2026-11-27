@@ -25,6 +25,7 @@
 		EAA81100000000000000000F /* RallyTraffic.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAA81100000000000000010F /* RallyTraffic.swift */; };
 		EAA81300000000000000000F /* RallyRoadVisual.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAA81300000000000000010F /* RallyRoadVisual.swift */; };
 		EAA81200000000000000000F /* RallyWorld.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAA81200000000000000010F /* RallyWorld.swift */; };
+		EAB91300000000000000000F /* RallyRace.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAB91300000000000000010F /* RallyRace.swift */; };
 		DBA60000000000000000000F /* RallyWalkingSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA60000000000000000010F /* RallyWalkingSurface.swift */; };
 		DBA50000000000000000000F /* RallySteeringPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA50000000000000000010F /* RallySteeringPanel.swift */; };
 		DBA300000000000000000002 /* ArRacingViewFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBA300000000000000000102 /* ArRacingViewFactory.swift */; };
@@ -81,6 +82,7 @@
 		EAA81100000000000000010F /* RallyTraffic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RallyTraffic.swift; sourceTree = "<group>"; };
 		EAA81300000000000000010F /* RallyRoadVisual.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RallyRoadVisual.swift; sourceTree = "<group>"; };
 		EAA81200000000000000010F /* RallyWorld.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RallyWorld.swift; sourceTree = "<group>"; };
+		EAB91300000000000000010F /* RallyRace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RallyRace.swift; sourceTree = "<group>"; };
 		DBA60000000000000000010F /* RallyWalkingSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RallyWalkingSurface.swift; sourceTree = "<group>"; };
 		DBA50000000000000000010F /* RallySteeringPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RallySteeringPanel.swift; sourceTree = "<group>"; };
 		DBA300000000000000000102 /* ArRacingViewFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArRacingViewFactory.swift; sourceTree = "<group>"; };
@@ -173,6 +175,7 @@
 				EAA81100000000000000010F /* RallyTraffic.swift */,
 				EAA81300000000000000010F /* RallyRoadVisual.swift */,
 				EAA81200000000000000010F /* RallyWorld.swift */,
+				EAB91300000000000000010F /* RallyRace.swift */,
 				DBA60000000000000000010F /* RallyWalkingSurface.swift */,
 				DBA50000000000000000010F /* RallySteeringPanel.swift */,
 				DBA300000000000000000102 /* ArRacingViewFactory.swift */,
@@ -350,6 +353,7 @@
 				EAA81100000000000000000F /* RallyTraffic.swift in Sources */,
 				EAA81300000000000000000F /* RallyRoadVisual.swift in Sources */,
 				EAA81200000000000000000F /* RallyWorld.swift in Sources */,
+				EAB91300000000000000000F /* RallyRace.swift in Sources */,
 				DBA60000000000000000000F /* RallyWalkingSurface.swift in Sources */,
 				DBA50000000000000000000F /* RallySteeringPanel.swift in Sources */,
 				DBA300000000000000000002 /* ArRacingViewFactory.swift in Sources */,

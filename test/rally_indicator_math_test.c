@@ -1,4 +1,5 @@
 #include "../ios/Runner/RallyIndicatorMath.h"
+#include "../ios/Runner/RallyGateMath.h"
 #include <assert.h>
 #include <stdio.h>
 
@@ -8,6 +9,12 @@ static RRIndicator project(double x, double y, double depth, bool shown) {
 }
 
 int main(void) {
+    assert(rrGateFraction(-.5f,.5f,0,0,-.074f,-.074f,.085f) == .5f);
+    assert(rrGateFraction(.5f,-.5f,0,0,-.074f,-.074f,.085f) == .5f);
+    assert(rrGateFraction(-.5f,-.1f,0,0,0,0,.085f) < 0);
+    assert(rrGateFraction(-.5f,.5f,.09f,.09f,0,0,.085f) < 0);
+    assert(rrGateFraction(0,0,0,0,0,0,.085f) < 0);
+    assert(rrGateFraction(NAN,.5f,0,0,0,0,.085f) < 0);
     assert(!project(0,0,1,false).visible);
     assert(!project(NAN,0,1,false).visible);
     // Horizontal and vertical clip coordinates produced by the oriented camera.

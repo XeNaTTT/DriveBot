@@ -653,6 +653,76 @@ class RunnerTests: XCTestCase {
       value.rotationY, value.rotationZ, value.rotationW].allSatisfy { $0.isFinite }
   }
 
+  func testKinematicTrafficStopsAtSampleAcrossFourCatchUpSteps() throws {
+    let world = DBJoltWorld(), id = UUID()
+    installGround(in:world)
+    try world.prepareVehicle(at:.zero,heading:0,profile:"compact")
+    world.setPaused(false)
+    for sample in 0..<100 {
+      let target = Float(0.25)+0.005*sin(Float(sample)*0.04)
+      world.updateActor(id,center:[target,0.01,0],halfSize:[0.008,0.006,0.017],heading:0)
+      XCTAssertTrue(world.step(4.0/60).success)
+      let actor = try XCTUnwrap(world.actorPose(id))
+      XCTAssertEqual(actor.positionX,target,accuracy:0.00001)
+    }
+    world.removeStaticMesh(id)
+    XCTAssertNil(world.actorPose(id))
+  }
+
+  func testFourOpponentChassisShareThePlayerWorldAndCanRestart() throws {
+    let world = DBJoltWorld()
+    installGround(in:world)
+    try world.prepareVehicle(at:.zero,heading:0,profile:"compact")
+    world.setPaused(false)
+    let stress = ProcessInfo.processInfo.environment["RALLY_STRESS"] == "1"
+    for _ in 0..<(stress ? 20 : 2) {
+      let ids = (0..<4).map { _ in UUID() }
+      for (i,id) in ids.enumerated() {
+        world.driveOpponent(id,from:[Float(i+1)*0.06,0,0],heading:0,profile:"sedan",throttle:0.32,steering:0.3,brake:0)
+      }
+      for _ in 0..<(stress ? 5400 : 30) {
+        let state = world.step(1.0/60)
+        XCTAssertTrue(state.success); XCTAssertEqual(state.opponents.count,4)
+        XCTAssertTrue(state.opponents.values.allSatisfy(isFinite))
+      }
+      for id in ids { world.removeStaticMesh(id) }
+      XCTAssertTrue(world.step(0).opponents.isEmpty)
+    }
+  }
+
+  func testNonFiniteControlsStayOutsideJoltSolver() throws {
+    let world = DBJoltWorld()
+    installGround(in:world)
+    try world.prepareVehicle(at:.zero,heading:0,profile:"compact")
+    world.setPaused(false)
+    world.setThrottle(.nan,brake:.infinity,steering:.nan)
+    let state = world.step(1.0/60)
+    assertCompleteFiniteState(state,expectedStep:1)
+    XCTAssertEqual(state.appliedSteering,0)
+    XCTAssertEqual(state.appliedBrake,0)
+  }
+
+  func testRacePlansOnConnectedFloorWithoutBuildings() throws {
+    var map = RallyFloorMap()
+    XCTAssertNil(RallyCourse.plan(near:.zero,map:map,clear:{ _ in true }))
+    for x in -10...10 { for z in -10...10 {
+      let cell = RallyCell(x,z)
+      map.observe(cell,floor:0,time:0); map.observe(cell,floor:0,time:1)
+    } }
+    let course = try XCTUnwrap(RallyCourse.plan(near:.zero,map:map,clear:{ _ in true }))
+    XCTAssertGreaterThanOrEqual(course.gates.count,8)
+    XCTAssertLessThanOrEqual(course.gates.count,15)
+    XCTAssertTrue(course.gates.allSatisfy { map.covers($0,radius:0.048) })
+    XCTAssertNil(RallyCourse.plan(near:.zero,map:map,clear:{ _ in false }))
+  }
+
+  func testSweptCheckpointAtBoostSpeedInEitherDirection() {
+    let course = RallyCourse(start:[0,0,-1],gates:[[0,0,0]],normals:[[0,0,1]])
+    XCTAssertTrue(course.crossed(0,from:[0,0.012,-0.25],to:[0,0.012,0.25]))
+    XCTAssertTrue(course.crossed(0,from:[0,0.012,0.25],to:[0,0.012,-0.25]))
+    XCTAssertFalse(course.crossed(0,from:[0.2,0.012,-0.25],to:[0.2,0.012,0.25]))
+  }
+
   func testInvalidScalarBridgeDataIsDetectableBySwift() {
     let value = DBJoltTransform()
     value.rotationW = .nan

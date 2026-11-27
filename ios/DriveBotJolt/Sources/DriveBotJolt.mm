@@ -1,5 +1,6 @@
 #include <Jolt/Jolt.h>
 #import "DriveBotJolt.h"
+#import <os/log.h>
 #include <Jolt/RegisterTypes.h>
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Core/TempAllocator.h>
@@ -16,6 +17,7 @@
 #include <atomic>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <unordered_map>
 
 using namespace JPH;
@@ -26,8 +28,11 @@ NSString *const DBJoltErrorDomain = @"de.drivebot.jolt";
 // Only the player chassis uses MOVING. Ignore support contacts with the floor.
 class ChassisImpacts final : public ContactListener {
  public:
+  std::atomic<uint32_t> player{BodyID::cInvalidBodyID};
   std::atomic<bool> hit{false};
   void OnContactAdded(const Body &a, const Body &b, const ContactManifold &m, ContactSettings &) override {
+    const auto id = player.load();
+    if (a.GetID().GetIndexAndSequenceNumber() != id && b.GetID().GetIndexAndSequenceNumber() != id) return;
     if (std::abs(m.mWorldSpaceNormal.GetY()) > .65f) return;
     float closing = (a.GetLinearVelocity() - b.GetLinearVelocity()).Dot(m.mWorldSpaceNormal);
     if (closing > .025f) hit.store(true);
@@ -128,115 +133,8 @@ static Profile ProfileNamed(NSString *name) {
   if ([name isEqualToString:@"offroad"]) return {.095f, .008f, 26, .0020f, .0065f, 4.2f, .75f};
   return {.085f, .0085f, 28, .0018f, .0055f, 4.6f, .76f};
 }
-}
-
-@implementation DBJoltTransform
-@end
-
-@implementation DBJoltVehicleState
-- (instancetype)init {
-  if ((self = [super init])) {
-    _wheels = @[];
-    _success = NO;
-    _operation = @"not-started";
-    _expectedWheelCount = 4;
-  }
-  return self;
-}
-@end
-
-@interface DBJoltWorld () {
-  PhysicsSystem *_physics;
-  TempAllocatorImpl *_temp;
-  JobSystemThreadPool *_jobs;
-  BroadLayer *_broad;
-  PairFilter *_pairs;
-  ObjectBroadFilter *_objectBroad;
-  BodyID _car;
-  Ref<VehicleConstraint> _vehicle;
-  std::unordered_map<std::string, BodyID> _meshes;
-  float _throttle, _brake, _steering;
-  double _accumulator;
-  BOOL _paused;
-  float _baseTorque, _vehicleMass, _baseFinalDrive, _boostSpeedLimit, _streetSpeedLimit;
-  BOOL _boostEnabled;
-  BOOL _wingsInstalled;
-  ChassisImpacts _impacts;
-  NSInteger _simulationStep;
-}
-@end
-
-@implementation DBJoltWorld
-- (instancetype)init {
-  if ((self = [super init])) {
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-      RegisterDefaultAllocator();
-      Factory::sInstance = new Factory;
-      RegisterTypes();
-    });
-    _temp = new TempAllocatorImpl(8 * 1024 * 1024);
-    _jobs = new JobSystemThreadPool(cMaxPhysicsJobs, cMaxPhysicsBarriers, 2);
-    _broad = new BroadLayer;
-    _pairs = new PairFilter;
-    _objectBroad = new ObjectBroadFilter;
-    _physics = new PhysicsSystem;
-    _physics->Init(4096, 0, 4096, 4096, *_broad, *_objectBroad, *_pairs);
-    _physics->SetContactListener(&_impacts);
-    PhysicsSettings settings = _physics->GetPhysicsSettings();
-    // Default penetration slop (20 mm) exceeds the 7 mm chassis height.
-    settings.mPenetrationSlop = .0005f;
-    settings.mSpeculativeContactDistance = .002f;
-    _physics->SetPhysicsSettings(settings);
-    _physics->SetGravity(Vec3(0, -9.81f, 0));
-    _paused = YES;
-  }
-  return self;
-}
-- (void)dealloc {
-  [self removeVehicle];
-  BodyInterface &bodies = _physics->GetBodyInterface();
-  for (const auto &entry : _meshes) {
-    bodies.RemoveBody(entry.second);
-    bodies.DestroyBody(entry.second);
-  }
-  _meshes.clear();
-  delete _physics; delete _jobs; delete _temp;
-  delete _objectBroad; delete _pairs; delete _broad;
-}
-- (BOOL)isReady { return _vehicle != nullptr && !_car.IsInvalid(); }
-- (BOOL)isOperational {
-  return Factory::sInstance != nullptr && _temp != nullptr && _jobs != nullptr &&
-         _broad != nullptr && _pairs != nullptr && _objectBroad != nullptr &&
-         _physics != nullptr;
-}
-- (void)removeVehicle {
-  _paused = YES;
-  [self setThrottle:0 brake:0 steering:0];
-  if (!_vehicle) return;
-  _physics->RemoveStepListener(_vehicle);
-  _physics->RemoveConstraint(_vehicle);
-  if (!_car.IsInvalid()) {
-    BodyInterface &bodies = _physics->GetBodyInterface();
-    bodies.RemoveBody(_car);
-    bodies.DestroyBody(_car);
-  }
-  _vehicle = nullptr;
-  _car = BodyID();
-  _accumulator = 0;
-  _simulationStep = 0;
-}
-- (BOOL)prepareVehicleAt:(simd_float3)p heading:(float)heading profile:(NSString *)name
-                   error:(NSError **)error {
-  [self removeVehicle];
-  if (![self isOperational]) {
-    SetError(error, 1, @"Die Jolt-Welt ist nicht vollständig initialisiert.");
-    return NO;
-  }
-  if (!IsFinite(p) || !std::isfinite(heading)) {
-    SetError(error, 1, @"Die Platzierungstransformation ist nicht endlich.");
-    return NO;
-  }
+static BOOL CreateRallyVehicle(PhysicsSystem *_physics, simd_float3 p, float heading, NSString *name,
+                              BodyID &_car, Ref<VehicleConstraint> &_vehicle, NSError **error) {
   const Profile profile = ProfileNamed(name);
   // ARKit and Jolt both use metres and +Y up, with the car's longitudinal axis
   // on Z. Visible length is 0.050 m; the simpler collider is 0.046 m long.
@@ -287,17 +185,6 @@ static Profile ProfileNamed(NSString *name) {
     settings.mWheels.push_back(wheel);
   }
   auto *controller = new WheeledVehicleControllerSettings;
-  // Steady level-floor speeds measured for these 50 mm profiles in pinned Jolt.
-  const float cruiseSpeed = [name isEqualToString:@"convertible"] ? 1.18f :
-                            [name isEqualToString:@"pickup"] ? .86f :
-                            [name isEqualToString:@"sedan"] ? .97f : [name isEqualToString:@"sport"] ? 1.05f :
-                            [name isEqualToString:@"offroad"] ? 1.03f : 1.04f;
-  _boostSpeedLimit = 1.5f * cruiseSpeed;
-  _streetSpeedLimit = length < .050f ? cruiseSpeed : 0.f;
-  _boostEnabled = NO;
-  _vehicleMass = profile.mass;
-  _wingsInstalled = NO;
-  _baseTorque = profile.torque;
   controller->mEngine.mMaxTorque = profile.torque;
   // Full-size engine inertia and clutch strength are disproportionate at 50 mm.
   controller->mEngine.mInertia = .00002f;
@@ -307,7 +194,6 @@ static Profile ProfileNamed(NSString *name) {
   controller->mDifferentials.resize(1);
   controller->mDifferentials[0].mLeftWheel = 2;
   controller->mDifferentials[0].mRightWheel = 3;
-  _baseFinalDrive = controller->mDifferentials[0].mDifferentialRatio;
   settings.mController = controller;
   if (settings.mWheels.size() != 4 || settings.mController == nullptr) {
     bodies.RemoveBody(_car); bodies.DestroyBody(_car); _car = BodyID();
@@ -332,12 +218,161 @@ static Profile ProfileNamed(NSString *name) {
     new VehicleCollisionTesterCastSphere(Layers::MOVING, .002f));
   _physics->AddConstraint(_vehicle);
   _physics->AddStepListener(_vehicle);
+  return YES;
+}
+
+struct RaceOpponent { BodyID body; Ref<VehicleConstraint> constraint; };
+static void DestroyOpponent(PhysicsSystem *world, RaceOpponent &racer) {
+  world->RemoveStepListener(racer.constraint);
+  world->RemoveConstraint(racer.constraint);
+  auto &bodies = world->GetBodyInterface();
+  bodies.RemoveBody(racer.body);
+  bodies.DestroyBody(racer.body);
+}
+}
+
+@implementation DBJoltTransform
+@end
+
+@implementation DBJoltVehicleState
+- (instancetype)init {
+  if ((self = [super init])) {
+    _wheels = @[];
+    _opponents = @{};
+    _success = NO;
+    _operation = @"not-started";
+    _expectedWheelCount = 4;
+  }
+  return self;
+}
+@end
+
+@interface DBJoltWorld () {
+  PhysicsSystem *_physics;
+  TempAllocatorImpl *_temp;
+  JobSystemThreadPool *_jobs;
+  BroadLayer *_broad;
+  PairFilter *_pairs;
+  ObjectBroadFilter *_objectBroad;
+  BodyID _car;
+  Ref<VehicleConstraint> _vehicle;
+  std::unordered_map<std::string, BodyID> _meshes;
+  std::unordered_map<std::string, RaceOpponent> _opponents;
+  std::unordered_map<std::string, BodyID> _movingActors;
+  float _throttle, _brake, _steering;
+  double _accumulator;
+  BOOL _paused;
+  float _baseTorque, _vehicleMass, _baseFinalDrive, _boostSpeedLimit, _streetSpeedLimit;
+  BOOL _boostEnabled;
+  BOOL _wingsInstalled;
+  ChassisImpacts _impacts;
+  NSInteger _simulationStep;
+}
+@end
+
+@implementation DBJoltWorld
+- (instancetype)init {
+  if ((self = [super init])) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+#ifdef JPH_ENABLE_ASSERTS
+      AssertFailed = [](const char *expression, const char *message, const char *file, uint line) {
+        os_log_fault(OS_LOG_DEFAULT, "DriveBotJolt %{public}s:%u %{public}s %{public}s",
+                     file, line, expression, message ? message : "");
+        return true;
+      };
+#endif
+      RegisterDefaultAllocator();
+      Factory::sInstance = new Factory;
+      RegisterTypes();
+    });
+    _temp = new TempAllocatorImpl(8 * 1024 * 1024);
+    _jobs = new JobSystemThreadPool(cMaxPhysicsJobs, cMaxPhysicsBarriers, 2);
+    _broad = new BroadLayer;
+    _pairs = new PairFilter;
+    _objectBroad = new ObjectBroadFilter;
+    _physics = new PhysicsSystem;
+    _physics->Init(4096, 0, 4096, 4096, *_broad, *_objectBroad, *_pairs);
+    _physics->SetContactListener(&_impacts);
+    PhysicsSettings settings = _physics->GetPhysicsSettings();
+    // Default penetration slop (20 mm) exceeds the 7 mm chassis height.
+    settings.mPenetrationSlop = .0005f;
+    settings.mSpeculativeContactDistance = .002f;
+    _physics->SetPhysicsSettings(settings);
+    _physics->SetGravity(Vec3(0, -9.81f, 0));
+    _paused = YES;
+  }
+  return self;
+}
+- (void)dealloc {
+  for (auto &racer : _opponents) DestroyOpponent(_physics,racer.second);
+  _opponents.clear();
+  [self removeVehicle];
+  BodyInterface &bodies = _physics->GetBodyInterface();
+  for (const auto &entry : _meshes) {
+    bodies.RemoveBody(entry.second);
+    bodies.DestroyBody(entry.second);
+  }
+  _meshes.clear();
+  delete _physics; delete _jobs; delete _temp;
+  delete _objectBroad; delete _pairs; delete _broad;
+}
+- (BOOL)isReady { return _vehicle != nullptr && !_car.IsInvalid(); }
+- (BOOL)isOperational {
+  return Factory::sInstance != nullptr && _temp != nullptr && _jobs != nullptr &&
+         _broad != nullptr && _pairs != nullptr && _objectBroad != nullptr &&
+         _physics != nullptr;
+}
+- (void)removeVehicle {
+  _paused = YES;
+  [self setThrottle:0 brake:0 steering:0];
+  if (!_vehicle) return;
+  _physics->RemoveStepListener(_vehicle);
+  _physics->RemoveConstraint(_vehicle);
+  if (!_car.IsInvalid()) {
+    BodyInterface &bodies = _physics->GetBodyInterface();
+    bodies.RemoveBody(_car);
+    bodies.DestroyBody(_car);
+  }
+  _vehicle = nullptr;
+  _car = BodyID();
+  _accumulator = 0;
+  _simulationStep = 0;
+}
+- (BOOL)prepareVehicleAt:(simd_float3)p heading:(float)heading profile:(NSString *)name
+                   error:(NSError **)error {
+  [self removeVehicle];
+  if (![self isOperational]) {
+    SetError(error, 1, @"Die Jolt-Welt ist nicht vollständig initialisiert.");
+    return NO;
+  }
+  if (!IsFinite(p) || !std::isfinite(heading)) {
+    SetError(error, 1, @"Die Platzierungstransformation ist nicht endlich.");
+    return NO;
+  }
+  if (!CreateRallyVehicle(_physics, p, heading, name, _car, _vehicle, error)) return NO;
+  _impacts.player.store(_car.GetIndexAndSequenceNumber());
+  const Profile profile = ProfileNamed(name);
+  auto *controller = static_cast<WheeledVehicleController *>(_vehicle->GetController());
+  _baseFinalDrive = controller->GetDifferentials()[0].mDifferentialRatio;
+  // Steady level-floor speeds measured for these 50 mm profiles in pinned Jolt.
+  const float cruiseSpeed = [name isEqualToString:@"convertible"] ? 1.18f :
+                            [name isEqualToString:@"pickup"] ? .86f :
+                            [name isEqualToString:@"sedan"] ? .97f : [name isEqualToString:@"sport"] ? 1.05f :
+                            [name isEqualToString:@"offroad"] ? 1.03f : 1.04f;
+  _boostSpeedLimit = 1.5f * cruiseSpeed;
+  _streetSpeedLimit = [name isEqualToString:@"convertible"] || [name isEqualToString:@"pickup"] || [name isEqualToString:@"sedan"] ? cruiseSpeed : 0.f;
+  _boostEnabled = NO;
+  _vehicleMass = profile.mass;
+  _wingsInstalled = NO;
+  _baseTorque = profile.torque;
   _impacts.hit.store(false); _accumulator = 0; _paused = YES;
   return YES;
 }
 - (void)setThrottle:(float)t brake:(float)b steering:(float)s {
-  _throttle = std::clamp(t, -1.f, 1.f); _brake = std::clamp(b, 0.f, 1.f);
-  _steering = std::clamp(s, -1.f, 1.f);
+  _throttle = std::isfinite(t) ? std::clamp(t, -1.f, 1.f) : 0.f;
+  _brake = std::isfinite(b) ? std::clamp(b, 0.f, 1.f) : 0.f;
+  _steering = std::isfinite(s) ? std::clamp(s, -1.f, 1.f) : 0.f;
   if (_brake > 0.f) _throttle = 0.f;
   if ([self isReady] && (_throttle != 0.f || _brake > 0.f || _steering != 0.f))
     _physics->GetBodyInterface().ActivateBody(_car);
@@ -358,20 +393,23 @@ static Profile ProfileNamed(NSString *name) {
 - (void)replaceStaticMesh:(NSUUID *)identifier vertices:(NSData *)vertexData
                   indices:(NSData *)indexData {
   if (vertexData.length == 0 || indexData.length == 0 ||
-      vertexData.length % sizeof(simd_float3) != 0 || indexData.length % sizeof(uint32_t) != 0) return;
-  const simd_float3 *inputVertices = (const simd_float3 *)vertexData.bytes;
-  const uint32_t *inputIndices = (const uint32_t *)indexData.bytes;
+      vertexData.length % sizeof(simd_float3) != 0 || indexData.length % (3 * sizeof(uint32_t)) != 0) return;
+  const auto *vertexBytes = static_cast<const uint8_t *>(vertexData.bytes);
+  const auto *indexBytes = static_cast<const uint8_t *>(indexData.bytes);
   const NSUInteger vertexCount = vertexData.length / sizeof(simd_float3);
   VertexList vertices; vertices.reserve(vertexCount);
   for (NSUInteger index = 0; index < vertexCount; ++index) {
-    if (!IsFinite(inputVertices[index])) return;
-    vertices.push_back(Float3(inputVertices[index].x, inputVertices[index].y, inputVertices[index].z));
+    simd_float3 point;
+    std::memcpy(&point, vertexBytes + index * sizeof(point), sizeof(point));
+    if (!IsFinite(point) || std::max({std::abs(point.x), std::abs(point.y), std::abs(point.z)}) > 1000.f) return;
+    vertices.push_back(Float3(point.x, point.y, point.z));
   }
   IndexedTriangleList triangles;
   for (NSUInteger index = 0; index + 2 < indexData.length / sizeof(uint32_t); index += 3) {
-    if (inputIndices[index] >= vertexCount || inputIndices[index + 1] >= vertexCount ||
-        inputIndices[index + 2] >= vertexCount) return;
-    triangles.push_back(IndexedTriangle(inputIndices[index], inputIndices[index + 1], inputIndices[index + 2]));
+    uint32_t face[3];
+    std::memcpy(face, indexBytes + index * sizeof(uint32_t), sizeof(face));
+    if (face[0] >= vertexCount || face[1] >= vertexCount || face[2] >= vertexCount) return;
+    triangles.push_back(IndexedTriangle(face[0], face[1], face[2]));
   }
   if (triangles.empty()) return;
   auto result = MeshShapeSettings(vertices, triangles).Create();
@@ -423,9 +461,12 @@ static Profile ProfileNamed(NSString *name) {
   auto found = _meshes.find(key);
   if (found != _meshes.end()) {
     if (_paused) {
+      bodies.SetLinearAndAngularVelocity(found->second, Vec3::sZero(), Vec3::sZero());
+      _movingActors.erase(key);
       bodies.SetPositionAndRotation(found->second, position, rotation, EActivation::DontActivate);
     } else {
       bodies.MoveKinematic(found->second, position, rotation, 1.f / 60.f);
+      _movingActors[key] = found->second;
     }
     return;
   }
@@ -435,11 +476,41 @@ static Profile ProfileNamed(NSString *name) {
   if (!id.IsInvalid()) _meshes[key] = id;
 }
 
+- (DBJoltTransform *)actorPose:(NSUUID *)identifier {
+  const auto found = _meshes.find(identifier.UUIDString.UTF8String);
+  if (found == _meshes.end()) return nil;
+  return TransformValue(_physics->GetBodyInterface().GetWorldTransform(found->second), -1);
+}
+- (void)driveOpponent:(NSUUID *)identifier from:(simd_float3)spawn heading:(float)heading
+               profile:(NSString *)profile throttle:(float)throttle steering:(float)steering brake:(float)brake {
+  if (!IsFinite(spawn) || !std::isfinite(heading)) return;
+  const std::string key(identifier.UUIDString.UTF8String);
+  auto it = _opponents.find(key);
+  if (it == _opponents.end()) {
+    if (_opponents.size() >= 4) return;
+    RaceOpponent racer;
+    if (!CreateRallyVehicle(_physics, spawn, heading, profile, racer.body, racer.constraint, nullptr)) return;
+    it = _opponents.emplace(key, racer).first;
+  }
+  auto *controller = static_cast<WheeledVehicleController *>(it->second.constraint->GetController());
+  const float drive = std::isfinite(throttle) ? std::clamp(throttle,-1.f,1.f) : 0.f;
+  const float turn = std::isfinite(steering) ? std::clamp(steering,-1.f,1.f) : 0.f;
+  const float stop = std::isfinite(brake) ? std::clamp(brake,0.f,1.f) : 1.f;
+  controller->SetDriverInput(drive,turn,stop,0);
+  if (drive != 0) _physics->GetBodyInterface().ActivateBody(it->second.body);
+}
 - (void)removeStaticMesh:(NSUUID *)identifier {
+  auto racer = _opponents.find(identifier.UUIDString.UTF8String);
+  if (racer != _opponents.end()) {
+    DestroyOpponent(_physics,racer->second);
+    _opponents.erase(racer);
+    return;
+  }
   auto iterator = _meshes.find(identifier.UUIDString.UTF8String);
   if (iterator == _meshes.end()) return;
   BodyInterface &bodies = _physics->GetBodyInterface();
   bodies.RemoveBody(iterator->second); bodies.DestroyBody(iterator->second);
+  _movingActors.erase(iterator->first);
   _meshes.erase(iterator);
 }
 - (DBJoltVehicleState *)step:(double)elapsed {
@@ -486,7 +557,16 @@ static Profile ProfileNamed(NSString *name) {
     int count = 0;
     while (_accumulator >= timeStep && count++ < 4) {
       auto *controller = static_cast<WheeledVehicleController *>(_vehicle->GetController());
-      const float speed = _physics->GetBodyInterface().GetLinearVelocity(_car).Length();
+      const auto &bodyInterface = _physics->GetBodyInterface();
+      const Vec3 linear = bodyInterface.GetLinearVelocity(_car);
+      if (!IsFinite(linear) || !IsFinite(bodyInterface.GetAngularVelocity(_car)) ||
+          !IsFinite(bodyInterface.GetPosition(_car)) ||
+          !std::isfinite(controller->GetEngine().GetCurrentRPM()))
+        return failure(kInvalidTransform, @"Ungültiger Zustand vor der Bewegungsintegration.");
+      for (const Wheel *wheel : _vehicle->GetWheels())
+        if (!std::isfinite(wheel->GetAngularVelocity()))
+          return failure(kInvalidTransform, @"Ungültige Raddrehzahl vor der Bewegungsintegration.");
+      const float speed = linear.Length();
       const float steeringLimit = std::max(.45f, 1.f - speed / 2.f);
       float drive = _throttle;
       if ((_boostEnabled || _streetSpeedLimit > 0.f) && drive > 0) {
@@ -515,6 +595,10 @@ static Profile ProfileNamed(NSString *name) {
       if (updateError != EPhysicsUpdateError::None)
         return failure(kUpdateFailed, [NSString stringWithFormat:
           @"Jolt Update meldete EPhysicsUpdateError=%u.", (unsigned)updateError]);
+      // A target velocity from MoveKinematic is valid for exactly one fixed step.
+      for (const auto &actor : _movingActors)
+        _physics->GetBodyInterface().SetLinearAndAngularVelocity(actor.second, Vec3::sZero(), Vec3::sZero());
+      _movingActors.clear();
       _accumulator -= timeStep;
       _simulationStep += 1;
     }
@@ -566,6 +650,15 @@ static Profile ProfileNamed(NSString *name) {
       state.groundedWheelCount += 1;
     outputWheelCount = wheelTransforms.count;
   }
+  NSMutableDictionary *opponents = [NSMutableDictionary dictionaryWithCapacity:_opponents.size()];
+  for (const auto &entry : _opponents) {
+    DBJoltTransform *pose = TransformValue(bodies.GetWorldTransform(entry.second.body), -1);
+    if (pose == nil) return failure(kInvalidTransform, @"Ungültiger Zustand eines Renngegners.");
+    const Vec3 velocity = bodies.GetLinearVelocity(entry.second.body);
+    pose.speed = std::hypot(velocity.GetX(),velocity.GetZ());
+    opponents[[NSString stringWithUTF8String:entry.first.c_str()]] = pose;
+  }
+  state.opponents = opponents;
   state.wheels = wheelTransforms;
   state.outputWheelCount = wheelTransforms.count;
   state.success = YES;

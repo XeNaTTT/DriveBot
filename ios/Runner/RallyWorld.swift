@@ -19,6 +19,8 @@ struct RallyCell: Hashable {
 struct RallyFloorMap {
   private struct Sample { var y: Float; var hits: Int; var time: Double }
   private var samples: [RallyCell: Sample] = [:]
+  var observedCount: Int { samples.count }
+  var stableCount: Int { samples.values.filter { $0.hits >= 2 }.count }
   mutating func observe(_ cell: RallyCell, floor: Float?, time: Double) {
     guard let y = floor, y.isFinite else { samples[cell] = nil; return }
     if var old = samples[cell], abs(old.y-y) < 0.004 {
@@ -47,9 +49,8 @@ struct RallyFloorMap {
   }
 
   // Find a full-width corridor first, then round its turns and revalidate the swept strip.
-  func road(from start: SIMD3<Float>, to end: SIMD3<Float>, clear: (SIMD3<Float>) -> Bool) -> [SIMD3<Float>]? {
+  func road(from start: SIMD3<Float>, to end: SIMD3<Float>, radius: Float = 0.047, clear: (SIMD3<Float>) -> Bool) -> [SIMD3<Float>]? {
     let first = RallyCell(start), last = RallyCell(end)
-    let radius: Float = 0.047
     func valid(_ p: SIMD3<Float>) -> Bool { covers(p,radius: radius) && clear(p) }
     guard valid(start),valid(end),first != last else { return nil }
     var parent = [first:first], queue = [first], head = 0
@@ -105,7 +106,7 @@ struct RallyFloorMap {
   }
 
   static func validStrip(_ points: [SIMD3<Float>], clear: (SIMD3<Float>)->Bool) -> Bool {
-    guard points.count >= 2 else { return false }
+    guard points.count >= 2, let last = points.last, clear(last) else { return false }
     for (a,b) in zip(points,points.dropFirst()) {
       let steps = max(1,Int(ceil(simd_distance(a,b)/0.012)))
       for i in 0...steps where !clear(a+(b-a)*(Float(i)/Float(steps))) { return false }
@@ -121,7 +122,7 @@ struct RallyNeighborhood {
   let lots: [SIMD3<Float>]
   let angles: [Float]
   static let names = ["Ocean District","Downtown","Palm Heights","Motor District","Shopping District","Entertainment District"]
-  init(cell: RallyCell, floor: Float, ordinal: Int) {
+  init(cell: RallyCell, floor: Float, ordinal: Int, compact: Bool = false) {
     self.cell = cell
     center = cell.point(floor)
     kind = ordinal < 3 ? ordinal : 3 + Int(cell.seed % 3)
@@ -130,7 +131,7 @@ struct RallyNeighborhood {
     var positions: [SIMD3<Float>] = [], headings: [Float] = []
     for i in 0..<n {
       let a = base + Float(i)*2 * .pi/Float(n) + Float((cell.seed >> (i*4)) % 9)*0.025
-      let r = Float(0.145) + Float((cell.seed >> (i*3)) % 5)*0.006
+      let r: Float = compact && i == 0 ? 0.094 : 0.19 + Float((cell.seed >> (i*3)) % 5)*0.012
       positions.append(cell.point(floor) + SIMD3(sin(a)*r,0,cos(a)*r))
       headings.append(a + .pi)
     }

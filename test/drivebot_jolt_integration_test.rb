@@ -67,8 +67,8 @@ class DriveBotJoltIntegrationTest < Minitest::Test
     wrapper = File.read(WRAPPER)
 
     assert_includes wrapper, 'vertexData.length % sizeof(simd_float3)'
-    assert_includes wrapper, 'inputIndices[index] >= vertexCount'
-    assert_includes wrapper, 'if (!IsFinite(inputVertices[index])) return;'
+    assert_includes wrapper, 'face[0] >= vertexCount'
+    assert_includes wrapper, 'if (!IsFinite(point)'
   end
 
   def test_step_uses_typed_scalar_transport_and_validates_before_insertion

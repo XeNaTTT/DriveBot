@@ -145,7 +145,7 @@ final class RallyTraffic {
     }
   }
 
-  private func navigable(view: ARView, car: StreetCar, look: SIMD3<Float>, heading: Float) -> Bool {
+  func navigable(view: ARView, car: StreetCar, look: SIMD3<Float>, heading: Float) -> Bool {
     let p = car.position
     let dir = SIMD3<Float>(sin(heading),0,cos(heading))
     let edge = SIMD3(dir.z,0,-dir.x)*car.half.x
